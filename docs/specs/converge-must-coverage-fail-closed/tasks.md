@@ -742,3 +742,125 @@ falsificados).
 - [x] 13.1.1 Completar a lista de revogação do bloco "Revisão de escopo (issue #188, incremento pós-round-1)" em `docs/specs/converge-must-coverage-fail-closed/spec.md` para alcançar TODOS os trechos que o incremento r02 de fato revoga, hoje limitada a FR-006 + um Edge Case: (a) **FR-005** — emendar/revogar explicitamente, pois seu `MUST NOT` proíbe o achado exatamente no caso-bandeira da issue #188 (`N == 0`, `Q > 0`); (b) **US1 Acceptance Scenarios 3 e 4** — reconciliar com o comportamento `cobertura-parcial`/`exit 4`, espelhando o que já foi feito para FR-005/FR-006; (c) **SC-002** — qualificar as duas cláusulas com o conjuntivo `Q == 0` (o critério só vale quando não há princípio emitido só por rótulo de heading), para que o critério de sucesso deixe de declarar falso-positivo o comportamento que a feature entrega; (d) **Edge Case** "constituição nunca menciona a palavra MUST" — mesmo tratamento do bullet gêmeo já revogado. MUST NOT alterar `plugins/cstk/skills/converge/scripts/extract-must.sh`, a ordem das guardas, `research.md` Decision 11, `contracts/must-coverage-finding.md`, `plugins/cstk/skills/converge/SKILL.md` ou `tests/test_extract-must.sh` — os cinco já estão corretos e consistentes com o comportamento medido. MUST NOT reescrever o bloco "Carve-out de precedência" da FR-010, auditado e aprovado nesta onda.
 
 <!-- converge-key: be2158480dc2 -->
+
+## FASE 14 - Revisão Editorial Integral do `spec.md`
+
+> **Origem: decisão humana `dec-056`** (resposta ao bloqueio `block-001`,
+> registrado por `dec-055` na onda-013) — **não** é uma fase gerada pela
+> skill `converge`, e por isso não carrega marcador `converge-key`. Quatro
+> ciclos consecutivos de convergência (ondas 007, 009, 011, 013) acharam,
+> cada um, um defeito de **redação** distinto no mesmo `spec.md`, sempre
+> introduzido pela emenda pontual do ciclo anterior. O operador optou por
+> `revisao-editorial-integral` em vez de uma 5ª emenda pontual.
+>
+> Escopo **estritamente editorial**: reorganiza, consolida e desduplica o
+> `spec.md`. MUST NOT alterar o que a especificação exige. Conteúdo
+> normativo já verificado correto contra 5 fixturas medidas na onda-013 e
+> re-medidas na task 14.1.5.
+
+### 14.1 Consolidar as emendas r02 no corpo dos requisitos e eliminar a duplicação estrutural `[C]`
+
+Ref: `dec-056` · origem: decisão humana · classe: dívida de redação
+
+Defeitos de redação encontrados, um por ciclo, todos na mesma superfície:
+
+1. onda-007 — redação da FR-010 (→ FASE 11);
+2. onda-009 — prosa do carve-out formalizava só `M == 0` enquanto a
+   fórmula exigia `N > 0 && M == 0` (→ FASE 12);
+3. onda-011 — a lista de revogação do bloco "Revisão de escopo" nomeava
+   apenas FR-006 + 1 Edge Case, deixando FR-005, US1 AS3/AS4, SC-002 e o
+   Edge Case gêmeo em vigor dizendo o oposto do implementado (→ FASE 13,
+   `HIGH`);
+4. onda-013 — a frase meta do mesmo bloco afirmava que cada trecho
+   "permanece com sua redação original preservada abaixo" e que FR-006 +
+   1 Edge Case eram "as únicas exceções de forma" — falso para SC-002,
+   alterado in loco pela FASE 13 (`git diff d604814^..d604814`).
+
+Causa estrutural comum: o bloco "Carve-out de precedência" da FR-010 era
+**byte-idêntico** em `## Requirements` e em `## Delta Requirements`, o que
+obrigava toda correção a ser aplicada duas vezes e verificada byte-a-byte;
+e as emendas viviam em blocos anexos ("Emenda (Revisão de escopo...)")
+em vez de no corpo dos requisitos, de modo que nenhum requisito se lia
+sozinho e correto.
+
+Medição de baseline desta onda: `validate-sdd.sh` sobre o `spec.md`
+pré-revisão reportava `errors=3` — três `duplicate-id` (`FR-005`,
+`FR-006`, `SC-002`), produzidos justamente pelo bloco "Revisão de escopo",
+que redefinia em negrito IDs já definidos em `### Functional Requirements`.
+
+- [x] 14.1.1 Introduzir a seção normativa `## Notação de contagens
+      (N, M, Q)`, definindo as três contagens uma única vez, antes do
+      primeiro uso, com remissão à legenda do modo `--coverage` de
+      `plugins/cstk/skills/converge/scripts/extract-must.sh` — eliminando
+      a dependência de `Q` ser definido de passagem dentro de um bloco de
+      emenda.
+- [x] 14.1.2 Consolidar as emendas r02 no CORPO de cada trecho afetado
+      (`FR-005`, `FR-006`, US1 Acceptance Scenarios 3 e 4, `SC-002`, os
+      dois Edge Cases), de modo que cada um se leia sozinho e correto sem
+      precisar do bloco de revogação; remover os blocos anexos "Emenda
+      (Revisão de escopo, incremento pós-round-1)".
+- [x] 14.1.3 Remover o bloco meta "Revisão de escopo (issue #188,
+      incremento pós-round-1)" — cuja frase de fechamento afirmava algo
+      falso sobre o próprio documento (achado da onda-013) — e mover o
+      histórico round-1 (o que deixou de valer e por quê) para o
+      `## Apêndice A`, único e ao fim do arquivo, com rastreabilidade às
+      issues #173 e #188. Efeito colateral medido: `validate-sdd.sh`
+      passa de `errors=3` para `errors=0`.
+- [x] 14.1.4 Eliminar a duplicação byte-idêntica do bloco "Carve-out de
+      precedência": a exposição longa (motivação, referência a
+      `research.md` Decision 11, narrativa do caso-bandeira) fica em UMA
+      fonte normativa, dentro da `FR-010` de `## Requirements`; a entrada
+      `FR-010` de `## Delta Requirements` conserva o texto integral do
+      requisito em forma compacta e autossuficiente, como exige a
+      gramática de `contracts/delta-section-format.md` regra 4 (o texto
+      da entrada `ADDED` é o que `delta-merge.sh` aplica ao corpus — um
+      ponteiro "ver acima" quebraria o corpus de living-specs).
+- [x] 14.1.5 Re-medir as 5 fixturas de veredito contra o texto revisado e
+      confirmar que a especificação continua descrevendo exatamente o
+      comportamento implementado: `f1(N=0,M=0,Q=1)` →
+      `cobertura-parcial`/`exit 4`; `f2(N=0,M=0,Q=0)` →
+      `sem-must-declarado`/`exit 0`; `f3(M=1,Q=1)` →
+      `cobertura-parcial`/`exit 4`; `f4(M=1,Q=0)` → `ok`/`exit 0`;
+      `f5(N=1,M=0,Q=1)` → `zero-reconhecida`/`exit 3`. MUST NOT alterar
+      `plugins/cstk/skills/converge/scripts/extract-must.sh`, a ordem das
+      guardas, `research.md`, `contracts/must-coverage-finding.md`,
+      `plugins/cstk/skills/converge/SKILL.md` ou
+      `tests/test_extract-must.sh`.
+- [x] 14.1.6 Submeter o `spec.md` revisado a uma auditoria de **leitor
+      novo** (subagente sem contexto da reescrita, munido apenas das 4
+      guardas e das 5 medições como régua) e corrigir todos os defeitos
+      de redação reportados — quebrando o padrão em que o próprio autor
+      da emenda a revisa e não vê o defeito que acabou de introduzir. A
+      auditoria achou 11 itens; todos corrigidos nesta task:
+      **(a) contradição** — a pergunta da sessão de Clarifications
+      listava `zero-reconhecida` entre os vereditos que a FR-010 nunca
+      produziria, negando o ramo de precedência que a própria FR-010
+      manda (ganhou nota datada, sem reescrever o registro histórico);
+      `FR-011` dizia "o veredito descrito na FR-010" quando a FR-010
+      descreve dois vereditos, exigindo por leitura literal exit `≠ 3`
+      justo onde a medição `f5` exige exit `3` (qualificado para
+      `cobertura-parcial`); `FR-012` dizia que a regra de severidade "já
+      é usada hoje" quando o Contexto do mesmo documento afirma que
+      nenhum achado estruturado existe hoje.
+      **(b) frase meta falsa** — "toda condição normativa desta
+      especificação é enunciada em termos dessas três contagens" era
+      falso (FR-007/008/009 e o Edge Case da constituição ausente não
+      usam `N`/`M`/`Q`); "cada requisito enuncia a regra vigente por
+      inteiro" era falso para as re-enunciações do `## Delta
+      Requirements`; a remissão "existe um contrato de saída já validado
+      (ver FR-014)" caracterizava mal a FR-014.
+      **(c) fórmula vs prosa** — o Edge Case de cobertura mista dizia
+      "com `Q == 0` o achado só dispara quando `M == 0`", omitindo o
+      conjuntivo `N > 0` (o caso `N == 0, M == 0, Q == 0` é
+      `sem-must-declarado`, sem achado — medição `f2`); o "em
+      particular" da FR-010 renderizava só um dos dois ramos
+      complementares da precedência (faltava o ramo `M > 0`); o
+      Acceptance Scenario 5 enumerava 2 das 3 combinações de `Q > 0`.
+      **(d) duplicação** — as cópias de `FR-010` e `FR-013` no `## Delta
+      Requirements` divergiam do corpo: a de `FR-010` perdia o `MUST
+      NOT` que proíbe alterar a ordem das guardas e o teste de
+      precedência; a de `FR-013` perdia a cláusula inteira de deferição
+      ao plano técnico. Ambas completadas.
+      Gates após as correções: `validate-sdd.sh` `errors=0 warnings=0`;
+      `delta-gate.sh` `errors=0`; `delta-merge.sh --dry-run`
+      `delta=applied added=5`; `validate-docs-rendered` `ERRO 0 AVISO 0`.

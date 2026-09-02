@@ -40,6 +40,16 @@ foi solicitada pelo operador; se a análise técnica em `/plan` indicar que ela
 é necessária para atender a algum requisito abaixo, isso deve voltar como
 bloqueio humano, não ser decidido unilateralmente.
 
+Esta especificação foi reaberta uma vez (round 2, issue #188) para ampliar
+deliberadamente o escopo do round 1. O texto abaixo já está consolidado: na
+seção `## Requirements`, cada requisito enuncia a regra vigente por inteiro,
+sem depender de emendas posteriores para ser lido corretamente. A seção
+`## Delta Requirements` re-enuncia esses mesmos requisitos por exigência da
+ferramenta que aplica o delta ao corpus — é repetição deliberada, não uma
+segunda fonte normativa; em caso de divergência, prevalece
+`## Requirements`. O registro do que o round 1 garantia, e por que deixou de
+valer, está no Apêndice A ao fim deste documento (histórico, não normativo).
+
 > Decisões de infraestrutura: N/A (feature sem scheduling, sem dados
 > persistidos com TTL/criptografia, sem refresh de token externo, sem lock
 > multi-pod, sem backup/restore novo, sem chave de idempotência de request —
@@ -58,6 +68,13 @@ bloqueio humano, não ser decidido unilateralmente.
   especificação ("cobertura mista (ou cobertura só-de-heading)"): pelo
   menos um princípio elegível não teve sua regra `MUST` confirmada, mesmo
   quando outros princípios (ou nenhum outro) já tiveram.
+  *Nota posterior a esta sessão*: o enunciado da pergunta acima listava
+  `zero-reconhecida` entre os vereditos que a FR-010 nunca produziria. A
+  regra de precedência da FR-010, ratificada depois desta sessão
+  (`research.md` Decision 11), abriu a única exceção: quando `M == 0` e
+  `N > 0`, um insumo com `Q > 0` emite `zero-reconhecida`, não
+  `cobertura-parcial`. A resposta acima (o token é `cobertura-parcial`)
+  segue válida para todos os demais insumos com `Q > 0`.
 - Q: FR-011 exige um exit code novo, distinto dos já usados por
   `extract-must.sh --coverage` (0, 1, 2, 3), mas não fixa o número. Qual
   valor? → A: `4` — confirmado por leitura de
@@ -65,6 +82,28 @@ bloqueio humano, não ser decidido unilateralmente.
   (sucesso/`ok`/`sem-must-declarado`), 1 (`--constitution` ausente ou
   contagem corrompida), 2 (erro de uso) e 3 (`zero-reconhecida`) já estão
   em uso; nenhum outro script da skill `converge` reserva o valor 4.
+
+## Notação de contagens (N, M, Q)
+
+Três contagens, todas produzidas pela mesma verificação de cobertura de
+`MUST` sobre um único arquivo de constituição, são usadas ao longo desta
+especificação. Elas seguem a legenda do modo `--coverage` de
+`plugins/cstk/skills/converge/scripts/extract-must.sh`:
+
+- **N** — ocorrências da palavra `MUST` no arquivo, contadas de forma
+  independente do parser (inclui `MUST` em prosa corrida).
+- **M** — linhas de regra `MUST` efetivamente reconhecidas pelo parser
+  (formato de rótulo no início da linha).
+- **Q** — princípios emitidos **só pelo rótulo do heading** (por exemplo
+  `(NON-NEGOTIABLE)`), sem nenhuma regra `MUST` legível no corpo do
+  princípio.
+
+Toda condição de **cobertura** enunciada nesta especificação é expressa em
+termos dessas três contagens, e nenhuma delas depende de contagem definida em
+outro documento. Requisitos que não versam sobre cobertura (FR-007, FR-008 e
+FR-009, que tratam da orientação da skill de constituição) e o Edge Case da
+constituição ausente não usam `N`, `M` nem `Q` — a condição deles não é uma
+contagem.
 
 ## User Scenarios & Testing
 
@@ -94,33 +133,39 @@ relatório resultante não é mais "tudo certo" silencioso.
 
 1. **Given** uma `constitution.md` que contém a palavra `MUST` em pelo menos
    uma frase mas nenhuma linha no formato de rótulo reconhecido pelo gate de
-   cobertura, **When** a etapa de convergência roda até o fim, **Then** o
-   relatório final contém pelo menos um achado indicando que a cobertura de
-   `MUST` está indisponível/zerada para aquela constituição, com severidade
-   alta o suficiente para não passar despercebido.
+   cobertura (`N > 0` e `M == 0`), **When** a etapa de convergência roda até
+   o fim, **Then** o relatório final contém pelo menos um achado indicando
+   que a cobertura de `MUST` está indisponível/zerada para aquela
+   constituição, com severidade alta o suficiente para não passar
+   despercebido.
 2. **Given** o mesmo cenário do item 1, **When** o relatório é consultado
    para decidir se a feature está pronta ("convergida"), **Then** o
    resultado nunca indica "convergida sem pendências" só por causa dessa
    lacuna — ela conta como pendência acionável.
 3. **Given** uma `constitution.md` que não contém a palavra `MUST` em lugar
-   nenhum (projeto sem obrigações declaradas nesse formato), **When** a
-   etapa de convergência roda, **Then** nenhum achado desse tipo é gerado —
-   a ausência total de MUST não é, por si só, um sinal de lacuna de
-   cobertura (não há o que cobrir). **Emenda (Revisão de escopo, incremento
-   pós-round-1; espelha FR-005)**: vale apenas quando não há nenhum
-   princípio emitido só por rótulo de heading. Havendo pelo menos um, o
-   relatório passa a conter o achado `cobertura-parcial` (exit 4) mesmo
-   neste cenário — ver FR-010.
+   nenhum e em que nenhum princípio foi emitido só pelo rótulo do heading
+   (`N == 0` e `Q == 0`), **When** a etapa de convergência roda, **Then**
+   nenhum achado desse tipo é gerado — não há obrigação declarada para o
+   gate falhar em cobrir.
 4. **Given** uma `constitution.md` em que pelo menos uma regra `MUST` já é
-   reconhecida pelo gate (mesmo que outras estejam em prosa e não sejam
-   reconhecidas), **When** a etapa de convergência roda, **Then** o
-   comportamento observável de hoje é preservado — nenhum achado novo desta
-   feature é introduzido só por essa cobertura parcial (limitação conhecida,
-   documentada como fora de escopo). **Emenda (Revisão de escopo,
-   incremento pós-round-1; espelha FR-006)**: vale apenas quando não há
-   nenhum princípio emitido só por rótulo de heading. Havendo pelo menos
-   um, o achado `cobertura-parcial` (exit 4) é gerado mesmo com outras
-   regras `MUST` já reconhecidas — ver FR-010.
+   reconhecida pelo gate e em que nenhum princípio foi emitido só pelo
+   rótulo do heading (`M > 0` e `Q == 0`), **When** a etapa de convergência
+   roda, **Then** o comportamento observável anterior a esta feature é
+   preservado — nenhum achado novo é introduzido só porque outras
+   obrigações estão em prosa não reconhecida (limitação conhecida,
+   documentada como fora de escopo nos Edge Cases).
+5. **Given** uma `constitution.md` com pelo menos um princípio emitido só
+   pelo rótulo do heading, sem nenhuma regra `MUST` legível no corpo desse
+   princípio (`Q > 0`), **When** a etapa de convergência roda, **Then** o
+   relatório final contém o achado de cobertura e ele conta como pendência
+   acionável — nas três combinações possíveis de `Q > 0`: com outras regras
+   `MUST` da mesma constituição já reconhecidas (`M > 0`); com a palavra
+   `MUST` ausente do arquivo inteiro (`N == 0` e `M == 0`); e com a palavra
+   `MUST` presente mas nenhuma regra reconhecida (`N > 0` e `M == 0`), caso
+   em que a regra de precedência da FR-010 mantém o veredito
+   `zero-reconhecida` sem suprimir o achado. Este cenário é o espelho
+   verificacional das FR-010/FR-012 no nível do achado, não uma obrigação
+   adicional — quem fixa o veredito de cada combinação é a FR-010.
 
 ---
 
@@ -165,24 +210,24 @@ de rodar o gate de convergência em si.
 
 ### Edge Cases
 
-- Constituição ausente (o arquivo `constitution.md` não existe no
+- **Constituição ausente** (o arquivo `constitution.md` não existe no
   projeto-alvo): esse já é um caso hoje tratado como "verificação de MUST
   indisponível" pelo gate — esta feature não altera esse comportamento, que
   continua distinto do caso "arquivo existe mas cobertura é zero".
-- Constituição contém MUST misturando formato reconhecido e prosa corrida no
-  mesmo arquivo (M > 0 mas menor que a contagem real de obrigações
-  pretendidas): fora de escopo desta feature (equivale à 3ª sugestão da
-  issue #173, deferida) — o achado desta feature só dispara quando a
-  cobertura reconhecida é exatamente zero.
-- Projeto-alvo cuja constituição nunca menciona a palavra MUST (usa outro
+- **Cobertura mista de formato dentro do corpo dos princípios** (`M > 0`
+  junto de outras obrigações escritas em prosa corrida que o parser não lê,
+  com `Q == 0`): fora de escopo desta feature — equivale à 3ª sugestão da
+  issue #173, deferida. Com `Q == 0`, o achado desta feature só dispara
+  quando `N > 0` **e** `M == 0` (FR-001) — ter `M > 0` basta para suprimi-lo
+  (FR-006). Quando `Q > 0`, o caso deixa de ser este Edge Case e passa a ser
+  regido pela FR-010.
+- **Constituição que nunca menciona a palavra MUST** (`N == 0` — usa outro
   vocabulário de obrigatoriedade, ou não tem seção de princípios
-  obrigatórios): não deve gerar o achado desta feature — não há intenção de
-  MUST declarada para o gate falhar em cobrir. **Emenda (Revisão de escopo,
-  incremento pós-round-1; mesmo tratamento do Edge Case gêmeo acima,
-  espelha FR-005)**: vale apenas quando não há nenhum princípio emitido só
-  por rótulo de heading. Havendo pelo menos um, a FR-010 prevalece e o
-  achado `cobertura-parcial` (exit 4) é gerado mesmo sem nenhuma ocorrência
-  da palavra MUST no arquivo.
+  obrigatórios), **com `Q == 0`**: não gera o achado desta feature — não há
+  intenção de `MUST` declarada para o gate falhar em cobrir (ver FR-005).
+  Quando `Q > 0`, a FR-010 se aplica e o achado É gerado, ainda que a
+  palavra `MUST` não apareça em lugar nenhum do arquivo — este é o
+  caso-bandeira da issue #188.
 
 ## Requirements
 
@@ -190,9 +235,10 @@ de rodar o gate de convergência em si.
 
 - **FR-001**: Quando a verificação de cobertura de `MUST` da etapa de
   convergência reportar que a constituição do projeto-alvo contém pelo menos
-  uma ocorrência da palavra MUST e nenhuma linha de regra reconhecida, o
-  sistema MUST registrar isso como um achado estruturado no relatório de
-  convergência (não apenas como observação textual para o agente seguir).
+  uma ocorrência da palavra MUST e nenhuma linha de regra reconhecida
+  (`N > 0` e `M == 0`), o sistema MUST registrar isso como um achado
+  estruturado no relatório de convergência (não apenas como observação
+  textual para o agente seguir).
 - **FR-002**: O achado descrito na FR-001 MUST ser classificado com o mesmo
   tipo usado hoje para "comportamento existente que contradiz o que foi
   pedido" e com a severidade mais alta reservada a esse tipo de achado
@@ -209,19 +255,21 @@ de rodar o gate de convergência em si.
   de cobertura zero persistir.
 - **FR-005**: O sistema MUST NOT gerar o achado da FR-001 quando a
   constituição do projeto-alvo não contiver a palavra MUST em lugar nenhum
-  (nenhuma obrigação declarada nesse vocabulário) — ausência total de MUST
-  não é tratada como lacuna de cobertura. **Emenda (Revisão de escopo,
-  incremento pós-round-1)**: esta garantia só vale quando não há nenhum
-  princípio emitido só por rótulo de heading na constituição. Quando houver
-  pelo menos um, a FR-010 prevalece e o achado `cobertura-parcial` (exit 4)
-  é gerado mesmo com ausência total de MUST — este é precisamente o
-  caso-bandeira da issue #188 (medido: `N = 0`, `M = 0`, um princípio
-  `(NON-NEGOTIABLE)` sem regra rotulada → `cobertura de MUST:
-  cobertura-parcial`, `exit=4`).
+  **e** não houver nenhum princípio emitido só por rótulo de heading
+  (`N == 0` **e** `Q == 0`) — nessa combinação não há obrigação declarada, em
+  nenhum dos dois vocabulários, e a ausência total não é tratada como lacuna
+  de cobertura. Quando `Q > 0`, esta garantia não se aplica: prevalece a
+  FR-010, e o achado É gerado por desenho, ainda que `N == 0` — esse é
+  precisamente o caso-bandeira da issue #188 (medido: `N = 0`, `M = 0`,
+  `Q = 1` → `cobertura de MUST: cobertura-parcial`, `exit=4`).
 - **FR-006**: O sistema MUST NOT gerar o achado da FR-001 quando pelo menos
-  uma linha de regra MUST já for reconhecida na constituição do
-  projeto-alvo — o comportamento de hoje para cobertura parcial é preservado
-  sem mudança (ver Edge Cases).
+  uma linha de regra MUST já for reconhecida na constituição do projeto-alvo
+  **e** não houver nenhum princípio emitido só por rótulo de heading
+  (`M > 0` **e** `Q == 0`) — nessa combinação o comportamento anterior a esta
+  feature é preservado sem mudança, e a cobertura mista de formato dentro do
+  corpo dos princípios permanece fora de escopo (ver Edge Cases). Quando
+  `Q > 0`, esta garantia não se aplica: prevalece a FR-010, e o achado É
+  gerado por desenho, ainda que `M > 0`.
 - **FR-007**: A orientação seguida pela skill de criação/atualização de
   constituição MUST apresentar, como forma esperada de escrever uma
   obrigação de princípio, o formato de regra reconhecido pela verificação de
@@ -236,110 +284,73 @@ de rodar o gate de convergência em si.
   constituições de projetos já existentes — o efeito da FR-007/FR-008 é
   sobre orientação consumida em gerações/edições futuras da constituição,
   nunca uma migração automática de arquivos já ratificados.
-
-**Revisão de escopo (issue #188, incremento pós-round-1)**: os trechos
-abaixo — todos escritos no round anterior sob a premissa de que cobertura
-zero (`N == 0`) ou pelo menos uma regra já reconhecida (`M > 0`) nunca
-geravam achado — são deliberadamente revogados/emendados por esta mesma
-especificação: **FR-005**; **FR-006**; os **Acceptance Scenarios 3 e 4** da
-User Story 1; **SC-002**; e os dois Edge Cases "Constituição contém MUST
-misturando formato reconhecido e prosa corrida no mesmo arquivo... fora de
-escopo desta feature (equivale à 3ª sugestão da issue #173, deferida)" e
-"Projeto-alvo cuja constituição nunca menciona a palavra MUST... não deve
-gerar o achado desta feature". Cada um deles passa a valer apenas quando
-não há nenhum princípio emitido só por rótulo de heading (adiante chamado
-`Q == 0`, mesma contagem citada por `contracts/must-coverage-finding.md`);
-quando `Q > 0`, a FR-010 prevalece e o achado `cobertura-parcial` (exit 4)
-é gerado independentemente do que esses trechos afirmavam antes desta
-revisão — cada trecho permanece com sua redação original preservada abaixo
-(registro histórico do que o round 1 garantia), seguida de uma emenda local
-que delimita o novo caso em que deixa de valer; a FR-006 e o Edge Case
-"Constituição contém MUST misturando formato reconhecido e prosa corrida..."
-são as únicas exceções de forma — a supersessão de ambos (herdada da
-revisão anterior) já está registrada na frase de abertura da FR-010 abaixo,
-não em uma emenda local a eles. Medição adicional feita neste
-incremento mostrou que a guarda original também deixava passar, sem achado,
-uma constituição com um único princípio anunciado só pelo rótulo do heading
-(`(NON-NEGOTIABLE)`) e corpo sem nenhuma regra MUST — caso que caía no
-veredito `sem-must-declarado`, também suprimido. Isto não é correção de
-defeito de implementação do round anterior: é revisão deliberada de escopo,
-autorizada pelo operador ao reabrir esta feature.
-
 - **FR-010**: Quando a verificação de cobertura de `MUST` identificar pelo
-  menos um princípio emitido sem nenhuma regra `MUST` legível (hoje
-  contabilizado como "emitido só por rótulo de heading"), o sistema MUST
-  classificar esse resultado com um veredito distinto de `ok` e de
-  `sem-must-declarado` — mesmo quando outras regras `MUST` da mesma
-  constituição já tiverem sido reconhecidas. Este requisito substitui, para
-  este cenário específico, a preservação de comportamento afirmada pela
-  FR-006, pelo Edge Case citado acima e pelo Acceptance Scenario 4 da User
-  Story 1 (ver "Revisão de escopo" acima): cobertura mista (ou cobertura
-  só-de-heading) deixa de ser tratada como "sem achado". O token literal
-  deste veredito (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
-  `cobertura-parcial` (ver Clarifications, sessão 2026-09-01) — **exceto no
-  sub-caso coberto pelo carve-out de precedência abaixo**, em que o veredito
-  permanece `zero-reconhecida`.
+  menos um princípio emitido sem nenhuma regra `MUST` legível — isto é,
+  emitido só pelo rótulo do heading (`Q > 0`) — o sistema MUST classificar
+  esse resultado com um veredito distinto de `ok` e de `sem-must-declarado`,
+  mesmo quando outras regras `MUST` da mesma constituição já tiverem sido
+  reconhecidas (`M > 0`) e mesmo quando a palavra `MUST` não ocorrer em
+  lugar nenhum do arquivo (`N == 0`). O token literal desse veredito
+  (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
+  `cobertura-parcial` (ver Clarifications, sessão 2026-09-01), com a única
+  exceção da regra de precedência do parágrafo seguinte.
 
-  **Carve-out de precedência (deliberado, ratificado — `research.md`
-  Decision 11)**: sejam `N` a contagem independente de ocorrências da
-  palavra `MUST` no arquivo da constituição e `M` a contagem de linhas de
-  regra `MUST` reconhecidas pelo parser (mesma notação do
-  comentário-legenda do modo `--coverage` em
-  `plugins/cstk/skills/converge/scripts/extract-must.sh`). O carve-out só se
-  aplica quando os DOIS conjuntivos valem ao mesmo tempo — não apenas
-  `M == 0` sozinho: (a) nenhuma regra `MUST` é reconhecida pelo parser em
-  lugar nenhum da constituição (`M == 0`) **e** (b) a palavra `MUST` ocorre
-  em pelo menos um ponto do arquivo, ainda que fora do formato que o parser
-  reconhece (`N > 0`). Quando `N > 0 && M == 0`, a guarda de
-  `zero-reconhecida` tem precedência sobre esta FR-010, e o veredito emitido
-  MUST permanecer `zero-reconhecida` (exit 3), não `cobertura-parcial` —
-  resolvendo o empate entre os dois sinais a favor do mais forte.
+  **Precedência de `zero-reconhecida` (deliberada, ratificada —
+  `research.md` Decision 11)**: quando os DOIS conjuntivos valerem ao mesmo
+  tempo — (a) nenhuma regra `MUST` reconhecida pelo parser em lugar nenhum
+  da constituição (`M == 0`) **e** (b) a palavra `MUST` ocorrendo em pelo
+  menos um ponto do arquivo, ainda que fora do formato reconhecido
+  (`N > 0`) — a guarda de `zero-reconhecida` tem precedência sobre esta
+  FR-010: o veredito emitido MUST permanecer `zero-reconhecida` (exit 3),
+  não `cobertura-parcial`, resolvendo o empate entre os dois sinais a favor
+  do mais forte. Basta faltar UM dos dois conjuntivos para a precedência não
+  entrar em jogo, e nesse caso prevalece o corpo desta FR-010: o veredito
+  MUST ser `cobertura-parcial` (exit 4) sempre que `Q > 0`. Os dois ramos
+  complementares são: falta (b), isto é `M == 0` **e** `N == 0` — o
+  caso-bandeira da issue #188, constituição sem nenhuma regra `MUST` legível
+  e sem nenhuma ocorrência da palavra `MUST`; e falta (a), isto é `M > 0` —
+  pelo menos uma regra já reconhecida convivendo com um princípio
+  só-de-heading.
 
-  Ramo complementar (carve-out NÃO se aplica): quando `M == 0` **e**
-  `N == 0` — nenhuma regra `MUST` reconhecida e nenhuma ocorrência solta da
-  palavra `MUST` no arquivo — falta o conjuntivo (b), o carve-out não entra
-  em jogo, e prevalece o corpo desta FR-010 acima: se houver pelo menos um
-  princípio emitido só por rótulo de heading, o veredito MUST ser
-  `cobertura-parcial` (exit 4). Este é o caso-bandeira que a issue #188
-  existe para cobrir — constituição sem nenhuma regra `MUST` legível e sem
-  nenhuma ocorrência da palavra `MUST` em lugar nenhum do arquivo.
-
-  Este carve-out não reduz a acionabilidade: o achado estruturado emitido
+  A precedência não reduz a acionabilidade: o achado estruturado emitido
   pela FR-012 é o mesmo `Gap` nos dois vereditos
-  (`contracts/must-coverage-finding.md` §3.2), e reflete o comportamento já
-  validado por `tests/test_extract-must.sh ::
-  scenario_coverage_r02_precedencia_zero_reconhecida_vence` — este teste e a
+  (`contracts/must-coverage-finding.md` §3.2). O comportamento aqui descrito
+  já está validado por `tests/test_extract-must.sh ::
+  scenario_coverage_r02_precedencia_zero_reconhecida_vence` — esse teste e a
   ordem das guardas em `extract-must.sh` MUST NOT ser alterados por esta
   feature.
-- **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
-  saída (exit code) que um consumidor automatizado da verificação de
+- **FR-011**: O veredito `cobertura-parcial` — o que o corpo da FR-010 fixa,
+  não o `zero-reconhecida` do ramo de precedência — MUST ser exposto por um
+  sinal de saída (exit code) que um consumidor automatizado da verificação de
   cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
   para `ok`, `zero-reconhecida` e `sem-must-declarado`. Este exit code MUST
-  ser `4` (ver Clarifications, sessão 2026-09-01).
+  ser `4` (ver Clarifications, sessão 2026-09-01). No ramo de precedência da
+  FR-010 o sinal de saída permanece o já usado por `zero-reconhecida`.
 - **FR-012**: Quando a etapa de convergência observar o veredito descrito na
   FR-010, o sistema MUST registrar um achado estruturado no relatório de
   convergência com os mesmos campos fixos (artefato afetado = constituição
   do projeto-alvo; origem = a própria verificação de cobertura de `MUST`;
-  classificação e severidade calculadas pela mesma regra determinística já
-  usada hoje para o veredito `zero-reconhecida`, conforme FR-002/FR-003
-  desta especificação) usados para aquele veredito. O achado desta FR-012
+  classificação e severidade calculadas pela mesma regra determinística que
+  esta especificação define para o veredito `zero-reconhecida` nas
+  FR-002/FR-003) usados para aquele veredito. O achado desta FR-012
   MUST também contar na contagem de pendências acionáveis referida pela
   FR-004 — o resultado "convergido, sem pendências" MUST NOT ser produzido
   enquanto essa condição persistir.
 - **FR-013**: Quando houver pelo menos um princípio classificado conforme a
-  FR-010, a verificação de cobertura de `MUST` MUST identificar
+  FR-010 (`Q > 0`), a verificação de cobertura de `MUST` MUST identificar
   nominalmente, na sua saída, qual(is) princípio(s) da constituição do
   projeto-alvo carecem de uma regra `MUST` legível — hoje a saída informa
   apenas a contagem, sem nomear os princípios afetados. A forma exata de
   onde essa identificação nominal aparece na saída (por exemplo: linhas
   adicionais de um relatório já existente, ou um canal de saída separado)
   é uma decisão técnica **deferida para `/plan`**, não fixada por esta
-  especificação — existe um contrato de saída já validado (ver FR-014) que
-  a decisão técnica precisa respeitar.
+  especificação. A liberdade dessa decisão é delimitada pela FR-014: seja
+  qual for a forma escolhida, ela MUST NOT alterar a saída no caso
+  `Q == 0`.
 - **FR-014**: Quando NÃO houver nenhum princípio classificado conforme a
-  FR-010 (contagem zero), a saída da verificação de cobertura de `MUST`
-  MUST permanecer byte-idêntica ao formato hoje validado para esse caso,
-  sem nenhum conteúdo adicional — a identificação nominal da FR-013 só se
+  FR-010 (`Q == 0`), a saída da verificação de cobertura de `MUST` MUST
+  permanecer byte-idêntica ao formato hoje validado para esse caso, sem
+  nenhum conteúdo adicional — a identificação nominal da FR-013 só se
   aplica quando há pelo menos um princípio a nomear.
 
 ### Key Entities
@@ -361,17 +372,17 @@ autorizada pelo operador ao reabrir esta feature.
 
 - **SC-001**: 100% das execuções da etapa de convergência contra uma
   constituição de projeto-alvo com pelo menos uma ocorrência da palavra MUST
-  e zero linhas de regra reconhecidas resultam em pelo menos um item
-  acionável no relatório — nunca em "convergido, sem pendências".
+  e zero linhas de regra reconhecidas (`N > 0` e `M == 0`) resultam em pelo
+  menos um item acionável no relatório — nunca em "convergido, sem
+  pendências".
 - **SC-002**: 0% das execuções da etapa de convergência contra uma
-  constituição sem nenhuma ocorrência da palavra MUST **e `Q == 0`**, ou com
-  pelo menos uma regra MUST já reconhecida **e `Q == 0`**, geram o novo
-  achado desta feature (nenhum falso-positivo introduzido nesses dois
-  casos). **Emenda (Revisão de escopo, incremento pós-round-1)**: quando
-  `Q > 0` (pelo menos um princípio emitido só por rótulo de heading — ver
-  FR-010) em qualquer um dos dois casos acima, o achado `cobertura-parcial`
-  (exit 4) É gerado, por desenho — não conta como o falso-positivo que este
-  critério mede.
+  constituição sem nenhuma ocorrência da palavra MUST e sem nenhum princípio
+  emitido só por rótulo de heading (`N == 0` e `Q == 0`), ou com pelo menos
+  uma regra MUST já reconhecida e sem nenhum princípio emitido só por rótulo
+  de heading (`M > 0` e `Q == 0`), geram o novo achado desta feature —
+  nenhum falso-positivo introduzido nesses dois casos. Execuções com
+  `Q > 0` estão fora do universo medido por este critério: nelas o achado é
+  gerado por desenho (FR-010), e isso não é falso-positivo.
 - **SC-003**: Uma constituição gerada do zero pela skill de constituição,
   sem nenhuma edição manual adicional, ao ser auditada pela verificação de
   cobertura de MUST, apresenta pelo menos uma regra reconhecida (nunca
@@ -385,78 +396,98 @@ autorizada pelo operador ao reabrir esta feature.
 #### ADDED
 
 - **FR-010**: Quando a verificação de cobertura de `MUST` identificar pelo
-  menos um princípio emitido sem nenhuma regra `MUST` legível (hoje
-  contabilizado como "emitido só por rótulo de heading"), o sistema MUST
-  classificar esse resultado com um veredito distinto de `ok` e de
-  `sem-must-declarado` — mesmo quando outras regras `MUST` da mesma
-  constituição já tiverem sido reconhecidas. Este requisito substitui, para
-  este cenário específico, a preservação de comportamento afirmada pela
-  FR-006, pelo Edge Case citado acima e pelo Acceptance Scenario 4 da User
-  Story 1 (ver "Revisão de escopo" acima): cobertura mista (ou cobertura
-  só-de-heading) deixa de ser tratada como "sem achado". O token literal
-  deste veredito (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
-  `cobertura-parcial` (ver Clarifications, sessão 2026-09-01) — **exceto no
-  sub-caso coberto pelo carve-out de precedência abaixo**, em que o veredito
-  permanece `zero-reconhecida`.
-
-  **Carve-out de precedência (deliberado, ratificado — `research.md`
-  Decision 11)**: sejam `N` a contagem independente de ocorrências da
-  palavra `MUST` no arquivo da constituição e `M` a contagem de linhas de
-  regra `MUST` reconhecidas pelo parser (mesma notação do
-  comentário-legenda do modo `--coverage` em
-  `plugins/cstk/skills/converge/scripts/extract-must.sh`). O carve-out só se
-  aplica quando os DOIS conjuntivos valem ao mesmo tempo — não apenas
-  `M == 0` sozinho: (a) nenhuma regra `MUST` é reconhecida pelo parser em
-  lugar nenhum da constituição (`M == 0`) **e** (b) a palavra `MUST` ocorre
-  em pelo menos um ponto do arquivo, ainda que fora do formato que o parser
-  reconhece (`N > 0`). Quando `N > 0 && M == 0`, a guarda de
-  `zero-reconhecida` tem precedência sobre esta FR-010, e o veredito emitido
-  MUST permanecer `zero-reconhecida` (exit 3), não `cobertura-parcial` —
-  resolvendo o empate entre os dois sinais a favor do mais forte.
-
-  Ramo complementar (carve-out NÃO se aplica): quando `M == 0` **e**
-  `N == 0` — nenhuma regra `MUST` reconhecida e nenhuma ocorrência solta da
-  palavra `MUST` no arquivo — falta o conjuntivo (b), o carve-out não entra
-  em jogo, e prevalece o corpo desta FR-010 acima: se houver pelo menos um
-  princípio emitido só por rótulo de heading, o veredito MUST ser
-  `cobertura-parcial` (exit 4). Este é o caso-bandeira que a issue #188
-  existe para cobrir — constituição sem nenhuma regra `MUST` legível e sem
-  nenhuma ocorrência da palavra `MUST` em lugar nenhum do arquivo.
-
-  Este carve-out não reduz a acionabilidade: o achado estruturado emitido
-  pela FR-012 é o mesmo `Gap` nos dois vereditos
-  (`contracts/must-coverage-finding.md` §3.2), e reflete o comportamento já
-  validado por `tests/test_extract-must.sh ::
-  scenario_coverage_r02_precedencia_zero_reconhecida_vence` — este teste e a
+  menos um princípio emitido sem nenhuma regra `MUST` legível — isto é,
+  emitido só pelo rótulo do heading (`Q > 0`, na notação de contagens desta
+  capability: `N` = ocorrências da palavra `MUST` no arquivo, `M` = linhas
+  de regra `MUST` reconhecidas pelo parser, `Q` = princípios emitidos só por
+  rótulo de heading) — o sistema MUST classificar esse resultado com um
+  veredito distinto de `ok` e de `sem-must-declarado`, mesmo quando outras
+  regras `MUST` da mesma constituição já tiverem sido reconhecidas
+  (`M > 0`) e mesmo quando a palavra `MUST` não ocorrer em lugar nenhum do
+  arquivo (`N == 0`). O token literal desse veredito (exposto na linha
+  `cobertura de MUST: <veredito>`) MUST ser `cobertura-parcial`, com a única
+  exceção da regra de precedência a seguir. Precedência de
+  `zero-reconhecida` (deliberada, ratificada — `research.md` Decision 11):
+  quando os DOIS conjuntivos valerem ao mesmo tempo — (a) `M == 0` **e**
+  (b) `N > 0` — a guarda de `zero-reconhecida` tem precedência sobre esta
+  FR-010 e o veredito emitido MUST permanecer `zero-reconhecida` (exit 3),
+  não `cobertura-parcial`. Basta faltar UM dos dois conjuntivos para a
+  precedência não entrar em jogo, e nesse caso o veredito MUST ser
+  `cobertura-parcial` (exit 4) sempre que `Q > 0`; os dois ramos
+  complementares são `M == 0` **e** `N == 0` (falta (b)) e `M > 0` (falta
+  (a)). A precedência não reduz a acionabilidade: o achado estruturado
+  emitido pela FR-012 é o mesmo `Gap` nos dois vereditos
+  (`contracts/must-coverage-finding.md` §3.2). O comportamento aqui descrito
+  já está validado por `tests/test_extract-must.sh ::
+  scenario_coverage_r02_precedencia_zero_reconhecida_vence` — esse teste e a
   ordem das guardas em `extract-must.sh` MUST NOT ser alterados por esta
   feature.
-- **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
-  saída (exit code) que um consumidor automatizado da verificação de
+- **FR-011**: O veredito `cobertura-parcial` — o que o corpo da FR-010 fixa,
+  não o `zero-reconhecida` do ramo de precedência — MUST ser exposto por um
+  sinal de saída (exit code) que um consumidor automatizado da verificação de
   cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
   para `ok`, `zero-reconhecida` e `sem-must-declarado`. Este exit code MUST
-  ser `4` (ver Clarifications, sessão 2026-09-01).
+  ser `4`. No ramo de precedência da FR-010 o sinal de saída permanece o já
+  usado por `zero-reconhecida`.
 - **FR-012**: Quando a etapa de convergência observar o veredito descrito na
   FR-010, o sistema MUST registrar um achado estruturado no relatório de
   convergência com os mesmos campos fixos (artefato afetado = constituição
   do projeto-alvo; origem = a própria verificação de cobertura de `MUST`;
   classificação e severidade calculadas pela mesma regra determinística já
-  usada hoje para o veredito `zero-reconhecida`, conforme FR-002/FR-003
-  desta especificação) usados para aquele veredito. O achado desta FR-012
-  MUST também contar na contagem de pendências acionáveis referida pela
-  FR-004 — o resultado "convergido, sem pendências" MUST NOT ser produzido
-  enquanto essa condição persistir.
+  usada para o veredito `zero-reconhecida`) usados para aquele veredito. O
+  achado desta FR-012 MUST também contar na contagem de pendências
+  acionáveis usada para decidir se a feature está convergida — o resultado
+  "convergido, sem pendências" MUST NOT ser produzido enquanto essa condição
+  persistir.
 - **FR-013**: Quando houver pelo menos um princípio classificado conforme a
-  FR-010, a verificação de cobertura de `MUST` MUST identificar
+  FR-010 (`Q > 0`), a verificação de cobertura de `MUST` MUST identificar
   nominalmente, na sua saída, qual(is) princípio(s) da constituição do
   projeto-alvo carecem de uma regra `MUST` legível — hoje a saída informa
   apenas a contagem, sem nomear os princípios afetados. A forma exata de
   onde essa identificação nominal aparece na saída (por exemplo: linhas
-  adicionais de um relatório já existente, ou um canal de saída separado)
-  é uma decisão técnica **deferida para `/plan`**, não fixada por esta
-  especificação — existe um contrato de saída já validado (ver FR-014) que
-  a decisão técnica precisa respeitar.
+  adicionais de um relatório já existente, ou um canal de saída separado) é
+  uma decisão técnica deferida para o plano técnico, não fixada por esta
+  especificação; seja qual for a forma escolhida, ela MUST NOT alterar a
+  saída no caso `Q == 0` (FR-014).
 - **FR-014**: Quando NÃO houver nenhum princípio classificado conforme a
-  FR-010 (contagem zero), a saída da verificação de cobertura de `MUST`
-  MUST permanecer byte-idêntica ao formato hoje validado para esse caso,
-  sem nenhum conteúdo adicional — a identificação nominal da FR-013 só se
-  aplica quando há pelo menos um princípio a nomear.
+  FR-010 (`Q == 0`), a saída da verificação de cobertura de `MUST` MUST
+  permanecer byte-idêntica ao formato hoje validado para esse caso, sem
+  nenhum conteúdo adicional — a identificação nominal da FR-013 só se aplica
+  quando há pelo menos um princípio a nomear.
+
+## Apêndice A — Histórico de revisão de escopo (round 1 → round 2, issue #188)
+
+Apêndice **não normativo**: registro de proveniência. Nada aqui cria,
+revoga ou qualifica obrigação — a regra vigente é integralmente a que está
+nas seções acima.
+
+O round 1 desta feature (issue #173) foi escrito sob a premissa de que só
+dois insumos mereciam achado: cobertura zero com a palavra `MUST` presente
+(`N > 0` e `M == 0`). Naquele desenho, `N == 0` e `M > 0` eram ambos
+"sem achado", incondicionalmente. O operador reabriu a feature (round 2,
+issue #188) e ampliou deliberadamente o escopo para também cobrir o
+princípio emitido **só pelo rótulo do heading** (`Q > 0`), medido em campo:
+uma constituição com um princípio `(NON-NEGOTIABLE)` e corpo sem nenhuma
+regra `MUST` passava pelo gate sem qualquer sinal, caindo em
+`sem-must-declarado`.
+
+Isto não foi correção de defeito de implementação do round 1: foi revisão
+deliberada de escopo, autorizada pelo operador ao reabrir a feature.
+
+Trechos cuja redação de round 1 deixou de valer como estava, e o que passou
+a valer (já consolidado no corpo deste documento):
+
+| Trecho | Round 1 garantia | Round 2 (vigente) |
+|---|---|---|
+| `FR-005` | Nunca gerar o achado quando `N == 0`, incondicionalmente. | Só quando `N == 0` **e** `Q == 0`; com `Q > 0` o achado é gerado (FR-010). |
+| `FR-006` | Nunca gerar o achado quando `M > 0`, incondicionalmente. | Só quando `M > 0` **e** `Q == 0`; com `Q > 0` o achado é gerado (FR-010). |
+| US1, Acceptance Scenario 3 | Espelhava `FR-005` sem o conjuntivo `Q == 0`. | Qualificado com `Q == 0`; o caso `Q > 0` é coberto pelo novo Scenario 5. |
+| US1, Acceptance Scenario 4 | Espelhava `FR-006` sem o conjuntivo `Q == 0`. | Qualificado com `Q == 0`; o caso `Q > 0` é coberto pelo novo Scenario 5. |
+| `SC-002` | Media as duas cláusulas sem o conjuntivo `Q == 0`, declarando falso-positivo o comportamento que a feature entrega. | As duas cláusulas exigem `Q == 0`; execuções com `Q > 0` ficam fora do universo medido. |
+| Edge Case "cobertura mista de formato" | Fora de escopo, incondicionalmente (3ª sugestão da issue #173, deferida). | Fora de escopo apenas com `Q == 0`; com `Q > 0`, regido pela FR-010. |
+| Edge Case "constituição nunca menciona MUST" | Nenhum achado, incondicionalmente. | Nenhum achado apenas com `Q == 0`; com `Q > 0`, achado gerado (caso-bandeira #188). |
+
+A 3ª sugestão da issue #173 (parser aceitar prosa restrita a bullet)
+permanece **fora de escopo** nos dois rounds: `Q` conta princípio sem
+nenhuma regra legível, não obrigação escrita em prosa dentro de um
+princípio que já tem regra rotulada.
