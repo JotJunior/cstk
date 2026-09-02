@@ -106,13 +106,21 @@ relatório resultante não é mais "tudo certo" silencioso.
    nenhum (projeto sem obrigações declaradas nesse formato), **When** a
    etapa de convergência roda, **Then** nenhum achado desse tipo é gerado —
    a ausência total de MUST não é, por si só, um sinal de lacuna de
-   cobertura (não há o que cobrir).
+   cobertura (não há o que cobrir). **Emenda (Revisão de escopo, incremento
+   pós-round-1; espelha FR-005)**: vale apenas quando não há nenhum
+   princípio emitido só por rótulo de heading. Havendo pelo menos um, o
+   relatório passa a conter o achado `cobertura-parcial` (exit 4) mesmo
+   neste cenário — ver FR-010.
 4. **Given** uma `constitution.md` em que pelo menos uma regra `MUST` já é
    reconhecida pelo gate (mesmo que outras estejam em prosa e não sejam
    reconhecidas), **When** a etapa de convergência roda, **Then** o
    comportamento observável de hoje é preservado — nenhum achado novo desta
    feature é introduzido só por essa cobertura parcial (limitação conhecida,
-   documentada como fora de escopo).
+   documentada como fora de escopo). **Emenda (Revisão de escopo,
+   incremento pós-round-1; espelha FR-006)**: vale apenas quando não há
+   nenhum princípio emitido só por rótulo de heading. Havendo pelo menos
+   um, o achado `cobertura-parcial` (exit 4) é gerado mesmo com outras
+   regras `MUST` já reconhecidas — ver FR-010.
 
 ---
 
@@ -169,7 +177,12 @@ de rodar o gate de convergência em si.
 - Projeto-alvo cuja constituição nunca menciona a palavra MUST (usa outro
   vocabulário de obrigatoriedade, ou não tem seção de princípios
   obrigatórios): não deve gerar o achado desta feature — não há intenção de
-  MUST declarada para o gate falhar em cobrir.
+  MUST declarada para o gate falhar em cobrir. **Emenda (Revisão de escopo,
+  incremento pós-round-1; mesmo tratamento do Edge Case gêmeo acima,
+  espelha FR-005)**: vale apenas quando não há nenhum princípio emitido só
+  por rótulo de heading. Havendo pelo menos um, a FR-010 prevalece e o
+  achado `cobertura-parcial` (exit 4) é gerado mesmo sem nenhuma ocorrência
+  da palavra MUST no arquivo.
 
 ## Requirements
 
@@ -197,7 +210,14 @@ de rodar o gate de convergência em si.
 - **FR-005**: O sistema MUST NOT gerar o achado da FR-001 quando a
   constituição do projeto-alvo não contiver a palavra MUST em lugar nenhum
   (nenhuma obrigação declarada nesse vocabulário) — ausência total de MUST
-  não é tratada como lacuna de cobertura.
+  não é tratada como lacuna de cobertura. **Emenda (Revisão de escopo,
+  incremento pós-round-1)**: esta garantia só vale quando não há nenhum
+  princípio emitido só por rótulo de heading na constituição. Quando houver
+  pelo menos um, a FR-010 prevalece e o achado `cobertura-parcial` (exit 4)
+  é gerado mesmo com ausência total de MUST — este é precisamente o
+  caso-bandeira da issue #188 (medido: `N = 0`, `M = 0`, um princípio
+  `(NON-NEGOTIABLE)` sem regra rotulada → `cobertura de MUST:
+  cobertura-parcial`, `exit=4`).
 - **FR-006**: O sistema MUST NOT gerar o achado da FR-001 quando pelo menos
   uma linha de regra MUST já for reconhecida na constituição do
   projeto-alvo — o comportamento de hoje para cobertura parcial é preservado
@@ -217,11 +237,27 @@ de rodar o gate de convergência em si.
   sobre orientação consumida em gerações/edições futuras da constituição,
   nunca uma migração automática de arquivos já ratificados.
 
-**Revisão de escopo (issue #188, incremento pós-round-1)**: as FRs abaixo
-revogam/emendam deliberadamente a FR-006 desta mesma especificação e o Edge
-Case "Constituição contém MUST misturando formato reconhecido e prosa
-corrida no mesmo arquivo... fora de escopo desta feature (equivale à 3ª
-sugestão da issue #173, deferida)". Medição adicional feita neste
+**Revisão de escopo (issue #188, incremento pós-round-1)**: os trechos
+abaixo — todos escritos no round anterior sob a premissa de que cobertura
+zero (`N == 0`) ou pelo menos uma regra já reconhecida (`M > 0`) nunca
+geravam achado — são deliberadamente revogados/emendados por esta mesma
+especificação: **FR-005**; **FR-006**; os **Acceptance Scenarios 3 e 4** da
+User Story 1; **SC-002**; e os dois Edge Cases "Constituição contém MUST
+misturando formato reconhecido e prosa corrida no mesmo arquivo... fora de
+escopo desta feature (equivale à 3ª sugestão da issue #173, deferida)" e
+"Projeto-alvo cuja constituição nunca menciona a palavra MUST... não deve
+gerar o achado desta feature". Cada um deles passa a valer apenas quando
+não há nenhum princípio emitido só por rótulo de heading (adiante chamado
+`Q == 0`, mesma contagem citada por `contracts/must-coverage-finding.md`);
+quando `Q > 0`, a FR-010 prevalece e o achado `cobertura-parcial` (exit 4)
+é gerado independentemente do que esses trechos afirmavam antes desta
+revisão — cada trecho permanece com sua redação original preservada abaixo
+(registro histórico do que o round 1 garantia), seguida de uma emenda local
+que delimita o novo caso em que deixa de valer; a FR-006 e o Edge Case
+"Constituição contém MUST misturando formato reconhecido e prosa corrida..."
+são as únicas exceções de forma — a supersessão de ambos (herdada da
+revisão anterior) já está registrada na frase de abertura da FR-010 abaixo,
+não em uma emenda local a eles. Medição adicional feita neste
 incremento mostrou que a guarda original também deixava passar, sem achado,
 uma constituição com um único princípio anunciado só pelo rótulo do heading
 (`(NON-NEGOTIABLE)`) e corpo sem nenhuma regra MUST — caso que caía no
@@ -236,7 +272,8 @@ autorizada pelo operador ao reabrir esta feature.
   `sem-must-declarado` — mesmo quando outras regras `MUST` da mesma
   constituição já tiverem sido reconhecidas. Este requisito substitui, para
   este cenário específico, a preservação de comportamento afirmada pela
-  FR-006 e pelo Edge Case citado acima: cobertura mista (ou cobertura
+  FR-006, pelo Edge Case citado acima e pelo Acceptance Scenario 4 da User
+  Story 1 (ver "Revisão de escopo" acima): cobertura mista (ou cobertura
   só-de-heading) deixa de ser tratada como "sem achado". O token literal
   deste veredito (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
   `cobertura-parcial` (ver Clarifications, sessão 2026-09-01) — **exceto no
@@ -327,9 +364,14 @@ autorizada pelo operador ao reabrir esta feature.
   e zero linhas de regra reconhecidas resultam em pelo menos um item
   acionável no relatório — nunca em "convergido, sem pendências".
 - **SC-002**: 0% das execuções da etapa de convergência contra uma
-  constituição sem nenhuma ocorrência da palavra MUST, ou com pelo menos uma
-  regra MUST já reconhecida, geram o novo achado desta feature (nenhum
-  falso-positivo introduzido nesses dois casos).
+  constituição sem nenhuma ocorrência da palavra MUST **e `Q == 0`**, ou com
+  pelo menos uma regra MUST já reconhecida **e `Q == 0`**, geram o novo
+  achado desta feature (nenhum falso-positivo introduzido nesses dois
+  casos). **Emenda (Revisão de escopo, incremento pós-round-1)**: quando
+  `Q > 0` (pelo menos um princípio emitido só por rótulo de heading — ver
+  FR-010) em qualquer um dos dois casos acima, o achado `cobertura-parcial`
+  (exit 4) É gerado, por desenho — não conta como o falso-positivo que este
+  critério mede.
 - **SC-003**: Uma constituição gerada do zero pela skill de constituição,
   sem nenhuma edição manual adicional, ao ser auditada pela verificação de
   cobertura de MUST, apresenta pelo menos uma regra reconhecida (nunca
@@ -349,7 +391,8 @@ autorizada pelo operador ao reabrir esta feature.
   `sem-must-declarado` — mesmo quando outras regras `MUST` da mesma
   constituição já tiverem sido reconhecidas. Este requisito substitui, para
   este cenário específico, a preservação de comportamento afirmada pela
-  FR-006 e pelo Edge Case citado acima: cobertura mista (ou cobertura
+  FR-006, pelo Edge Case citado acima e pelo Acceptance Scenario 4 da User
+  Story 1 (ver "Revisão de escopo" acima): cobertura mista (ou cobertura
   só-de-heading) deixa de ser tratada como "sem achado". O token literal
   deste veredito (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
   `cobertura-parcial` (ver Clarifications, sessão 2026-09-01) — **exceto no
