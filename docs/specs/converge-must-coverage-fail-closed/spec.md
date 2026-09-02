@@ -232,16 +232,30 @@ autorizada pelo operador ao reabrir esta feature.
 - **FR-010**: Quando a verificação de cobertura de `MUST` identificar pelo
   menos um princípio emitido sem nenhuma regra `MUST` legível (hoje
   contabilizado como "emitido só por rótulo de heading"), o sistema MUST
-  classificar esse resultado com um veredito distinto de `ok`, de
-  `zero-reconhecida` e de `sem-must-declarado` — mesmo quando outras regras
-  `MUST` da mesma constituição já tiverem sido reconhecidas, e mesmo quando
-  nenhuma outra regra `MUST` tiver sido reconhecida em lugar nenhum. Este
-  requisito substitui, para este cenário específico, a preservação de
-  comportamento afirmada pela FR-006 e pelo Edge Case citado acima:
-  cobertura mista (ou cobertura só-de-heading) deixa de ser tratada como
-  "sem achado". O token literal deste veredito (exposto na linha
-  `cobertura de MUST: <veredito>`) MUST ser `cobertura-parcial` (ver
-  Clarifications, sessão 2026-09-01).
+  classificar esse resultado com um veredito distinto de `ok` e de
+  `sem-must-declarado` — mesmo quando outras regras `MUST` da mesma
+  constituição já tiverem sido reconhecidas. Este requisito substitui, para
+  este cenário específico, a preservação de comportamento afirmada pela
+  FR-006 e pelo Edge Case citado acima: cobertura mista (ou cobertura
+  só-de-heading) deixa de ser tratada como "sem achado". O token literal
+  deste veredito (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
+  `cobertura-parcial` (ver Clarifications, sessão 2026-09-01) — **exceto no
+  sub-caso coberto pelo carve-out de precedência abaixo**, em que o veredito
+  permanece `zero-reconhecida`.
+
+  **Carve-out de precedência (deliberado, ratificado — `research.md`
+  Decision 11)**: quando, além da condição acima, também não houver nenhuma
+  outra regra `MUST` reconhecida em lugar nenhum da constituição (`N > 0 &&
+  M == 0`), a guarda de `zero-reconhecida` tem precedência sobre esta FR-010,
+  e o veredito emitido MUST permanecer `zero-reconhecida` (exit 3), não
+  `cobertura-parcial` — resolvendo o empate entre os dois sinais a favor do
+  mais forte. Este carve-out não reduz a acionabilidade: o achado estruturado
+  emitido pela FR-012 é o mesmo `Gap` nos dois vereditos
+  (`contracts/must-coverage-finding.md` §3.2), e reflete o comportamento já
+  validado por `tests/test_extract-must.sh ::
+  scenario_coverage_r02_precedencia_zero_reconhecida_vence` — este teste e a
+  ordem das guardas em `extract-must.sh` MUST NOT ser alterados por esta
+  feature.
 - **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
   saída (exit code) que um consumidor automatizado da verificação de
   cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
@@ -313,16 +327,30 @@ autorizada pelo operador ao reabrir esta feature.
 - **FR-010**: Quando a verificação de cobertura de `MUST` identificar pelo
   menos um princípio emitido sem nenhuma regra `MUST` legível (hoje
   contabilizado como "emitido só por rótulo de heading"), o sistema MUST
-  classificar esse resultado com um veredito distinto de `ok`, de
-  `zero-reconhecida` e de `sem-must-declarado` — mesmo quando outras regras
-  `MUST` da mesma constituição já tiverem sido reconhecidas, e mesmo quando
-  nenhuma outra regra `MUST` tiver sido reconhecida em lugar nenhum. Este
-  requisito substitui, para este cenário específico, a preservação de
-  comportamento afirmada pela FR-006 e pelo Edge Case citado acima:
-  cobertura mista (ou cobertura só-de-heading) deixa de ser tratada como
-  "sem achado". O token literal deste veredito (exposto na linha
-  `cobertura de MUST: <veredito>`) MUST ser `cobertura-parcial` (ver
-  Clarifications, sessão 2026-09-01).
+  classificar esse resultado com um veredito distinto de `ok` e de
+  `sem-must-declarado` — mesmo quando outras regras `MUST` da mesma
+  constituição já tiverem sido reconhecidas. Este requisito substitui, para
+  este cenário específico, a preservação de comportamento afirmada pela
+  FR-006 e pelo Edge Case citado acima: cobertura mista (ou cobertura
+  só-de-heading) deixa de ser tratada como "sem achado". O token literal
+  deste veredito (exposto na linha `cobertura de MUST: <veredito>`) MUST ser
+  `cobertura-parcial` (ver Clarifications, sessão 2026-09-01) — **exceto no
+  sub-caso coberto pelo carve-out de precedência abaixo**, em que o veredito
+  permanece `zero-reconhecida`.
+
+  **Carve-out de precedência (deliberado, ratificado — `research.md`
+  Decision 11)**: quando, além da condição acima, também não houver nenhuma
+  outra regra `MUST` reconhecida em lugar nenhum da constituição (`N > 0 &&
+  M == 0`), a guarda de `zero-reconhecida` tem precedência sobre esta FR-010,
+  e o veredito emitido MUST permanecer `zero-reconhecida` (exit 3), não
+  `cobertura-parcial` — resolvendo o empate entre os dois sinais a favor do
+  mais forte. Este carve-out não reduz a acionabilidade: o achado estruturado
+  emitido pela FR-012 é o mesmo `Gap` nos dois vereditos
+  (`contracts/must-coverage-finding.md` §3.2), e reflete o comportamento já
+  validado por `tests/test_extract-must.sh ::
+  scenario_coverage_r02_precedencia_zero_reconhecida_vence` — este teste e a
+  ordem das guardas em `extract-must.sh` MUST NOT ser alterados por esta
+  feature.
 - **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
   saída (exit code) que um consumidor automatizado da verificação de
   cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados

@@ -556,6 +556,6 @@ emendada para registrar o carve-out de precedência — não um defeito de
 implementação. Resolver exige **mudar** texto/lógica já presente (não é
 aditivo), por isso `contradicts`.
 
-- [ ] 11.1.1 Decidir e aplicar a reconciliação entre `spec.md` FR-010 e `plugins/cstk/skills/converge/scripts/extract-must.sh`: (a) emendar a FR-010 (nas DUAS ocorrências — §Requirements e §Delta Requirements) para registrar explicitamente que a guarda `zero-reconhecida` tem precedência quando `N > 0 && M == 0`, espelhando `research.md` Decision 11 e o carve-out nominal já usado em `converge/SKILL.md` §5.2; ou (b) alterar a ordem das guardas, o que exigiria revisar `research.md` Decision 11, o contrato §3.2 e o teste `scenario_coverage_r02_precedencia_zero_reconhecida_vence`. Opção (a) é a recomendada — preserva comportamento em produção e o teste ratificado.
+- [x] 11.1.1 Decidir e aplicar a reconciliação entre `spec.md` FR-010 e `plugins/cstk/skills/converge/scripts/extract-must.sh`: (a) emendar a FR-010 (nas DUAS ocorrências — §Requirements e §Delta Requirements) para registrar explicitamente que a guarda `zero-reconhecida` tem precedência quando `N > 0 && M == 0`, espelhando `research.md` Decision 11 e o carve-out nominal já usado em `converge/SKILL.md` §5.2; ou (b) alterar a ordem das guardas, o que exigiria revisar `research.md` Decision 11, o contrato §3.2 e o teste `scenario_coverage_r02_precedencia_zero_reconhecida_vence`. Opção (a) é a recomendada — preserva comportamento em produção e o teste ratificado.
 
 <!-- converge-key: 030ca98b22df -->
