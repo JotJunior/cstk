@@ -10,7 +10,7 @@ Origem: issue #173 do repositório `cstk` (OPEN). Após a issue #171, o script
 `extract-must.sh` da skill `converge` só reconhece uma linha de regra `MUST`
 quando ela aparece como **rótulo** no início da linha (`**MUST:**`, `- MUST:`,
 `* MUST NOT:` — ver `plugins/cstk/skills/converge/scripts/extract-must.sh`,
-comentário linhas 82-83: exigir os dois-pontos é deliberado, para manter
+comentário linhas 97-98: exigir os dois-pontos é deliberado, para manter
 "MUST" em prosa corrida fora do sinal de reconhecimento). A skill
 `constitution` deste toolkit, hoje, produz regras em **prosa RFC 2119**
 ("MUST" como verbo no meio da frase), formato que o parser não reconhece.
@@ -21,8 +21,8 @@ independente da palavra MUST) em 7, 7, 5 e 30 respectivamente. Nesse estado,
 a skill `converge` (`plugins/cstk/skills/converge/SKILL.md`, ETAPA 3, linhas
 ~183-191) hoje **só instrui o agente via prosa** a "tratar a verificação de
 MUST como indisponível" — não existe nenhum achado estruturado/determinístico
-gravado no `ConvergenceReport`, e a contagem `N` (actionable) da ETAPA 7 não é
-afetada. Resultado observável: o relatório pode reportar `outcome=clean`
+gravado no `ConvergenceReport`, e a contagem de achados acionáveis da ETAPA 7
+não é afetada. Resultado observável: o relatório pode reportar `outcome=clean`
 mesmo quando a constituição do projeto declara obrigações `MUST` que o gate
 nunca verificou — ausência de cobertura aparecendo como sucesso.
 
@@ -41,14 +41,12 @@ foi solicitada pelo operador; se a análise técnica em `/plan` indicar que ela
 bloqueio humano, não ser decidido unilateralmente.
 
 Esta especificação foi reaberta uma vez (round 2, issue #188) para ampliar
-deliberadamente o escopo do round 1. O texto abaixo já está consolidado: na
-seção `## Requirements`, cada requisito enuncia a regra vigente por inteiro,
-sem depender de emendas posteriores para ser lido corretamente. A seção
-`## Delta Requirements` re-enuncia esses mesmos requisitos por exigência da
-ferramenta que aplica o delta ao corpus — é repetição deliberada, não uma
-segunda fonte normativa; em caso de divergência, prevalece
-`## Requirements`. O registro do que o round 1 garantia, e por que deixou de
-valer, está no Apêndice A ao fim deste documento (histórico, não normativo).
+deliberadamente o escopo do round 1. A seção `## Delta Requirements` existe
+por exigência da ferramenta `delta-merge.sh`, que aplica deltas ao corpus de
+living-specs; não é uma segunda fonte normativa — em caso de divergência,
+prevalece `## Requirements`. O registro do que o round 1 garantia, e por que
+deixou de valer, está no Apêndice A ao fim deste documento (histórico, não
+normativo).
 
 > Decisões de infraestrutura: N/A (feature sem scheduling, sem dados
 > persistidos com TTL/criptografia, sem refresh de token externo, sem lock
@@ -97,13 +95,6 @@ especificação. Elas seguem a legenda do modo `--coverage` de
 - **Q** — princípios emitidos **só pelo rótulo do heading** (por exemplo
   `(NON-NEGOTIABLE)`), sem nenhuma regra `MUST` legível no corpo do
   princípio.
-
-Toda condição de **cobertura** enunciada nesta especificação é expressa em
-termos dessas três contagens, e nenhuma delas depende de contagem definida em
-outro documento. Requisitos que não versam sobre cobertura (FR-007, FR-008 e
-FR-009, que tratam da orientação da skill de constituição) e o Edge Case da
-constituição ausente não usam `N`, `M` nem `Q` — a condição deles não é uma
-contagem.
 
 ## User Scenarios & Testing
 
@@ -461,10 +452,10 @@ Apêndice **não normativo**: registro de proveniência. Nada aqui cria,
 revoga ou qualifica obrigação — a regra vigente é integralmente a que está
 nas seções acima.
 
-O round 1 desta feature (issue #173) foi escrito sob a premissa de que só
-dois insumos mereciam achado: cobertura zero com a palavra `MUST` presente
-(`N > 0` e `M == 0`). Naquele desenho, `N == 0` e `M > 0` eram ambos
-"sem achado", incondicionalmente. O operador reabriu a feature (round 2,
+O round 1 desta feature (issue #173) definia uma única classe de achado:
+cobertura zero com a palavra `MUST` presente (`N > 0` e `M == 0`). Naquele
+desenho, `N == 0` e `M > 0` eram ambos "sem achado", incondicionalmente.
+O operador reabriu a feature (round 2,
 issue #188) e ampliou deliberadamente o escopo para também cobrir o
 princípio emitido **só pelo rótulo do heading** (`Q > 0`), medido em campo:
 uma constituição com um princípio `(NON-NEGOTIABLE)` e corpo sem nenhuma

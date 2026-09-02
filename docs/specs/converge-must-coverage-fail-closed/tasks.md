@@ -864,3 +864,118 @@ que redefinia em negrito IDs já definidos em `### Functional Requirements`.
       Gates após as correções: `validate-sdd.sh` `errors=0 warnings=0`;
       `delta-gate.sh` `errors=0`; `delta-merge.sh --dry-run`
       `delta=applied added=5`; `validate-docs-rendered` `ERRO 0 AVISO 0`.
+
+## FASE 15 - Remoção da Prosa Auto-Referente do `spec.md` (dec-064)
+
+> **Origem: decisão humana `dec-064`** (resposta ao bloqueio humano aberto
+> pelo 5º ciclo de convergência, onda-015) — **não** é uma fase gerada pela
+> skill `converge`, e por isso não carrega marcador `converge-key`. A
+> revisão editorial integral da FASE 14 (`dec-056`) — a opção escolhida
+> para estancar a classe recorrente de defeitos de redação — REPRODUZIU a
+> classe: introduziu 3 novos defeitos de prosa auto-referente. Proveniência
+> provada: `git show d604814 | grep -c "Notação de contagens"` = 0 e
+> `grep -c "re-enuncia"` = 0; ambos presentes em `ce08a75`. Desta vez o
+> operador escolheu atacar a **causa** (prosa que descreve o próprio
+> documento, sem obrigação normativa, e que exige re-verificação a cada
+> edição — o mecanismo que falhou nos 5 ciclos) em vez de emendar mais um
+> sintoma.
+>
+> Escopo **estritamente editorial**, restrito a `spec.md`/`tasks.md`. MUST
+> NOT alterar `plugins/cstk/skills/converge/scripts/extract-must.sh`,
+> `tests/`, `research.md`, `contracts/` ou
+> `plugins/cstk/skills/converge/SKILL.md`. MUST NOT alterar o que a
+> especificação exige — conteúdo normativo re-verificado contra as 5
+> fixturas (task 15.1.6).
+
+### 15.1 Remover prosa auto-referente e resolver colisão de notação `[A]`
+
+Ref: `dec-064` · origem: decisão humana · classe: dívida de redação
+
+- [x] 15.1.1 Deletar as frases auto-referentes do parágrafo de reabertura
+      (round 2/issue #188, ~linhas 43-51): "O texto abaixo já está
+      consolidado: na seção `## Requirements`, cada requisito enuncia a
+      regra vigente por inteiro..." e "A seção `## Delta Requirements`
+      re-enuncia esses mesmos requisitos..." — falso por contagem:
+      `## Requirements` tem 14 FRs (`FR-001`..`FR-014`), `## Delta
+      Requirements` tem 5 (`FR-010`..`FR-014`), medido por
+      `grep -c "^- \*\*FR-"` em cada seção. Reescrita preserva o fato
+      rastreável (round 2, issue #188) e a regra de precedência normativa
+      (`## Requirements` prevalece em divergência com `## Delta
+      Requirements`), sem a alegação de identidade entre as duas seções.
+- [x] 15.1.2 Deletar a aritmética histórica do Apêndice A (~linhas
+      464-465, texto pré-onda): "o round 1 (...) foi escrito sob a
+      premissa de que só **dois** insumos mereciam achado: cobertura zero
+      com a palavra `MUST` presente (`N > 0` e `M == 0`)" — a frase
+      afirma "dois insumos" mas enumera UMA única condição (a conjunção
+      `N > 0` **e** `M == 0`); o round 1 definia uma única classe de
+      achado, não dois insumos distintos. Reescrito para "definia uma
+      única classe de achado: cobertura zero com a palavra `MUST`
+      presente (...)", preservando a tabela de revogação (FR-005/FR-006/
+      Acceptance Scenarios/SC-002/Edge Cases) intacta — ela é verificável
+      mecanicamente, fora da classe removida.
+- [x] 15.1.3 Resolver a colisão do símbolo `N` entre o parágrafo de
+      Contexto (~linha 24, pré-onda: "a contagem `N` (actionable) da
+      ETAPA 7 não é afetada") e a legenda `## Notação de contagens (N, M,
+      Q)` (~linha 93, pré-onda: `N` = ocorrências da palavra `MUST` no
+      arquivo) — são duas métricas diferentes (a variável `N` de
+      `converge/SKILL.md` ETAPA 7, linha ~444, conta achados
+      `missing+partial+contradicts`; o `N` desta especificação conta
+      ocorrências da palavra MUST). Desambiguado no sítio de origem (a
+      menção da ETAPA 7 reescrita para "a contagem de achados acionáveis
+      da ETAPA 7", sem o símbolo `N`), preferindo mexer no local
+      colidente a alterar a legenda — conforme instrução do operador. A
+      legenda `N`/`M`/`Q` permanece byte-idêntica.
+- [x] 15.1.4 Achado adicional, mesma classe, fora dos 3 nomeados pelo
+      operador: o parágrafo pós-legenda "Toda condição de **cobertura**
+      enunciada nesta especificação é expressa em termos dessas três
+      contagens, e nenhuma delas depende de contagem definida em outro
+      documento. Requisitos que não versam sobre cobertura (...) não
+      usam `N`, `M` nem `Q`..." — meta-descrição do próprio documento
+      (mesma superfície que já havia sido corrigida uma vez na task
+      14.1.6-b e voltou a se acumular), sem obrigação normativa, exigindo
+      reverificação a cada FR novo. Removido por inteiro; os bullets da
+      legenda `N`/`M`/`Q` preservados intactos.
+- [x] 15.1.5 Preservadas intactas, por instrução explícita do operador: a
+      tabela de revogação round 1 → round 2 (Apêndice A) e a legenda
+      `N`/`M`/`Q` (`## Notação de contagens`) — ambas verificáveis
+      mecanicamente (a tabela contra `git diff`, a legenda contra
+      `extract-must.sh --coverage`), fora da classe de prosa
+      auto-referente removida nesta fase.
+- [x] 15.1.6 Re-medidas as 5 fixturas de veredito contra
+      `plugins/cstk/skills/converge/scripts/extract-must.sh` (script MUST
+      NOT alterado nesta fase — apenas prosa de `spec.md` foi tocada):
+      suíte completa `tests/test_extract-must.sh` roda `39/39 ok`,
+      cobrindo os 5 vereditos descritos por `spec.md` — `f1(N=0,M=0,Q=1)`
+      → `cobertura-parcial`/`exit 4`
+      (`scenario_coverage_r02_so_de_heading_exit4`); `f2(N=0,M=0,Q=0)` →
+      `sem-must-declarado`/`exit 0`
+      (`scenario_coverage_veredito_sem_must_declarado_exit0_sem_aviso`);
+      `f3(M=1,Q=1)` → `cobertura-parcial`/`exit 4`
+      (`scenario_coverage_r02_cobertura_mista_exit4`); `f4(M=1,Q=0)` →
+      `ok`/`exit 0` (`scenario_coverage_veredito_ok_exit0`);
+      `f5(N=1,M=0,Q=1)` → `zero-reconhecida`/`exit 3`
+      (`scenario_coverage_r02_precedencia_zero_reconhecida_vence` +
+      `scenario_coverage_veredito_zero_reconhecida_exit3`). A
+      especificação revisada continua descrevendo exatamente esse
+      comportamento.
+- [x] 15.1.7 Submetido o `spec.md` revisado a auditoria de **leitor
+      novo** (subagente sem contexto da edição, munido apenas da legenda
+      `N`/`M`/`Q`, das 5 medições da task 15.1.6 e do critério do
+      operador desta fase como régua) ANTES do commit — mesmo método que
+      achou 11 defeitos na onda-014, 3 deles introduzidos pela própria
+      revisão que os corrigiu. A auditoria não achou nenhuma frase
+      meta-autorreferente remanescente, nenhuma colisão de `N`/`M`/`Q` e
+      nenhuma divergência de fórmula contra as 5 fixturas; achou 1 defeito
+      pré-existente fora do escopo das 4 tasks anteriores: a citação "ver
+      `extract-must.sh`, comentário linhas 82-83" (parágrafo de Contexto)
+      apontava para o trecho errado do script — o comentário deliberado
+      sobre exigir dois-pontos está nas **linhas 97-98**, verificado por
+      `grep -n "Exigir os dois-pontos" extract-must.sh` = `97`. Corrigido
+      nesta task (valor factual re-sourced do próprio script, não
+      removido — é referência verificável, não prosa auto-referente).
+      Gates após a correção: `validate-sdd.sh` `errors=0 warnings=0`;
+      `delta-gate.sh` `errors=0`; `delta-merge.sh --dry-run`
+      `delta=applied added=5`; `validate-docs-rendered` `ERRO 0 AVISO 0`;
+      `validate-tasks-template.sh` `critical=0 warning=0`;
+      `tests/test_extract-must.sh` `39/39 ok` (script intocado — apenas
+      a citação em `spec.md` mudou).
