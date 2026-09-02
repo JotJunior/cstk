@@ -559,3 +559,72 @@ aditivo), por isso `contradicts`.
 - [x] 11.1.1 Decidir e aplicar a reconciliação entre `spec.md` FR-010 e `plugins/cstk/skills/converge/scripts/extract-must.sh`: (a) emendar a FR-010 (nas DUAS ocorrências — §Requirements e §Delta Requirements) para registrar explicitamente que a guarda `zero-reconhecida` tem precedência quando `N > 0 && M == 0`, espelhando `research.md` Decision 11 e o carve-out nominal já usado em `converge/SKILL.md` §5.2; ou (b) alterar a ordem das guardas, o que exigiria revisar `research.md` Decision 11, o contrato §3.2 e o teste `scenario_coverage_r02_precedencia_zero_reconhecida_vence`. Opção (a) é a recomendada — preserva comportamento em produção e o teste ratificado.
 
 <!-- converge-key: 030ca98b22df -->
+
+## FASE 12 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 12.1 Carve-out da FR-010 descreve em prosa uma condição mais ampla que a guarda real `[A]`
+
+Ref: FR-010 · tipo: `contradicts` · severidade: `MEDIUM`
+
+Achado introduzido pela própria emenda da task 11.1.1 (commit `a06d247`, que
+tocou apenas `spec.md` e `tasks.md`) — a redação nova, e não a implementação.
+
+O bloco **"Carve-out de precedência"** acrescentado à FR-010 em
+`docs/specs/converge-must-coverage-fail-closed/spec.md` (nas DUAS
+ocorrências — §Requirements ~linha 246 e §Delta Requirements ~linha 341) diz,
+verbatim: *"quando, além da condição acima, também não houver nenhuma outra
+regra `MUST` reconhecida em lugar nenhum da constituição (`N > 0 && M == 0`),
+a guarda de `zero-reconhecida` tem precedência sobre esta FR-010, e o veredito
+emitido MUST permanecer `zero-reconhecida` (exit 3), não `cobertura-parcial`"*.
+
+A cláusula em **prosa** ("não houver nenhuma outra regra `MUST` reconhecida em
+lugar nenhum da constituição") formaliza somente `M == 0`. A fórmula entre
+parênteses acrescenta um segundo conjuntivo, `N > 0` (ocorrências da palavra
+`MUST` no arquivo — notação definida uma única vez, ~110 linhas antes, na
+§Contexto, linha 19), que **nenhuma parte da prosa renderiza**. Prosa e fórmula
+não são equivalentes, e é a prosa que é falsificada pela medição:
+
+Medido nesta onda com `plugins/cstk/skills/converge/scripts/extract-must.sh
+--coverage` sobre uma constituição de dois princípios `(NON-NEGOTIABLE)` sem
+nenhuma linha de regra e sem nenhuma ocorrência da palavra `MUST`
+(`N = 0`, `M = 0`, `Q = 2`):
+
+```
+linhas de regra MUST reconhecidas pelo parser: 0
+principios emitidos so por rotulo de heading (sem regra MUST lida): 2
+cobertura de MUST: cobertura-parcial
+exit=4
+```
+
+Esse insumo satisfaz a cláusula em prosa do carve-out **na íntegra** (há
+princípio só-de-heading e não há regra `MUST` reconhecida em lugar nenhum),
+logo, lido como está escrito, o texto exige `zero-reconhecida` + `exit 3` — mas
+o comportamento medido é `cobertura-parcial` + `exit 4`. Pior: esse é
+exatamente o caso-bandeira que a FR-010 e a issue #188 existem para cobrir
+(`research.md` Decision 11, bullet *"Antes da guarda 4"*: princípios marcados
+`(NON-NEGOTIABLE)` sem nenhuma linha de regra legível **e nenhuma ocorrência
+solta da palavra `MUST`**), e que o comentário-legenda de
+`plugins/cstk/skills/converge/scripts/extract-must.sh` (~linhas 122-133) já
+descreve corretamente com as três variáveis `N`/`M`/`Q` nomeadas.
+
+Implementação, `research.md` Decision 11, `contracts/must-coverage-finding.md`
+§3.2 e `tests/test_extract-must.sh ::
+scenario_coverage_r02_precedencia_zero_reconhecida_vence` (que usa `N = 1`,
+prosa `o time MUST revisar cada release`) estão todos **corretos e
+consistentes entre si** — o artefato fora de sincronia é apenas a redação do
+carve-out. Corrigir exige **mudar** texto já presente (não é aditivo), por
+isso `contradicts`; o comportamento em produção e o teste ratificado
+permanecem intocados.
+
+- [ ] 12.1.1 Corrigir a redação do bloco "Carve-out de precedência" da FR-010 em `docs/specs/converge-must-coverage-fail-closed/spec.md`, nas DUAS ocorrências (§Requirements e §Delta Requirements), para que a cláusula em prosa renderize os DOIS conjuntivos da guarda real: (a) nenhuma regra `MUST` reconhecida pelo parser em lugar nenhum (`M == 0`) **e** (b) a palavra `MUST` ocorrendo em algum ponto do arquivo (`N > 0`); e explicitar o ramo complementar — com `M == 0` e `N == 0`, o veredito é `cobertura-parcial` (exit 4), conforme a FR-010 exige. Definir `N`/`M` no ponto de uso (ou remeter à legenda de `extract-must.sh`), sem depender da menção isolada da §Contexto. MUST NOT alterar `extract-must.sh`, `research.md` Decision 11, `contracts/must-coverage-finding.md` §3.2 ou `tests/test_extract-must.sh` — os quatro já estão consistentes.
+
+<!-- converge-key: 9ebd51fb0465 -->
