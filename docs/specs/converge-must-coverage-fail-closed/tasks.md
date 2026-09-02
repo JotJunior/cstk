@@ -628,3 +628,117 @@ permanecem intocados.
 - [x] 12.1.1 Corrigir a redação do bloco "Carve-out de precedência" da FR-010 em `docs/specs/converge-must-coverage-fail-closed/spec.md`, nas DUAS ocorrências (§Requirements e §Delta Requirements), para que a cláusula em prosa renderize os DOIS conjuntivos da guarda real: (a) nenhuma regra `MUST` reconhecida pelo parser em lugar nenhum (`M == 0`) **e** (b) a palavra `MUST` ocorrendo em algum ponto do arquivo (`N > 0`); e explicitar o ramo complementar — com `M == 0` e `N == 0`, o veredito é `cobertura-parcial` (exit 4), conforme a FR-010 exige. Definir `N`/`M` no ponto de uso (ou remeter à legenda de `extract-must.sh`), sem depender da menção isolada da §Contexto. MUST NOT alterar `extract-must.sh`, `research.md` Decision 11, `contracts/must-coverage-finding.md` §3.2 ou `tests/test_extract-must.sh` — os quatro já estão consistentes.
 
 <!-- converge-key: 9ebd51fb0465 -->
+
+## FASE 13 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 13.1 A revisão de escopo do r02 revoga FR-006 e um Edge Case, mas deixa FR-005 (e a verificação de US1/SC-002) contradizendo o comportamento implementado `[C]`
+
+Ref: FR-005 · tipo: `contradicts` · severidade: `HIGH`
+
+Achado inédito, de classe distinta das FASES 11 e 12 (aquelas eram a redação
+do carve-out da FR-010; esta é a **lista de revogação incompleta** do próprio
+incremento r02). A reescrita do carve-out feita na task 12.1.1 (commit
+`a053ac6`) foi auditada nesta onda e está **correta e completa** — prosa e
+fórmula rendem os dois conjuntivos, o ramo complementar está explícito, e as
+duas ocorrências são byte-idênticas entre si (verificado por `diff` das
+linhas 232-283 vs 345-396 de `docs/specs/converge-must-coverage-fail-closed/spec.md`:
+saída vazia). O problema está em outro lugar do mesmo arquivo.
+
+O bloco **"Revisão de escopo (issue #188, incremento pós-round-1)"**
+(`docs/specs/converge-must-coverage-fail-closed/spec.md`, ~linha 220) declara
+nominalmente o que o incremento revoga:
+
+> *"as FRs abaixo revogam/emendam deliberadamente a **FR-006** desta mesma
+> especificação **e o Edge Case** 'Constituição contém MUST misturando formato
+> reconhecido e prosa corrida no mesmo arquivo... fora de escopo desta
+> feature'"*
+
+Essa lista tem exatamente dois itens. Mas o comportamento que o r02
+implementou (guarda 2, `Q > 0` → `cobertura-parcial` + `exit 4`) falsifica
+**cinco** trechos normativos/verificacionais do mesmo `spec.md`, e só dois
+deles estão na lista. Os três restantes seguem em vigor, dizendo o oposto do
+que a implementação faz:
+
+1. **FR-005** (`spec.md` ~linha 197) — `MUST NOT` normativo, **não revogado**:
+   *"O sistema MUST NOT gerar o achado da FR-001 quando a constituição do
+   projeto-alvo não contiver a palavra MUST em lugar nenhum (nenhuma
+   obrigação declarada nesse vocabulário) — ausência total de MUST não é
+   tratada como lacuna de cobertura."*
+   Esse é precisamente o **caso-bandeira da issue #188** (`N = 0`), para o
+   qual a FR-010 e a guarda 2 existem. Medido nesta onda com
+   `plugins/cstk/skills/converge/scripts/extract-must.sh --coverage` sobre uma
+   constituição com um princípio `(NON-NEGOTIABLE)`, sem regra rotulada e sem
+   nenhuma ocorrência da palavra `MUST` (`N = 0`, `M = 0`, `Q = 1`):
+
+   ```
+   ocorrencias da palavra MUST no arquivo (contagem independente): 0
+   linhas de regra MUST reconhecidas pelo parser: 0
+   principios emitidos so por rotulo de heading (sem regra MUST lida): 1
+   cobertura de MUST: cobertura-parcial
+   principio sem regra MUST legivel: I. Primeiro (NON-NEGOTIABLE)
+   exit=4
+   ```
+
+   O `Gap` emitido nesse veredito é o **mesmo** achado da FR-001 que a FR-005
+   proíbe: `contracts/must-coverage-finding.md` §3.2 fixa os campos, e
+   `plugins/cstk/skills/converge/SKILL.md` linha 200 é literal — *"`cobertura-parcial`
+   | **MUST** emitir 1 `Gap` sintético com os **mesmos** campos fixos da ETAPA 5
+   §Campos fixos do Gap de cobertura (idênticos aos de `zero-reconhecida`)"*.
+   Logo FR-005 e FR-010/FR-012 mandam coisas opostas sobre o mesmo insumo, e a
+   implementação segue a FR-010.
+
+2. **US1, Acceptance Scenarios 3 e 4** (`spec.md` ~linhas 108-118) — a User
+   Story de prioridade **P1**, cuja verificação é a régua de aceite da
+   feature. O Scenario 3 repete a FR-005 (*"Then nenhum achado desse tipo é
+   gerado"* quando não há a palavra `MUST`); o Scenario 4 repete a FR-006
+   (*"Then o comportamento observável de hoje é preservado — nenhum achado
+   novo desta feature é introduzido só por essa cobertura parcial"*). A
+   revogação nominal alcançou a FR-006, mas **não** o Scenario 4 que a
+   espelha. Medido para o Scenario 4 (`M = 1` regra reconhecida + `Q = 1`
+   princípio só-de-heading, mesmo insumo de
+   `tests/test_extract-must.sh :: scenario_coverage_r02_cobertura_mista_exit4`):
+
+   ```
+   linhas de regra MUST reconhecidas pelo parser: 1
+   principios emitidos so por rotulo de heading (sem regra MUST lida): 1
+   cobertura de MUST: cobertura-parcial
+   exit=4
+   ```
+
+3. **SC-002** (`spec.md` ~linha 329) — o critério de sucesso mensurável:
+   *"0% das execuções da etapa de convergência contra uma constituição sem
+   nenhuma ocorrência da palavra MUST, **ou** com pelo menos uma regra MUST já
+   reconhecida, geram o novo achado desta feature (nenhum falso-positivo
+   introduzido nesses dois casos)."* As **duas** cláusulas são falsificadas
+   pelas duas medições acima sempre que `Q > 0` — que é exatamente o cenário
+   que a FR-010 existe para cobrir. Como está escrito, SC-002 declara
+   falso-positivo o comportamento que a feature foi reaberta para produzir:
+   um `/review-task` que tome SC-002 pela régua reprova a própria entrega.
+
+4. **Edge Case** *"Projeto-alvo cuja constituição nunca menciona a palavra
+   MUST ... não deve gerar o achado desta feature"* (`spec.md` ~linha 170) —
+   terceiro bullet da seção, gêmeo da FR-005 e igualmente fora da lista de
+   revogação (a lista alcançou só o segundo bullet).
+
+Implementação, `research.md` Decision 11, `contracts/must-coverage-finding.md`,
+`plugins/cstk/skills/converge/SKILL.md` e `tests/test_extract-must.sh`
+(cenários `..._r02_cobertura_mista_exit4` e `..._r02_so_de_heading_exit4`)
+estão todos consistentes entre si e com o comportamento medido — o artefato
+fora de sincronia é apenas a **redação do `spec.md`**. Corrigir exige **mudar**
+texto normativo já presente (não é aditivo), por isso `contradicts`; severidade
+`HIGH` por `severity.sh --type contradicts --priority P1 --must-violated false`
+(P1 = User Story 1, cujos Acceptance Scenarios 3 e 4 são dois dos trechos
+falsificados).
+
+- [ ] 13.1.1 Completar a lista de revogação do bloco "Revisão de escopo (issue #188, incremento pós-round-1)" em `docs/specs/converge-must-coverage-fail-closed/spec.md` para alcançar TODOS os trechos que o incremento r02 de fato revoga, hoje limitada a FR-006 + um Edge Case: (a) **FR-005** — emendar/revogar explicitamente, pois seu `MUST NOT` proíbe o achado exatamente no caso-bandeira da issue #188 (`N == 0`, `Q > 0`); (b) **US1 Acceptance Scenarios 3 e 4** — reconciliar com o comportamento `cobertura-parcial`/`exit 4`, espelhando o que já foi feito para FR-005/FR-006; (c) **SC-002** — qualificar as duas cláusulas com o conjuntivo `Q == 0` (o critério só vale quando não há princípio emitido só por rótulo de heading), para que o critério de sucesso deixe de declarar falso-positivo o comportamento que a feature entrega; (d) **Edge Case** "constituição nunca menciona a palavra MUST" — mesmo tratamento do bullet gêmeo já revogado. MUST NOT alterar `plugins/cstk/skills/converge/scripts/extract-must.sh`, a ordem das guardas, `research.md` Decision 11, `contracts/must-coverage-finding.md`, `plugins/cstk/skills/converge/SKILL.md` ou `tests/test_extract-must.sh` — os cinco já estão corretos e consistentes com o comportamento medido. MUST NOT reescrever o bloco "Carve-out de precedência" da FR-010, auditado e aprovado nesta onda.
+
+<!-- converge-key: be2158480dc2 -->
