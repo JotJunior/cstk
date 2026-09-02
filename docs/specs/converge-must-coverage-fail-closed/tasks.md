@@ -508,3 +508,54 @@ flowchart TD
 | [r02] Alargar `_EM_MUST_RE` (3ª sugestão issue #173, reafirmado) | `cobertura-parcial` reporta o que o parser já mede, não alarga o parser | `plan.md` §Fora de escopo — continua fora mesmo com a revisão de escopo do r02 |
 | [r02] CHK035 (checklist, `{humano}`) | Critério de aceite mensurável dedicado à FR-010 (SC novo ou reaproveitado) | Item `{humano}` não-bloqueante; cobertura por cenário já confirmada (Scenarios 10-17 do quickstart); julgamento de suficiência cabe ao dono do produto |
 | [r02] CHK046 (checklist, `{humano}`) | Confirmar registro auditável (Decisão + consentimento) da autorização de revisão deliberada de escopo | Item `{humano}` não-bloqueante; decisão de auditoria cabe ao operador validar |
+
+## FASE 11 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 11.1 FR-010 não é honrada quando a guarda 1 (`zero-reconhecida`) precede a guarda 2 `[A]`
+
+Ref: FR-010 · tipo: `contradicts` · severidade: `MEDIUM`
+
+A FR-010 (`spec.md`, e repetida em §Delta Requirements) exige um veredito
+distinto de `ok`, `zero-reconhecida` e `sem-must-declarado` sempre que houver
+pelo menos um princípio emitido só pelo rótulo do heading — explicitamente
+"mesmo quando outras regras `MUST` da mesma constituição já tiverem sido
+reconhecidas, **e mesmo quando nenhuma outra regra `MUST` tiver sido
+reconhecida em lugar nenhum**".
+
+O comportamento presente de `plugins/cstk/skills/converge/scripts/extract-must.sh`
+honra essa exigência no ramo `N == 0 && Q > 0` (medido: veredito
+`cobertura-parcial`, `exit 4`), mas **não** no sub-caso `N > 0 && M == 0 && Q > 0`,
+onde a guarda 1 vence por precedência e o veredito emitido é `zero-reconhecida`
+com `exit 3` — medido com constituição contendo `### I. Primeiro (NON-NEGOTIABLE)`
++ prosa `o time MUST revisar cada release` (N=1, M=0, Q=1). Esse sub-caso é
+coberto pela cláusula literal "nenhuma outra regra MUST reconhecida em lugar
+nenhum" da FR-010, logo texto e comportamento divergem.
+
+A precedência em si é **deliberada e ratificada** fora da `spec.md`:
+`research.md` Decision 11 a justifica nominalmente ("os dois podem coocorrer
+... a precedência resolve o empate a favor do sinal mais forte"),
+`plan.md` a lista na tabela de riscos, o contrato
+`contracts/must-coverage-finding.md` (§3.2) garante que o `Gap` emitido é o
+**mesmo** nos dois vereditos, e há teste dedicado
+`tests/test_extract-must.sh :: scenario_coverage_r02_precedencia_zero_reconhecida_vence`
+asserindo `exit 3` + `zero-reconhecida`. A acionabilidade downstream (FR-004/
+FR-012) permanece intacta nos dois ramos, e as linhas nominais 7..N (FR-013)
+também são emitidas no ramo `zero-reconhecida` (INV-r02-D, medido).
+
+Portanto o artefato fora de sincronia é a **redação da FR-010**, que nunca foi
+emendada para registrar o carve-out de precedência — não um defeito de
+implementação. Resolver exige **mudar** texto/lógica já presente (não é
+aditivo), por isso `contradicts`.
+
+- [ ] 11.1.1 Decidir e aplicar a reconciliação entre `spec.md` FR-010 e `plugins/cstk/skills/converge/scripts/extract-must.sh`: (a) emendar a FR-010 (nas DUAS ocorrências — §Requirements e §Delta Requirements) para registrar explicitamente que a guarda `zero-reconhecida` tem precedência quando `N > 0 && M == 0`, espelhando `research.md` Decision 11 e o carve-out nominal já usado em `converge/SKILL.md` §5.2; ou (b) alterar a ordem das guardas, o que exigiria revisar `research.md` Decision 11, o contrato §3.2 e o teste `scenario_coverage_r02_precedencia_zero_reconhecida_vence`. Opção (a) é a recomendada — preserva comportamento em produção e o teste ratificado.
+
+<!-- converge-key: 030ca98b22df -->
