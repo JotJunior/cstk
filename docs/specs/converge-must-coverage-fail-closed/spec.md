@@ -244,13 +244,31 @@ autorizada pelo operador ao reabrir esta feature.
   permanece `zero-reconhecida`.
 
   **Carve-out de precedência (deliberado, ratificado — `research.md`
-  Decision 11)**: quando, além da condição acima, também não houver nenhuma
-  outra regra `MUST` reconhecida em lugar nenhum da constituição (`N > 0 &&
-  M == 0`), a guarda de `zero-reconhecida` tem precedência sobre esta FR-010,
-  e o veredito emitido MUST permanecer `zero-reconhecida` (exit 3), não
-  `cobertura-parcial` — resolvendo o empate entre os dois sinais a favor do
-  mais forte. Este carve-out não reduz a acionabilidade: o achado estruturado
-  emitido pela FR-012 é o mesmo `Gap` nos dois vereditos
+  Decision 11)**: sejam `N` a contagem independente de ocorrências da
+  palavra `MUST` no arquivo da constituição e `M` a contagem de linhas de
+  regra `MUST` reconhecidas pelo parser (mesma notação do
+  comentário-legenda do modo `--coverage` em
+  `plugins/cstk/skills/converge/scripts/extract-must.sh`). O carve-out só se
+  aplica quando os DOIS conjuntivos valem ao mesmo tempo — não apenas
+  `M == 0` sozinho: (a) nenhuma regra `MUST` é reconhecida pelo parser em
+  lugar nenhum da constituição (`M == 0`) **e** (b) a palavra `MUST` ocorre
+  em pelo menos um ponto do arquivo, ainda que fora do formato que o parser
+  reconhece (`N > 0`). Quando `N > 0 && M == 0`, a guarda de
+  `zero-reconhecida` tem precedência sobre esta FR-010, e o veredito emitido
+  MUST permanecer `zero-reconhecida` (exit 3), não `cobertura-parcial` —
+  resolvendo o empate entre os dois sinais a favor do mais forte.
+
+  Ramo complementar (carve-out NÃO se aplica): quando `M == 0` **e**
+  `N == 0` — nenhuma regra `MUST` reconhecida e nenhuma ocorrência solta da
+  palavra `MUST` no arquivo — falta o conjuntivo (b), o carve-out não entra
+  em jogo, e prevalece o corpo desta FR-010 acima: se houver pelo menos um
+  princípio emitido só por rótulo de heading, o veredito MUST ser
+  `cobertura-parcial` (exit 4). Este é o caso-bandeira que a issue #188
+  existe para cobrir — constituição sem nenhuma regra `MUST` legível e sem
+  nenhuma ocorrência da palavra `MUST` em lugar nenhum do arquivo.
+
+  Este carve-out não reduz a acionabilidade: o achado estruturado emitido
+  pela FR-012 é o mesmo `Gap` nos dois vereditos
   (`contracts/must-coverage-finding.md` §3.2), e reflete o comportamento já
   validado por `tests/test_extract-must.sh ::
   scenario_coverage_r02_precedencia_zero_reconhecida_vence` — este teste e a
@@ -339,13 +357,31 @@ autorizada pelo operador ao reabrir esta feature.
   permanece `zero-reconhecida`.
 
   **Carve-out de precedência (deliberado, ratificado — `research.md`
-  Decision 11)**: quando, além da condição acima, também não houver nenhuma
-  outra regra `MUST` reconhecida em lugar nenhum da constituição (`N > 0 &&
-  M == 0`), a guarda de `zero-reconhecida` tem precedência sobre esta FR-010,
-  e o veredito emitido MUST permanecer `zero-reconhecida` (exit 3), não
-  `cobertura-parcial` — resolvendo o empate entre os dois sinais a favor do
-  mais forte. Este carve-out não reduz a acionabilidade: o achado estruturado
-  emitido pela FR-012 é o mesmo `Gap` nos dois vereditos
+  Decision 11)**: sejam `N` a contagem independente de ocorrências da
+  palavra `MUST` no arquivo da constituição e `M` a contagem de linhas de
+  regra `MUST` reconhecidas pelo parser (mesma notação do
+  comentário-legenda do modo `--coverage` em
+  `plugins/cstk/skills/converge/scripts/extract-must.sh`). O carve-out só se
+  aplica quando os DOIS conjuntivos valem ao mesmo tempo — não apenas
+  `M == 0` sozinho: (a) nenhuma regra `MUST` é reconhecida pelo parser em
+  lugar nenhum da constituição (`M == 0`) **e** (b) a palavra `MUST` ocorre
+  em pelo menos um ponto do arquivo, ainda que fora do formato que o parser
+  reconhece (`N > 0`). Quando `N > 0 && M == 0`, a guarda de
+  `zero-reconhecida` tem precedência sobre esta FR-010, e o veredito emitido
+  MUST permanecer `zero-reconhecida` (exit 3), não `cobertura-parcial` —
+  resolvendo o empate entre os dois sinais a favor do mais forte.
+
+  Ramo complementar (carve-out NÃO se aplica): quando `M == 0` **e**
+  `N == 0` — nenhuma regra `MUST` reconhecida e nenhuma ocorrência solta da
+  palavra `MUST` no arquivo — falta o conjuntivo (b), o carve-out não entra
+  em jogo, e prevalece o corpo desta FR-010 acima: se houver pelo menos um
+  princípio emitido só por rótulo de heading, o veredito MUST ser
+  `cobertura-parcial` (exit 4). Este é o caso-bandeira que a issue #188
+  existe para cobrir — constituição sem nenhuma regra `MUST` legível e sem
+  nenhuma ocorrência da palavra `MUST` em lugar nenhum do arquivo.
+
+  Este carve-out não reduz a acionabilidade: o achado estruturado emitido
+  pela FR-012 é o mesmo `Gap` nos dois vereditos
   (`contracts/must-coverage-finding.md` §3.2), e reflete o comportamento já
   validado por `tests/test_extract-must.sh ::
   scenario_coverage_r02_precedencia_zero_reconhecida_vence` — este teste e a
