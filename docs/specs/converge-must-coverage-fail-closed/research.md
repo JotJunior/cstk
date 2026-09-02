@@ -397,10 +397,14 @@ ambas casam no **início** da linha ou em qualquer conteúdo.
    *conteúdo* da regra é análise semântica, fora do escopo de um gate
    determinístico e fora desta spec.
 
-**O que NÃO é revogado**: FR-001..FR-005 e FR-007..FR-009 permanecem íntegros e
-em produção. A 3ª sugestão da issue #173 (alargar `_EM_MUST_RE` para aceitar
-prosa em bullet) **segue fora de escopo** — `cobertura-parcial` não alarga o
-parser, apenas reporta o que o parser já mediu.
+**O que NÃO é revogado**: FR-001..FR-004 e FR-007..FR-009 permanecem íntegros
+e em produção sem qualificação nova. FR-005 e FR-006, ao contrário, **não**
+ficam incondicionalmente intocados neste round: ambas ganham o conjuntivo
+`Q == 0` que faltava (spec.md, Apêndice A — a garantia de "nunca gerar o
+achado" passa a valer só quando `Q == 0`; com `Q > 0` prevalece a FR-010). A
+3ª sugestão da issue #173 (alargar `_EM_MUST_RE` para aceitar prosa em
+bullet) **segue fora de escopo** — `cobertura-parcial` não alarga o parser,
+apenas reporta o que o parser já mediu.
 
 ## Decision 14: Nome de princípio é conteúdo não-confiável (LLM01 / ASI09)
 

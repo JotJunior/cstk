@@ -979,3 +979,141 @@ Ref: `dec-064` · origem: decisão humana · classe: dívida de redação
       `validate-tasks-template.sh` `critical=0 warning=0`;
       `tests/test_extract-must.sh` `39/39 ok` (script intocado — apenas
       a citação em `spec.md` mudou).
+
+## FASE 16 - Correção de Prosa Factual Falsa Ancorada em Referente Externo (dec-071)
+
+> **Origem: decisão humana `dec-071`** (resposta ao bloqueio humano
+> `block-003`, aberto pelo 6º ciclo de convergência, onda-017) — **não** é
+> uma fase gerada pela skill `converge`, e por isso não carrega marcador
+> `converge-key`. O 6º ciclo teve auditoria MECÂNICA 100% limpa (5
+> fixturas, legenda `N`/`M`/`Q`, colisão de `N`, citação 97-98, hardening,
+> `tests/test_extract-must.sh` `39/39`), mas a auditoria de prosa por
+> **leitor-novo** achou 6 defeitos de uma classe DIFERENTE da prosa
+> auto-referente removida na FASE 15: prosa que afirma um FATO externo
+> verificável (estado de uma issue do GitHub, o que uma issue mediu, uma
+> contradição textual entre dois arquivos, uma lacuna de formato de
+> ferramenta) e o fato afirmado está errado. O operador escolheu
+> `corrigir-os-6-e-reconvergir`, com a condição acordada: se o 7º ciclo
+> achar mais um defeito da mesma família, a auditoria por `converge`
+> se encerra e o residual é aceito.
+>
+> Escopo: `spec.md`, `research.md` (achado 3 exige — contradição está lá,
+> não em `spec.md`) e `tasks.md`. MUST NOT alterar
+> `plugins/cstk/skills/converge/scripts/extract-must.sh`, `tests/`,
+> `plugins/cstk/skills/converge/SKILL.md` ou `contracts/`. Toda correção
+> foi ancorada numa fonte verificada NO MOMENTO da edição (`gh issue view`,
+> `grep -n` no arquivo real, execução do script/gate) — nunca reescrita a
+> partir do que o relatório da convergência disse.
+
+### 16.1 Corrigir os 6 achados de prosa factual falsa e validar `[A]`
+
+Ref: `dec-071` · origem: decisão humana · classe: prosa factual falsa
+(referente externo, não auto-referente)
+
+- [x] 16.1.1 `c4962c78df5f` (HIGH) — `spec.md` linha 9 afirmava issue #173
+      `(OPEN)`. Reconfirmado via `gh issue view 173` em 2026-09-02: estado
+      real é `CLOSED`. Corrigido para `(CLOSED — reconfirmado via gh issue
+      view 173 em 2026-09-02; a issue permanece como registro histórico
+      da origem desta feature, mesmo já fechada)`.
+- [x] 16.1.2 `6b2eeb24eac3` (HIGH) — "caso-bandeira da issue #188"
+      misatribuído em 4 sítios (`spec.md`, Edge Case ~L221, FR-005 ~L254,
+      FR-010 ~L301, Apêndice A ~L479, numeração pré-onda). Fato medido via
+      `gh issue view 188`: a issue mediu `N=20`/`M=16`/`Q=2` → `ok`/
+      `exit=0` ("A linha do meio é o defeito"; "Este: `M > 0`, veredito
+      `ok`, exit 0") — o flagship real é o ramo `M > 0` **e** `Q > 0`
+      (mascaramento de 2 princípios `NON-NEGOTIABLE` sem regra legível),
+      não o ramo `N == 0`/`M == 0` que a spec atribuía à issue. Nos 4
+      sítios: a medição `N=0`/`M=0`/`Q=1` → `cobertura-parcial`/`exit=4`
+      foi PRESERVADA (é real, validada pela fixture `f1` de
+      `tests/test_extract-must.sh ::
+      scenario_coverage_r02_so_de_heading_exit4`) — só a atribuição à
+      issue #188 foi removida/corrigida, com o caso-bandeira real
+      (`M > 0` **e** `Q > 0`, `N=20`/`M=16`/`Q=2` → `ok`/`exit=0` antes
+      desta feature) apontado no lugar certo (FR-010 e Apêndice A). FR-005
+      e FR-010 (texto normativo) foram re-medidos após a edição: nenhuma
+      obrigação MUST/MUST NOT mudou de sentido, só a prosa explicativa
+      entre parênteses/travessões.
+- [x] 16.1.3 `025760516927` (MEDIUM) — `research.md` linha 400 afirmava
+      "FR-001..FR-005 e FR-007..FR-009 permanecem íntegros", mas o
+      Apêndice A de `spec.md` (tabela de revogação round 1 → round 2)
+      declara que a FR-005 ganhou o conjuntivo `Q == 0` que não tinha no
+      round 1 — não ficou íntegra/incondicional. Corrigido para
+      "FR-001..FR-004 e FR-007..FR-009 permanecem íntegros ... sem
+      qualificação nova", com parágrafo explícito de que FR-005 e FR-006
+      (as duas, mesma classe de mudança) ganharam o conjuntivo `Q == 0`
+      neste round, remetendo ao Apêndice A como fonte.
+- [x] 16.1.4 `9de0bdacf929` (MEDIUM) — a seção `## Delta Requirements` só
+      tinha `#### ADDED` (FR-010..FR-014); `delta-merge.sh` suporta
+      `#### MODIFIED` (linha ~168), e FR-005/FR-006 mudaram de texto no
+      round 2. Verificado com `delta-gate.sh` que
+      `docs/specs/current/converge-must-coverage-fail-closed.md` **não
+      existe** no corpus (`ls docs/specs/current/*.md` não lista esta
+      capability) — logo `#### MODIFIED` é estruturalmente inválido aqui
+      (regra 4 de `delta-section-format.md`: `MODIFIED` referencia um id
+      já existente no corpus; sem merge anterior, não há o que
+      referenciar — confirmado empiricamente: `delta-gate.sh` rejeitou a
+      primeira tentativa com `ref-not-found`). Fix aplicado: o grupo
+      `#### ADDED` passou a listar `FR-001..FR-014` por inteiro, com o
+      texto vigente (round 2, já qualificado) de cada requisito — não o
+      incondicional do round 1 — para que o primeiro merge produza uma
+      capability autoconsistente desde a origem. Nota de proveniência
+      registrada no Apêndice A (não normativa). Validado:
+      `delta-gate.sh spec.md` → `errors=0`; `delta-merge.sh spec.md
+      --feature converge-must-coverage-fail-closed --dry-run` →
+      `delta=applied added=14 modified=0 removed=0 renamed=0`.
+- [x] 16.1.5 `ea3c7fe6a9ff` (MEDIUM) — Key Entities (`spec.md`) descrevia
+      "Achado de Convergência" como produzido "especificamente para o
+      cenário 'cobertura de MUST zerada'" — preso ao round 1; no round 2
+      o mesmo tipo de achado também é produzido para "cobertura de MUST
+      parcial" (veredito `cobertura-parcial`, FR-010/FR-012), inclusive
+      quando `M > 0` (cobertura NÃO zerada). Corrigido para descrever os
+      dois cenários (`zero-reconhecida`/FR-001-002 e
+      `cobertura-parcial`/FR-010/FR-012) e as respectivas regras de
+      classificação/severidade.
+- [x] 16.1.6 `fc70c807e018` (MEDIUM) — a narrativa da User Story 1 e o
+      Independent Test (`spec.md`) descreviam só o caso `MUST` em prosa
+      corrida (`N > 0`/`M == 0`), excluindo por construção 2 das 3
+      combinações do próprio Acceptance Scenario 5 da US1 (`M > 0`; e
+      `N == 0` **e** `M == 0`). Ambos os parágrafos foram ampliados para
+      cobrir também o caso de princípio emitido só pelo rótulo do
+      heading (`Q > 0`), nas suas combinações, sem alterar a redação do
+      Scenario 5 em si (que já estava correta).
+- [x] 16.1.7 Submetido o `spec.md` revisado a auditoria de **leitor
+      novo** (subagente `data-veracity-verifier`, sem contexto da edição)
+      ANTES do commit — mesmo método que achou 11 defeitos na onda-014 e
+      1 pré-existente na onda-016. Resultado: as áreas 3 (research.md ×
+      Apêndice A), 4 (Delta `#### ADDED` vs `#### MODIFIED`), 5 (Key
+      Entities) e 6 (narrativa/Independent Test da US1) foram
+      **independentemente reconfirmadas** pelo leitor-novo lendo os
+      arquivos e o código de `delta-gate.sh` (achado 4 verificado duas
+      vezes: `Glob docs/specs/current/*.md` sem entrada para esta
+      capability, e leitura literal de `delta-gate.sh:334-354`
+      confirmando que `#### MODIFIED` seria rejeitado com
+      `ref-not-found` no estado atual do corpus). As áreas 1 e 2 (estado
+      da issue #173 e medição da issue #188) o leitor-novo não pôde
+      reverificar de forma independente por restrição de ferramentas da
+      própria sessão dele (sem `gh`/Bash) — não por dúvida sobre o dado;
+      ambas já haviam sido verificadas por mim nesta mesma onda via
+      `gh issue view 173`/`gh issue view 188` reais, com saída literal
+      capturada antes da edição (não uma alegação do relatório da
+      convergência). Nenhum defeito novo foi encontrado dentro das 6
+      áreas. O leitor-novo sinalizou 1 observação não-bloqueante fora do
+      escopo desta fase: a seção `Contexto` (não-normativa, ~linhas
+      20-29) descreve em tempo presente o estado PRÉ-feature do
+      `SKILL.md`/`extract-must.sh` ("hoje só instrui via prosa..."),
+      redação já defasada frente ao estado atual do repositório (a
+      feature já foi implementada nos dois rounds) — leitura como
+      enquadramento histórico deliberado (a seção descreve o estado no
+      momento da abertura da issue), não como um dos 6 achados
+      atribuídos pelo operador; deixado para o 7º ciclo de `converge`
+      julgar, não corrigido preventivamente aqui (fora do escopo desta
+      fase, que é reagir aos 6 achados nomeados, não fazer nova varredura
+      própria). Gates finais: `validate-sdd.sh spec.md`
+      `errors=0 warnings=0`; `delta-gate.sh spec.md` `errors=0
+      warnings=0`; `delta-merge.sh spec.md --feature
+      converge-must-coverage-fail-closed --dry-run` `delta=applied
+      added=14 modified=0 removed=0 renamed=0`; `validate-docs-rendered`
+      em `spec.md` `ERRO 0 AVISO 0` (`research.md` mantém os mesmos 4
+      AVISOS pré-existentes de fence sem linguagem, fora do diff desta
+      fase — confirmado por `git diff --stat`); `tests/test_extract-must.sh`
+      `39/39 ok` (nenhum executável tocado nesta fase).
