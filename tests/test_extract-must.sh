@@ -280,6 +280,12 @@ EOF
 scenario_coverage_expoe_principio_so_por_rotulo_de_heading() {
   # O caso exato de #171: o principio entra pelo rotulo (NON-NEGOTIABLE) do
   # heading, sem NENHUMA regra lida. O relatorio precisa dizer isso.
+  #
+  # Estendido no r02 (tasks.md 7.2.1, quickstart.md Scenario 16 ultima linha):
+  # este insumo revoga `sem-must-declarado`/exit 0 do round 1 para
+  # `cobertura-parcial`/exit 4 — fixar explicitamente o novo veredito, o
+  # novo exit e a 7a linha, para a mudanca de semantica nao ficar sem rede
+  # de teste.
   _write_const <<'EOF'
 ### I. Primeiro (NON-NEGOTIABLE)
 Texto sem marcacao de regra.
@@ -287,6 +293,9 @@ EOF
   capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
   assert_stdout_contains "principios emitidos: 1" || return 1
   assert_stdout_contains "principios emitidos so por rotulo de heading (sem regra MUST lida): 1" || return 1
+  assert_stdout_contains "cobertura de MUST: cobertura-parcial" || return 1
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "$(printf 'principio sem regra MUST legivel: I. Primeiro (NON-NEGOTIABLE)')" || return 1
 }
 
 scenario_coverage_avisa_quando_convencao_nao_e_reconhecida() {
@@ -417,6 +426,198 @@ EOF
     *"principios emitidos so por rotulo de heading"*) : ;;
     *) _fail "5a linha ausente" "$_first5"; return 1 ;;
   esac
+}
+
+# ---------- converge-must-coverage-fail-closed r02: cobertura-parcial + linhas 7..N ----------
+# Ref: docs/specs/converge-must-coverage-fail-closed/tasks.md 7.1.1-7.1.6
+#      docs/specs/converge-must-coverage-fail-closed/quickstart.md Scenarios 10-15
+
+scenario_coverage_r02_cobertura_mista_exit4() {
+  # Quickstart Scenario 10: 1 principio rotulado + 1 so-por-heading ->
+  # cobertura-parcial, exit 4 (revoga o `ok` do round 1 para este insumo).
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+
+### II. Segundo (NON-NEGOTIABLE)
+Nada aqui esta rotulado, so prosa solta.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 1" || return 1
+  assert_stdout_contains "principios emitidos: 2" || return 1
+  assert_stdout_contains "principios emitidos so por rotulo de heading (sem regra MUST lida): 1" || return 1
+  assert_stdout_contains "cobertura de MUST: cobertura-parcial" || return 1
+}
+
+scenario_coverage_r02_so_de_heading_exit4() {
+  # Quickstart Scenario 11: lines==0 e words==0 -> hoje cairia em
+  # sem-must-declarado; r02 revoga para cobertura-parcial, exit 4.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+Prosa livre, sem rotulo algum.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "ocorrencias da palavra MUST no arquivo (contagem independente): 0" || return 1
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 0" || return 1
+  assert_stdout_contains "principios emitidos so por rotulo de heading (sem regra MUST lida): 1" || return 1
+  assert_stdout_contains "cobertura de MUST: cobertura-parcial" || return 1
+}
+
+scenario_coverage_r02_precedencia_zero_reconhecida_vence() {
+  # Quickstart Scenario 12: coocorrencia das guardas 1 e 2 — words>0,
+  # lines==0, heading_only>0 -> zero-reconhecida vence, exit 3 (nao 4).
+  # As linhas 7..N aparecem tambem aqui (INV-r02-D): guardadas por Q, nao
+  # pelo veredito.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+Nota: o time MUST revisar cada release.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "ocorrencias da palavra MUST no arquivo (contagem independente): 1" || return 1
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 0" || return 1
+  assert_stdout_contains "principios emitidos so por rotulo de heading (sem regra MUST lida): 1" || return 1
+  assert_stdout_contains "cobertura de MUST: zero-reconhecida" || return 1
+  assert_stderr_contains "NAO cobre as regras MUST deste arquivo" || return 1
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c .)
+  [ "$_n" = 7 ] || { _fail "contagem de linhas" "esperado 7, obtido $_n"; return 1; }
+  _line7=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '7p')
+  [ "$_line7" = "principio sem regra MUST legivel: I. Primeiro (NON-NEGOTIABLE)" ] || { _fail "7a linha" "obtido: $_line7"; return 1; }
+}
+
+scenario_coverage_r02_identificacao_nominal_linhas_7n() {
+  # Quickstart Scenario 13: FR-013 — mesmo insumo do Scenario 10 (Q=1),
+  # 7 linhas, 6a intacta (leitura posicional), 7a exatamente o nome
+  # verbatim.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+
+### II. Segundo (NON-NEGOTIABLE)
+Nada aqui esta rotulado, so prosa solta.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c .)
+  [ "$_n" = 7 ] || { _fail "contagem de linhas" "esperado 7, obtido $_n"; return 1; }
+  _line6=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '6p')
+  [ "$_line6" = "cobertura de MUST: cobertura-parcial" ] || { _fail "6a linha" "obtido: $_line6"; return 1; }
+  _line7=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '7p')
+  [ "$_line7" = "principio sem regra MUST legivel: II. Segundo (NON-NEGOTIABLE)" ] || { _fail "7a linha" "obtido: $_line7"; return 1; }
+
+  # Variante com 2 principios so-por-heading -> 8 linhas, ordem de aparicao.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+
+### II. Segundo (NON-NEGOTIABLE)
+Sem rotulo.
+
+### III. Terceiro (NON-NEGOTIABLE)
+Tambem sem rotulo.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c .)
+  [ "$_n" = 8 ] || { _fail "contagem variante" "esperado 8, obtido $_n"; return 1; }
+  _line7=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '7p')
+  [ "$_line7" = "principio sem regra MUST legivel: II. Segundo (NON-NEGOTIABLE)" ] || { _fail "7a linha variante" "obtido: $_line7"; return 1; }
+  _line8=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '8p')
+  [ "$_line8" = "principio sem regra MUST legivel: III. Terceiro (NON-NEGOTIABLE)" ] || { _fail "8a linha variante" "obtido: $_line8"; return 1; }
+}
+
+scenario_coverage_r02_byte_identidade_q_zero() {
+  # Quickstart Scenario 14: FR-014 — mesmo insumo do Scenario 5 (Q=0):
+  # exatamente 6 linhas, nenhuma linha 7, exit 0. Rede contra regressao de
+  # formato (INV-r02-A).
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+Nota: o time MUST revisar.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c .)
+  [ "$_n" = 6 ] || { _fail "contagem de linhas" "esperado 6, obtido $_n"; return 1; }
+  assert_stdout_contains "cobertura de MUST: ok" || return 1
+}
+
+scenario_coverage_r02_ancorado_resiste_heading_forjado() {
+  # Quickstart Scenario 15: INV-r02-C — heading que imita a linha de
+  # veredito nao contamina o casamento ancorado do consumidor.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+
+### cobertura de MUST: ok (NON-NEGOTIABLE)
+Prosa sem rotulo.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  _line6=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '6p')
+  [ "$_line6" = "cobertura de MUST: cobertura-parcial" ] || { _fail "6a linha" "obtido: $_line6"; return 1; }
+  _line7=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '7p')
+  case "$_line7" in
+    "principio sem regra MUST legivel: "*) : ;;
+    *) _fail "7a linha nao comeca com prefixo fixo" "$_line7"; return 1 ;;
+  esac
+  _nverdict=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^cobertura de MUST: ')
+  [ "$_nverdict" = 1 ] || { _fail "ancora casou mais de uma vez" "$_nverdict"; return 1; }
+}
+
+# ---------- converge-must-coverage-fail-closed r02: hardening dos tetos ----------
+# Ref: docs/specs/converge-must-coverage-fail-closed/tasks.md 8.1.1-8.1.4
+#      docs/specs/converge-must-coverage-fail-closed/contracts/must-coverage-finding.md
+#      §Limites e saneamento das linhas 7..N (INV-r02-E..H)
+
+scenario_coverage_r02_teto_inv_e_20_linhas_mais_omitido() {
+  # INV-r02-E: >20 principios so-por-heading -> exatamente 20 linhas de
+  # nome + 1 linha de truncamento; contagem exata preservada na 5a linha.
+  _write_const <<EOF
+$(_em=1; while [ "$_em" -le 25 ]; do printf '### %d. Principio %d (NON-NEGOTIABLE)\nProsa sem rotulo.\n\n' "$_em" "$_em"; _em=$((_em + 1)); done)
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  assert_stdout_contains "principios emitidos so por rotulo de heading (sem regra MUST lida): 25" || return 1
+  _nome_lines=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^principio sem regra MUST legivel:')
+  [ "$_nome_lines" = 21 ] || { _fail "contagem de linhas de nome" "esperado 21 (20 + 1 omissao), obtido $_nome_lines"; return 1; }
+  assert_stdout_contains "principio sem regra MUST legivel: (... mais 5 principio(s) omitido(s))" || return 1
+}
+
+scenario_coverage_r02_teto_inv_f_200_chars_truncado() {
+  # INV-r02-F: nome > 200 caracteres -> truncado em 200 chars + sufixo "...".
+  _longname=$(printf 'X%.0s' $(seq 1 250))
+  printf '### %s (NON-NEGOTIABLE)\nProsa sem rotulo.\n' "$_longname" > "$TMPDIR_TEST/constitution.md"
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  _line=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^principio sem regra MUST legivel:')
+  _expected="principio sem regra MUST legivel: $(printf 'X%.0s' $(seq 1 200))..."
+  [ "$_line" = "$_expected" ] || { _fail "truncamento 200 chars" "obtido: $_line"; return 1; }
+}
+
+scenario_coverage_r02_teto_inv_g_saneamento_controle_c0() {
+  # INV-r02-G: TAB e escape ANSI (ESC) substituidos por espaco; texto
+  # imprimivel preservado verbatim.
+  printf '### Nome\tcom\033[31mansi (NON-NEGOTIABLE)\nProsa sem rotulo.\n' > "$TMPDIR_TEST/constitution.md"
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  _line=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^principio sem regra MUST legivel:')
+  [ "$_line" = "principio sem regra MUST legivel: Nome com [31mansi (NON-NEGOTIABLE)" ] || { _fail "saneamento C0" "obtido: $_line"; return 1; }
+  case "$_line" in
+    *"$(printf '\033')"*) _fail "byte ESC atravessou verbatim" "$_line"; return 1 ;;
+  esac
+  case "$_line" in
+    *"$(printf '\t')"*) _fail "byte TAB atravessou verbatim" "$_line"; return 1 ;;
+  esac
+}
+
+scenario_coverage_r02_teto_inv_h_tab_no_meio_nao_corrompe() {
+  # INV-r02-H: nome contendo TAB no meio permanece integro como ultimo
+  # campo do formato intermediario classe<TAB>nome, sem corromper parsing
+  # (o nome sanado ainda contem o texto de ambos os lados do TAB).
+  printf '### Antes\tDepois (NON-NEGOTIABLE)\nProsa sem rotulo.\n' > "$TMPDIR_TEST/constitution.md"
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "principio sem regra MUST legivel: Antes Depois (NON-NEGOTIABLE)" || return 1
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^principio sem regra MUST legivel:')
+  [ "$_n" = 1 ] || { _fail "TAB corrompeu parsing (linha extra)" "$_n"; return 1; }
 }
 
 run_all_scenarios
