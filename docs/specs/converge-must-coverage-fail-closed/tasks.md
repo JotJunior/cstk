@@ -222,6 +222,216 @@ Ref: `quickstart.md` Cenário 9, `research.md` Decision 9
 - [x] 5.4.3 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e o gate
       `validate-docs-rendered` sobre os artefatos Markdown tocados nesta onda
 
+## FASE 6 - Gate Determinístico r02: `cobertura-parcial` + exit 4 (US3-a, P1) `[C]`
+
+Ref: `plan.md` §Ordem do incremento r02 item 8, `contracts/must-coverage-finding.md`
+§Incremento r02 (FR-010..FR-014), `research.md` Decision 11-12, `spec.md`
+FR-010/FR-011/FR-013/FR-014
+
+### 6.1 Guarda `cobertura-parcial` na cadeia de veredito + exit 4 `[C]`
+
+Ref: `research.md` Decision 11 (precedência das 4 guardas),
+`contracts/must-coverage-finding.md` §Incremento r02 linhas 43-49
+
+- [x] 6.1.1 Inserir a guarda `heading_only > 0` → `cobertura-parcial` na **2ª
+      posição** da cadeia (entre a guarda 1 `words>0 && lines==0` →
+      `zero-reconhecida` e a guarda 3 `lines>0` → `ok`), preservando a guarda 1
+      em primeiro — `zero-reconhecida` vence em coocorrência (Decision 11)
+- [x] 6.1.2 Fazer o script sair com `exit 4` quando o veredito for
+      `cobertura-parcial`; preservar `exit 0`/`1`/`2`/`3` inalterados nos
+      demais casos (`contracts/...` §Exit codes linha 148)
+- [x] 6.1.3 Emitir a 6ª linha `cobertura de MUST: cobertura-parcial` quando
+      aplicável, mantendo as 6 primeiras linhas byte-idênticas em **qualquer**
+      contagem de `Q` (INV-r02-B)
+- [x] 6.1.4 Atualizar o cabeçalho de contrato do script (comentário de topo,
+      lista `EXIT:`) documentando o novo `exit 4` como sinal de estado (não
+      erro)
+
+### 6.2 Identificação nominal — linhas 7..N (FR-013) `[C]`
+
+Ref: `research.md` Decision 12 (canal e posição),
+`contracts/must-coverage-finding.md` INV-r02-A..D
+
+- [x] 6.2.1 Fazer o `awk` de classificação carregar o **nome** do princípio
+      (já disponível na variável `pending`, hoje descartada) junto da classe
+      (formato intermediário `classe<TAB>nome`), sem leitura extra do arquivo
+- [x] 6.2.2 Emitir uma linha `principio sem regra MUST legivel: <nome
+      verbatim>` por princípio `heading-only`, apendada estritamente depois
+      da linha de veredito, na ordem de aparição no arquivo, condicionada a
+      `Q >= 1` — **independente do veredito** (aparece também no ramo
+      `zero-reconhecida` quando `Q >= 1`, INV-r02-D)
+- [x] 6.2.3 Garantir que com `Q == 0` nenhuma linha 7 seja emitida (nem
+      separador, nem cabeçalho) — byte-identidade com o formato de 6 linhas
+      do round 1 (INV-r02-A, FR-014)
+
+### 6.3 Hardening de segurança das linhas 7..N (`dec-023`) `[C]`
+
+Ref: `contracts/must-coverage-finding.md` §Limites e saneamento das linhas
+7..N, INV-r02-E..H
+
+- [x] 6.3.1 Aplicar INV-r02-E: teto de **20** linhas de nome emitidas; a 20ª
+      é seguida de exatamente uma linha `principio sem regra MUST legivel:
+      (... mais <K> principio(s) omitido(s))` quando houver mais afetados —
+      a contagem exata continua disponível na 5ª linha (não truncada)
+- [x] 6.3.2 Aplicar INV-r02-F: truncar cada nome em **200** caracteres com
+      sufixo `...` quando truncado
+- [x] 6.3.3 Aplicar INV-r02-G: substituir caracteres de controle C0
+      (`ESC`, `TAB`, `CR` inclusive) por espaço antes da emissão, preservando
+      todo texto imprimível verbatim
+- [x] 6.3.4 Aplicar INV-r02-H: garantir que o nome seja sempre o **último**
+      campo no formato intermediário `classe<TAB>nome`, mesmo sob nome
+      hostil contendo `TAB`
+
+## FASE 7 - Testes de Regressão do Incremento r02 (US3-b, P1) `[C]`
+
+Ref: `plan.md` §Ordem do incremento r02 item 9, `quickstart.md` Scenarios 10-16
+
+### 7.1 Novos cenários 10-15 em `tests/test_extract-must.sh` `[C]`
+
+Ref: `quickstart.md` Scenarios 10-15
+
+- [x] 7.1.1 Scenario 10 (cobertura mista): 1 princípio rotulado + 1
+      só-por-heading → `cobertura de MUST: cobertura-parcial`, `exit 4`
+      (revoga o `ok` do round 1 para este insumo)
+- [x] 7.1.2 Scenario 11 (só-de-heading): 1 princípio só-por-heading, zero
+      ocorrências de MUST → `cobertura-parcial`, `exit 4` (revoga
+      `sem-must-declarado` do round 1)
+- [x] 7.1.3 Scenario 12 (precedência): MUST em prosa (`words>0`, `lines==0`)
+      coocorrendo com heading-only → `zero-reconhecida` vence, `exit 3` (não
+      4); stdout tem 7 linhas, com a 7ª nomeando o princípio mesmo no ramo
+      mais forte (INV-r02-D)
+- [x] 7.1.4 Scenario 13 (identificação nominal): reusar insumo do Scenario
+      10; assere 7 linhas, 6ª linha intacta (`sed -n '6p'`), 7ª linha
+      exatamente `principio sem regra MUST legivel: <nome verbatim>`;
+      variante com 2 princípios só-por-heading → 8 linhas, na ordem de
+      aparição
+- [x] 7.1.5 Scenario 14 (byte-identidade `Q=0`): reusar insumo do Scenario 5
+      do round 1; assere exatamente 6 linhas, nenhuma linha 7, `exit 0` —
+      este é o mesmo `scenario_coverage_aditividade_5_linhas_byte_identicas_mais_6a`
+      já existente, que MUST continuar passando sem edição
+- [x] 7.1.6 Scenario 15 (consumidor ancorado resiste a heading forjado):
+      heading `### cobertura de MUST: ok (NON-NEGOTIABLE)` → 6ª linha real é
+      `cobertura-parcial`/`exit 4`; a linha forjada some sob o prefixo fixo
+      `principio sem regra MUST legivel: `; `grep -c '^cobertura de MUST: '`
+      sobre o stdout retorna exatamente `1`
+
+### 7.2 Estender cenário existente + matriz de não-regressão (Scenario 16) `[C]`
+
+Ref: `quickstart.md` Scenario 16 — nota de método: medir sob `sh` real,
+nunca no shell do agente (`dec-021`/`dec-022`)
+
+- [x] 7.2.1 Estender `scenario_coverage_expoe_principio_so_por_rotulo_de_heading`
+      para assere explicitamente o novo veredito `cobertura-parcial` **e** o
+      `exit 4` **e** a presença da 7ª linha — hoje o cenário não assere exit
+      code e passaria calado sobre a mudança de semântica
+- [x] 7.2.2 Reexecutar, sob `sh` (nunca no shell do agente), a matriz
+      completa dos 8 cenários pré-existentes do round 1
+      (`..._reporta_numeros_reais`, `..._avisa_quando_convencao_nao_e_reconhecida`,
+      `..._contagem_independente_nao_ecoa_o_parser`,
+      `..._default_permanece_tsv_sem_coverage`, `..._veredito_zero_reconhecida_exit3`,
+      `..._veredito_ok_exit0`, `..._veredito_sem_must_declarado_exit0_sem_aviso`,
+      `..._aditividade_5_linhas_byte_identicas_mais_6a`) confirmando
+      veredito/exit inalterados
+- [x] 7.2.3 Rodar `./tests/run.sh --check-coverage` confirmando zero
+      regressão nos cenários pré-existentes de `test_extract-must.sh` e
+      `test_severity.sh`
+
+## FASE 8 - Hardening: Testes dos Tetos de Segurança (US3-b', `dec-023`) `[C]`
+
+Ref: `plan.md` §Ordem do incremento r02 item 9.bis
+
+### 8.1 Cenários dedicados por teto `[C]`
+
+Ref: `contracts/must-coverage-finding.md` §Limites e saneamento das linhas
+7..N
+
+- [x] 8.1.1 Cenário do teto INV-r02-E: constituição sintética com > 20
+      princípios só-por-heading → exatamente 20 linhas de nome + 1 linha de
+      truncamento `(... mais <K> principio(s) omitido(s))`, contagem exata
+      preservada na 5ª linha
+- [x] 8.1.2 Cenário do teto INV-r02-F: heading com nome > 200 caracteres →
+      linha truncada em 200 chars + sufixo `...`
+- [x] 8.1.3 Cenário do teto INV-r02-G: heading contendo `TAB` e escape ANSI
+      (`\033[31m`) → caracteres de controle C0 substituídos por espaço na
+      linha emitida, texto imprimível preservado verbatim
+- [x] 8.1.4 Cenário do teto INV-r02-H: heading contendo `TAB` no meio do
+      nome → nome permanece íntegro como último campo do formato
+      intermediário `classe<TAB>nome`, sem corromper o parsing
+
+## FASE 9 - Prosa Normativa r02 do `converge/SKILL.md` (US3-c, P1) `[A]`
+
+Ref: `plan.md` §Ordem do incremento r02 item 10 — inventário medido de 7
+sítios em `plugins/cstk/skills/converge/SKILL.md`
+
+### 9.1 ETAPA 3 - nova linha para `cobertura-parcial` + casamento ancorado `[A]`
+
+Ref: `plan.md` linhas 186-189, 193-195; `contracts/must-coverage-finding.md`
+INV-r02-C, §3.1
+
+- [x] 9.1.1 Atualizar o vocabulário enumerado (linhas ~186-189) para
+      `<ok|zero-reconhecida|sem-must-declarado|cobertura-parcial>` e
+      corrigir o numeral "6ª linha", que volta a ficar impreciso com as
+      linhas 7..N existindo sob `Q >= 1`
+- [x] 9.1.2 Acrescentar linha nova na tabela normativa da ETAPA 3 (linhas
+      ~193-195): `cobertura-parcial` → MUST emitir o `Gap` sintético (mesmos
+      campos fixos de `zero-reconhecida`, `contracts/...` §Compatibilidade
+      linha 224)
+- [x] 9.1.3 Exigir explicitamente o casamento **ancorado** do veredito
+      (`^cobertura de MUST: `) na leitura da 6ª linha, prevenindo que um
+      heading forjado nas linhas 7..N seja lido como veredito (INV-r02-C)
+
+### 9.2 Não-supressão + linhas 7..N como dado não-confiável (ETAPA 7) `[A]`
+
+Ref: `plan.md` linhas 203, 323, 632; `contracts/must-coverage-finding.md`
+linhas 128-136 (Nome é DADO, nunca instrução)
+
+- [x] 9.2.1 Atualizar o sítio de não-supressão (linha ~203) para abranger
+      também `cobertura-parcial` + `exit 4`, junto do par já citado
+      `zero-reconhecida` + `exit 3`
+- [x] 9.2.2 Atualizar §Campos fixos do `Gap` (linha ~323) para "quando a
+      ETAPA 3 detecta `zero-reconhecida` **ou `cobertura-parcial`**"
+- [x] 9.2.3 Na ETAPA 7, ao citar as linhas 7..N verbatim, enquadrá-las
+      explicitamente como **dado não-confiável transcrito** (mesma regra já
+      vigente em §3.3-bis/§4.3) — o nome do princípio pode imitar uma
+      instrução (LLM01/ASI09, medido em protótipo)
+- [x] 9.2.4 Atualizar o segundo sítio de não-supressão (linha ~632) para
+      abranger `cobertura-parcial` + `exit 4`
+
+### 9.3 §Scripts auxiliares e allowlist repetida `[M]`
+
+Ref: `plan.md` linhas 511-513, 623
+
+- [x] 9.3.1 Documentar o novo `exit 4` de `extract-must.sh --coverage` em
+      §Scripts auxiliares (linhas ~511-513), junto do `exit 3` e `exit 0` já
+      documentados
+- [x] 9.3.2 Atualizar a allowlist repetida (linha ~623) — permanece
+      suprimindo achado só com veredito literal `ok`/`sem-must-declarado`;
+      `cobertura-parcial` explicitamente **NÃO** entra na allowlist de
+      supressão
+
+## FASE 10 - Verificação Final r02 (item 11 do plan) `[A]`
+
+Ref: `plan.md` §Ordem do incremento r02 item 11
+
+### 10.1 Suite completa + gates de qualidade r02 `[A]`
+
+- [x] 10.1.1 Rodar a suite completa (`LC_ALL=C ./tests/run.sh`) em
+      background com log, sem `tail` no output
+- [x] 10.1.2 Rodar `./tests/run.sh --check-coverage`
+- [x] 10.1.3 Reexecutar o Scenario 16 (matriz de não-regressão) confirmando
+      os 8 cenários pré-existentes + o cenário estendido de heading-only
+- [x] 10.1.4 Reexecutar o Scenario 9 (dogfooding): `extract-must.sh
+      --constitution docs/constitution.md --coverage` na raiz deste
+      repositório → medido `principios emitidos: 5`, `Q = 0` (nenhum
+      princípio só-por-heading — princípio V não tem `(NON-NEGOTIABLE)` nem
+      regra rotulada, logo não é emitido, `dec-019`), `cobertura de MUST:
+      ok`, `exit 0` — nenhum achado desta feature dispara contra a
+      constituição deste repo
+- [x] 10.1.5 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e o
+      gate `validate-docs-rendered` sobre os artefatos Markdown tocados
+      nesta onda (`converge/SKILL.md`, `contracts/`, `research.md`,
+      `quickstart.md`, `plan.md`)
+
 ---
 
 ## Matriz de Dependencias
@@ -233,11 +443,21 @@ flowchart TD
     F3[Fase 3 - Prosa Normativa converge SKILL.md]
     F4[Fase 4 - Orientacao Formato constitution SKILL.md]
     F5[Fase 5 - Verificacao Final e Dogfooding]
+    F6[Fase 6 - Gate Deterministico r02 cobertura-parcial]
+    F7[Fase 7 - Testes de Regressao r02]
+    F8[Fase 8 - Hardening Tetos de Seguranca]
+    F9[Fase 9 - Prosa Normativa r02 converge SKILL.md]
+    F10[Fase 10 - Verificacao Final r02]
 
     F1 --> F2
     F2 --> F3
     F3 --> F4
     F4 --> F5
+    F5 --> F6
+    F6 --> F7
+    F7 --> F8
+    F8 --> F9
+    F9 --> F10
 ```
 
 ## Resumo Quantitativo
@@ -249,7 +469,12 @@ flowchart TD
 | 3 - Prosa Normativa `converge/SKILL.md` | 4 | 7 | A |
 | 4 - Orientação de Formato `constitution/SKILL.md` | 4 | 4 | A/M |
 | 5 - Verificação Final e Dogfooding | 4 | 5 | A/C |
-| **Total** | **14** | **27** | - |
+| 6 - Gate Determinístico r02 `cobertura-parcial` [r02] | 3 | 11 | C |
+| 7 - Testes de Regressão r02 [r02] | 2 | 9 | C |
+| 8 - Hardening Tetos de Segurança [r02] | 1 | 4 | C |
+| 9 - Prosa Normativa r02 `converge/SKILL.md` [r02] | 3 | 9 | A/M |
+| 10 - Verificação Final r02 [r02] | 1 | 5 | A |
+| **Total (r01+r02)** | **24** | **65** | - |
 
 ## Escopo Coberto
 
@@ -260,10 +485,15 @@ flowchart TD
 | FR-003 | Achado cita a constituição e a origem `extract-must --coverage` | 3 |
 | FR-004 | Achado conta em `N` (`OUTCOME=actionable`, nunca `clean`) | 3 |
 | FR-005 | Sem MUST declarado → nenhum achado | 1, 2 |
-| FR-006 | Cobertura parcial (M>0) → comportamento atual preservado | 1, 2 |
+| FR-006 | Cobertura parcial (M>0) → comportamento atual preservado (revogada parcialmente pela FR-010 no r02, ver Escopo Excluido/Decision 13) | 1, 2 |
 | FR-007 | Skill `constitution` orienta/exemplifica o formato rotulado | 4 |
 | FR-008 | Texto-semente de Veracidade de Dados segue o formato rotulado | 4 |
 | FR-009 | Nenhuma constituição existente é migrada/alterada | 5 |
+| FR-010 [r02] | Veredito `cobertura-parcial` distinto de `ok`/`zero-reconhecida`/`sem-must-declarado` | 6, 7 |
+| FR-011 [r02] | Sinal de saída `exit 4` distinto dos demais vereditos | 6, 7 |
+| FR-012 [r02] | Achado estruturado + contagem em pendências acionáveis para `cobertura-parcial` | 9 |
+| FR-013 [r02] | Identificação nominal dos princípios afetados (linhas 7..N) | 6, 7, 8 |
+| FR-014 [r02] | Byte-identidade da saída com `Q == 0` | 6, 7 |
 | SC-001/SC-002 | Verificados pelos Cenários 1-3 do quickstart | 2 |
 | SC-003 | Verificado pelo Cenário 7 do quickstart | 5 |
 
@@ -272,6 +502,618 @@ flowchart TD
 | Item | Descricao | Motivo |
 |------|-----------|--------|
 | 3ª sugestão da issue #173 | Parser (`_EM_MUST_RE`) passa a aceitar MUST em prosa/bullet não rotulado | Deferida pela spec (`Contexto`, linhas 37-41); `research.md` Decision 8 confirma que nenhum FR/SC exige — reabrir só via bloqueio humano, nunca decisão unilateral |
-| Migração de constituições existentes | Reescrever `constitution.md` já ratificadas para o novo formato | Proibido por FR-009 |
+| Migração de constituições existentes | Reescrever `constitution.md` já ratificadas para o novo formato | Proibido por FR-009 (mantido íntegro no r02, `research.md` Decision 13) |
 | Alteração de `severity.sh`/`converge-status.sh` | Novas flags, enums ou regras de decisão | Tabela vigente já entrega `HIGH` para a tripla desta feature; `record` já recusa `clean` com `actionable != 0` — nenhuma mudança necessária (`contracts/must-coverage-finding.md` §2) |
 | CHK024 (checklist, `{humano}`) | Reavaliar a priorização P1/P2 entre US1 e US2 | Item `{humano}` não-bloqueante; o operador já foi sinalizado pelo orquestrador-pai e a priorização vigente (US1=P1, US2=P2) foi mantida — não gera tarefa de engenharia |
+| [r02] Alargar `_EM_MUST_RE` (3ª sugestão issue #173, reafirmado) | `cobertura-parcial` reporta o que o parser já mede, não alarga o parser | `plan.md` §Fora de escopo — continua fora mesmo com a revisão de escopo do r02 |
+| [r02] CHK035 (checklist, `{humano}`) | Critério de aceite mensurável dedicado à FR-010 (SC novo ou reaproveitado) | Item `{humano}` não-bloqueante; cobertura por cenário já confirmada (Scenarios 10-17 do quickstart); julgamento de suficiência cabe ao dono do produto |
+| [r02] CHK046 (checklist, `{humano}`) | Confirmar registro auditável (Decisão + consentimento) da autorização de revisão deliberada de escopo | Item `{humano}` não-bloqueante; decisão de auditoria cabe ao operador validar |
+
+## FASE 11 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 11.1 FR-010 não é honrada quando a guarda 1 (`zero-reconhecida`) precede a guarda 2 `[A]`
+
+Ref: FR-010 · tipo: `contradicts` · severidade: `MEDIUM`
+
+A FR-010 (`spec.md`, e repetida em §Delta Requirements) exige um veredito
+distinto de `ok`, `zero-reconhecida` e `sem-must-declarado` sempre que houver
+pelo menos um princípio emitido só pelo rótulo do heading — explicitamente
+"mesmo quando outras regras `MUST` da mesma constituição já tiverem sido
+reconhecidas, **e mesmo quando nenhuma outra regra `MUST` tiver sido
+reconhecida em lugar nenhum**".
+
+O comportamento presente de `plugins/cstk/skills/converge/scripts/extract-must.sh`
+honra essa exigência no ramo `N == 0 && Q > 0` (medido: veredito
+`cobertura-parcial`, `exit 4`), mas **não** no sub-caso `N > 0 && M == 0 && Q > 0`,
+onde a guarda 1 vence por precedência e o veredito emitido é `zero-reconhecida`
+com `exit 3` — medido com constituição contendo `### I. Primeiro (NON-NEGOTIABLE)`
++ prosa `o time MUST revisar cada release` (N=1, M=0, Q=1). Esse sub-caso é
+coberto pela cláusula literal "nenhuma outra regra MUST reconhecida em lugar
+nenhum" da FR-010, logo texto e comportamento divergem.
+
+A precedência em si é **deliberada e ratificada** fora da `spec.md`:
+`research.md` Decision 11 a justifica nominalmente ("os dois podem coocorrer
+... a precedência resolve o empate a favor do sinal mais forte"),
+`plan.md` a lista na tabela de riscos, o contrato
+`contracts/must-coverage-finding.md` (§3.2) garante que o `Gap` emitido é o
+**mesmo** nos dois vereditos, e há teste dedicado
+`tests/test_extract-must.sh :: scenario_coverage_r02_precedencia_zero_reconhecida_vence`
+asserindo `exit 3` + `zero-reconhecida`. A acionabilidade downstream (FR-004/
+FR-012) permanece intacta nos dois ramos, e as linhas nominais 7..N (FR-013)
+também são emitidas no ramo `zero-reconhecida` (INV-r02-D, medido).
+
+Portanto o artefato fora de sincronia é a **redação da FR-010**, que nunca foi
+emendada para registrar o carve-out de precedência — não um defeito de
+implementação. Resolver exige **mudar** texto/lógica já presente (não é
+aditivo), por isso `contradicts`.
+
+- [x] 11.1.1 Decidir e aplicar a reconciliação entre `spec.md` FR-010 e `plugins/cstk/skills/converge/scripts/extract-must.sh`: (a) emendar a FR-010 (nas DUAS ocorrências — §Requirements e §Delta Requirements) para registrar explicitamente que a guarda `zero-reconhecida` tem precedência quando `N > 0 && M == 0`, espelhando `research.md` Decision 11 e o carve-out nominal já usado em `converge/SKILL.md` §5.2; ou (b) alterar a ordem das guardas, o que exigiria revisar `research.md` Decision 11, o contrato §3.2 e o teste `scenario_coverage_r02_precedencia_zero_reconhecida_vence`. Opção (a) é a recomendada — preserva comportamento em produção e o teste ratificado.
+
+<!-- converge-key: 030ca98b22df -->
+
+## FASE 12 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 12.1 Carve-out da FR-010 descreve em prosa uma condição mais ampla que a guarda real `[A]`
+
+Ref: FR-010 · tipo: `contradicts` · severidade: `MEDIUM`
+
+Achado introduzido pela própria emenda da task 11.1.1 (commit `a06d247`, que
+tocou apenas `spec.md` e `tasks.md`) — a redação nova, e não a implementação.
+
+O bloco **"Carve-out de precedência"** acrescentado à FR-010 em
+`docs/specs/converge-must-coverage-fail-closed/spec.md` (nas DUAS
+ocorrências — §Requirements ~linha 246 e §Delta Requirements ~linha 341) diz,
+verbatim: *"quando, além da condição acima, também não houver nenhuma outra
+regra `MUST` reconhecida em lugar nenhum da constituição (`N > 0 && M == 0`),
+a guarda de `zero-reconhecida` tem precedência sobre esta FR-010, e o veredito
+emitido MUST permanecer `zero-reconhecida` (exit 3), não `cobertura-parcial`"*.
+
+A cláusula em **prosa** ("não houver nenhuma outra regra `MUST` reconhecida em
+lugar nenhum da constituição") formaliza somente `M == 0`. A fórmula entre
+parênteses acrescenta um segundo conjuntivo, `N > 0` (ocorrências da palavra
+`MUST` no arquivo — notação definida uma única vez, ~110 linhas antes, na
+§Contexto, linha 19), que **nenhuma parte da prosa renderiza**. Prosa e fórmula
+não são equivalentes, e é a prosa que é falsificada pela medição:
+
+Medido nesta onda com `plugins/cstk/skills/converge/scripts/extract-must.sh
+--coverage` sobre uma constituição de dois princípios `(NON-NEGOTIABLE)` sem
+nenhuma linha de regra e sem nenhuma ocorrência da palavra `MUST`
+(`N = 0`, `M = 0`, `Q = 2`):
+
+```
+linhas de regra MUST reconhecidas pelo parser: 0
+principios emitidos so por rotulo de heading (sem regra MUST lida): 2
+cobertura de MUST: cobertura-parcial
+exit=4
+```
+
+Esse insumo satisfaz a cláusula em prosa do carve-out **na íntegra** (há
+princípio só-de-heading e não há regra `MUST` reconhecida em lugar nenhum),
+logo, lido como está escrito, o texto exige `zero-reconhecida` + `exit 3` — mas
+o comportamento medido é `cobertura-parcial` + `exit 4`. Pior: esse é
+exatamente o caso-bandeira que a FR-010 e a issue #188 existem para cobrir
+(`research.md` Decision 11, bullet *"Antes da guarda 4"*: princípios marcados
+`(NON-NEGOTIABLE)` sem nenhuma linha de regra legível **e nenhuma ocorrência
+solta da palavra `MUST`**), e que o comentário-legenda de
+`plugins/cstk/skills/converge/scripts/extract-must.sh` (~linhas 122-133) já
+descreve corretamente com as três variáveis `N`/`M`/`Q` nomeadas.
+
+Implementação, `research.md` Decision 11, `contracts/must-coverage-finding.md`
+§3.2 e `tests/test_extract-must.sh ::
+scenario_coverage_r02_precedencia_zero_reconhecida_vence` (que usa `N = 1`,
+prosa `o time MUST revisar cada release`) estão todos **corretos e
+consistentes entre si** — o artefato fora de sincronia é apenas a redação do
+carve-out. Corrigir exige **mudar** texto já presente (não é aditivo), por
+isso `contradicts`; o comportamento em produção e o teste ratificado
+permanecem intocados.
+
+- [x] 12.1.1 Corrigir a redação do bloco "Carve-out de precedência" da FR-010 em `docs/specs/converge-must-coverage-fail-closed/spec.md`, nas DUAS ocorrências (§Requirements e §Delta Requirements), para que a cláusula em prosa renderize os DOIS conjuntivos da guarda real: (a) nenhuma regra `MUST` reconhecida pelo parser em lugar nenhum (`M == 0`) **e** (b) a palavra `MUST` ocorrendo em algum ponto do arquivo (`N > 0`); e explicitar o ramo complementar — com `M == 0` e `N == 0`, o veredito é `cobertura-parcial` (exit 4), conforme a FR-010 exige. Definir `N`/`M` no ponto de uso (ou remeter à legenda de `extract-must.sh`), sem depender da menção isolada da §Contexto. MUST NOT alterar `extract-must.sh`, `research.md` Decision 11, `contracts/must-coverage-finding.md` §3.2 ou `tests/test_extract-must.sh` — os quatro já estão consistentes.
+
+<!-- converge-key: 9ebd51fb0465 -->
+
+## FASE 13 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 13.1 A revisão de escopo do r02 revoga FR-006 e um Edge Case, mas deixa FR-005 (e a verificação de US1/SC-002) contradizendo o comportamento implementado `[C]`
+
+Ref: FR-005 · tipo: `contradicts` · severidade: `HIGH`
+
+Achado inédito, de classe distinta das FASES 11 e 12 (aquelas eram a redação
+do carve-out da FR-010; esta é a **lista de revogação incompleta** do próprio
+incremento r02). A reescrita do carve-out feita na task 12.1.1 (commit
+`a053ac6`) foi auditada nesta onda e está **correta e completa** — prosa e
+fórmula rendem os dois conjuntivos, o ramo complementar está explícito, e as
+duas ocorrências são byte-idênticas entre si (verificado por `diff` das
+linhas 232-283 vs 345-396 de `docs/specs/converge-must-coverage-fail-closed/spec.md`:
+saída vazia). O problema está em outro lugar do mesmo arquivo.
+
+O bloco **"Revisão de escopo (issue #188, incremento pós-round-1)"**
+(`docs/specs/converge-must-coverage-fail-closed/spec.md`, ~linha 220) declara
+nominalmente o que o incremento revoga:
+
+> *"as FRs abaixo revogam/emendam deliberadamente a **FR-006** desta mesma
+> especificação **e o Edge Case** 'Constituição contém MUST misturando formato
+> reconhecido e prosa corrida no mesmo arquivo... fora de escopo desta
+> feature'"*
+
+Essa lista tem exatamente dois itens. Mas o comportamento que o r02
+implementou (guarda 2, `Q > 0` → `cobertura-parcial` + `exit 4`) falsifica
+**cinco** trechos normativos/verificacionais do mesmo `spec.md`, e só dois
+deles estão na lista. Os três restantes seguem em vigor, dizendo o oposto do
+que a implementação faz:
+
+1. **FR-005** (`spec.md` ~linha 197) — `MUST NOT` normativo, **não revogado**:
+   *"O sistema MUST NOT gerar o achado da FR-001 quando a constituição do
+   projeto-alvo não contiver a palavra MUST em lugar nenhum (nenhuma
+   obrigação declarada nesse vocabulário) — ausência total de MUST não é
+   tratada como lacuna de cobertura."*
+   Esse é precisamente o **caso-bandeira da issue #188** (`N = 0`), para o
+   qual a FR-010 e a guarda 2 existem. Medido nesta onda com
+   `plugins/cstk/skills/converge/scripts/extract-must.sh --coverage` sobre uma
+   constituição com um princípio `(NON-NEGOTIABLE)`, sem regra rotulada e sem
+   nenhuma ocorrência da palavra `MUST` (`N = 0`, `M = 0`, `Q = 1`):
+
+   ```
+   ocorrencias da palavra MUST no arquivo (contagem independente): 0
+   linhas de regra MUST reconhecidas pelo parser: 0
+   principios emitidos so por rotulo de heading (sem regra MUST lida): 1
+   cobertura de MUST: cobertura-parcial
+   principio sem regra MUST legivel: I. Primeiro (NON-NEGOTIABLE)
+   exit=4
+   ```
+
+   O `Gap` emitido nesse veredito é o **mesmo** achado da FR-001 que a FR-005
+   proíbe: `contracts/must-coverage-finding.md` §3.2 fixa os campos, e
+   `plugins/cstk/skills/converge/SKILL.md` linha 200 é literal — *"`cobertura-parcial`
+   | **MUST** emitir 1 `Gap` sintético com os **mesmos** campos fixos da ETAPA 5
+   §Campos fixos do Gap de cobertura (idênticos aos de `zero-reconhecida`)"*.
+   Logo FR-005 e FR-010/FR-012 mandam coisas opostas sobre o mesmo insumo, e a
+   implementação segue a FR-010.
+
+2. **US1, Acceptance Scenarios 3 e 4** (`spec.md` ~linhas 108-118) — a User
+   Story de prioridade **P1**, cuja verificação é a régua de aceite da
+   feature. O Scenario 3 repete a FR-005 (*"Then nenhum achado desse tipo é
+   gerado"* quando não há a palavra `MUST`); o Scenario 4 repete a FR-006
+   (*"Then o comportamento observável de hoje é preservado — nenhum achado
+   novo desta feature é introduzido só por essa cobertura parcial"*). A
+   revogação nominal alcançou a FR-006, mas **não** o Scenario 4 que a
+   espelha. Medido para o Scenario 4 (`M = 1` regra reconhecida + `Q = 1`
+   princípio só-de-heading, mesmo insumo de
+   `tests/test_extract-must.sh :: scenario_coverage_r02_cobertura_mista_exit4`):
+
+   ```
+   linhas de regra MUST reconhecidas pelo parser: 1
+   principios emitidos so por rotulo de heading (sem regra MUST lida): 1
+   cobertura de MUST: cobertura-parcial
+   exit=4
+   ```
+
+3. **SC-002** (`spec.md` ~linha 329) — o critério de sucesso mensurável:
+   *"0% das execuções da etapa de convergência contra uma constituição sem
+   nenhuma ocorrência da palavra MUST, **ou** com pelo menos uma regra MUST já
+   reconhecida, geram o novo achado desta feature (nenhum falso-positivo
+   introduzido nesses dois casos)."* As **duas** cláusulas são falsificadas
+   pelas duas medições acima sempre que `Q > 0` — que é exatamente o cenário
+   que a FR-010 existe para cobrir. Como está escrito, SC-002 declara
+   falso-positivo o comportamento que a feature foi reaberta para produzir:
+   um `/review-task` que tome SC-002 pela régua reprova a própria entrega.
+
+4. **Edge Case** *"Projeto-alvo cuja constituição nunca menciona a palavra
+   MUST ... não deve gerar o achado desta feature"* (`spec.md` ~linha 170) —
+   terceiro bullet da seção, gêmeo da FR-005 e igualmente fora da lista de
+   revogação (a lista alcançou só o segundo bullet).
+
+Implementação, `research.md` Decision 11, `contracts/must-coverage-finding.md`,
+`plugins/cstk/skills/converge/SKILL.md` e `tests/test_extract-must.sh`
+(cenários `..._r02_cobertura_mista_exit4` e `..._r02_so_de_heading_exit4`)
+estão todos consistentes entre si e com o comportamento medido — o artefato
+fora de sincronia é apenas a **redação do `spec.md`**. Corrigir exige **mudar**
+texto normativo já presente (não é aditivo), por isso `contradicts`; severidade
+`HIGH` por `severity.sh --type contradicts --priority P1 --must-violated false`
+(P1 = User Story 1, cujos Acceptance Scenarios 3 e 4 são dois dos trechos
+falsificados).
+
+- [x] 13.1.1 Completar a lista de revogação do bloco "Revisão de escopo (issue #188, incremento pós-round-1)" em `docs/specs/converge-must-coverage-fail-closed/spec.md` para alcançar TODOS os trechos que o incremento r02 de fato revoga, hoje limitada a FR-006 + um Edge Case: (a) **FR-005** — emendar/revogar explicitamente, pois seu `MUST NOT` proíbe o achado exatamente no caso-bandeira da issue #188 (`N == 0`, `Q > 0`); (b) **US1 Acceptance Scenarios 3 e 4** — reconciliar com o comportamento `cobertura-parcial`/`exit 4`, espelhando o que já foi feito para FR-005/FR-006; (c) **SC-002** — qualificar as duas cláusulas com o conjuntivo `Q == 0` (o critério só vale quando não há princípio emitido só por rótulo de heading), para que o critério de sucesso deixe de declarar falso-positivo o comportamento que a feature entrega; (d) **Edge Case** "constituição nunca menciona a palavra MUST" — mesmo tratamento do bullet gêmeo já revogado. MUST NOT alterar `plugins/cstk/skills/converge/scripts/extract-must.sh`, a ordem das guardas, `research.md` Decision 11, `contracts/must-coverage-finding.md`, `plugins/cstk/skills/converge/SKILL.md` ou `tests/test_extract-must.sh` — os cinco já estão corretos e consistentes com o comportamento medido. MUST NOT reescrever o bloco "Carve-out de precedência" da FR-010, auditado e aprovado nesta onda.
+
+<!-- converge-key: be2158480dc2 -->
+
+## FASE 14 - Revisão Editorial Integral do `spec.md`
+
+> **Origem: decisão humana `dec-056`** (resposta ao bloqueio `block-001`,
+> registrado por `dec-055` na onda-013) — **não** é uma fase gerada pela
+> skill `converge`, e por isso não carrega marcador `converge-key`. Quatro
+> ciclos consecutivos de convergência (ondas 007, 009, 011, 013) acharam,
+> cada um, um defeito de **redação** distinto no mesmo `spec.md`, sempre
+> introduzido pela emenda pontual do ciclo anterior. O operador optou por
+> `revisao-editorial-integral` em vez de uma 5ª emenda pontual.
+>
+> Escopo **estritamente editorial**: reorganiza, consolida e desduplica o
+> `spec.md`. MUST NOT alterar o que a especificação exige. Conteúdo
+> normativo já verificado correto contra 5 fixturas medidas na onda-013 e
+> re-medidas na task 14.1.5.
+
+### 14.1 Consolidar as emendas r02 no corpo dos requisitos e eliminar a duplicação estrutural `[C]`
+
+Ref: `dec-056` · origem: decisão humana · classe: dívida de redação
+
+Defeitos de redação encontrados, um por ciclo, todos na mesma superfície:
+
+1. onda-007 — redação da FR-010 (→ FASE 11);
+2. onda-009 — prosa do carve-out formalizava só `M == 0` enquanto a
+   fórmula exigia `N > 0 && M == 0` (→ FASE 12);
+3. onda-011 — a lista de revogação do bloco "Revisão de escopo" nomeava
+   apenas FR-006 + 1 Edge Case, deixando FR-005, US1 AS3/AS4, SC-002 e o
+   Edge Case gêmeo em vigor dizendo o oposto do implementado (→ FASE 13,
+   `HIGH`);
+4. onda-013 — a frase meta do mesmo bloco afirmava que cada trecho
+   "permanece com sua redação original preservada abaixo" e que FR-006 +
+   1 Edge Case eram "as únicas exceções de forma" — falso para SC-002,
+   alterado in loco pela FASE 13 (`git diff d604814^..d604814`).
+
+Causa estrutural comum: o bloco "Carve-out de precedência" da FR-010 era
+**byte-idêntico** em `## Requirements` e em `## Delta Requirements`, o que
+obrigava toda correção a ser aplicada duas vezes e verificada byte-a-byte;
+e as emendas viviam em blocos anexos ("Emenda (Revisão de escopo...)")
+em vez de no corpo dos requisitos, de modo que nenhum requisito se lia
+sozinho e correto.
+
+Medição de baseline desta onda: `validate-sdd.sh` sobre o `spec.md`
+pré-revisão reportava `errors=3` — três `duplicate-id` (`FR-005`,
+`FR-006`, `SC-002`), produzidos justamente pelo bloco "Revisão de escopo",
+que redefinia em negrito IDs já definidos em `### Functional Requirements`.
+
+- [x] 14.1.1 Introduzir a seção normativa `## Notação de contagens
+      (N, M, Q)`, definindo as três contagens uma única vez, antes do
+      primeiro uso, com remissão à legenda do modo `--coverage` de
+      `plugins/cstk/skills/converge/scripts/extract-must.sh` — eliminando
+      a dependência de `Q` ser definido de passagem dentro de um bloco de
+      emenda.
+- [x] 14.1.2 Consolidar as emendas r02 no CORPO de cada trecho afetado
+      (`FR-005`, `FR-006`, US1 Acceptance Scenarios 3 e 4, `SC-002`, os
+      dois Edge Cases), de modo que cada um se leia sozinho e correto sem
+      precisar do bloco de revogação; remover os blocos anexos "Emenda
+      (Revisão de escopo, incremento pós-round-1)".
+- [x] 14.1.3 Remover o bloco meta "Revisão de escopo (issue #188,
+      incremento pós-round-1)" — cuja frase de fechamento afirmava algo
+      falso sobre o próprio documento (achado da onda-013) — e mover o
+      histórico round-1 (o que deixou de valer e por quê) para o
+      `## Apêndice A`, único e ao fim do arquivo, com rastreabilidade às
+      issues #173 e #188. Efeito colateral medido: `validate-sdd.sh`
+      passa de `errors=3` para `errors=0`.
+- [x] 14.1.4 Eliminar a duplicação byte-idêntica do bloco "Carve-out de
+      precedência": a exposição longa (motivação, referência a
+      `research.md` Decision 11, narrativa do caso-bandeira) fica em UMA
+      fonte normativa, dentro da `FR-010` de `## Requirements`; a entrada
+      `FR-010` de `## Delta Requirements` conserva o texto integral do
+      requisito em forma compacta e autossuficiente, como exige a
+      gramática de `contracts/delta-section-format.md` regra 4 (o texto
+      da entrada `ADDED` é o que `delta-merge.sh` aplica ao corpus — um
+      ponteiro "ver acima" quebraria o corpus de living-specs).
+- [x] 14.1.5 Re-medir as 5 fixturas de veredito contra o texto revisado e
+      confirmar que a especificação continua descrevendo exatamente o
+      comportamento implementado: `f1(N=0,M=0,Q=1)` →
+      `cobertura-parcial`/`exit 4`; `f2(N=0,M=0,Q=0)` →
+      `sem-must-declarado`/`exit 0`; `f3(M=1,Q=1)` →
+      `cobertura-parcial`/`exit 4`; `f4(M=1,Q=0)` → `ok`/`exit 0`;
+      `f5(N=1,M=0,Q=1)` → `zero-reconhecida`/`exit 3`. MUST NOT alterar
+      `plugins/cstk/skills/converge/scripts/extract-must.sh`, a ordem das
+      guardas, `research.md`, `contracts/must-coverage-finding.md`,
+      `plugins/cstk/skills/converge/SKILL.md` ou
+      `tests/test_extract-must.sh`.
+- [x] 14.1.6 Submeter o `spec.md` revisado a uma auditoria de **leitor
+      novo** (subagente sem contexto da reescrita, munido apenas das 4
+      guardas e das 5 medições como régua) e corrigir todos os defeitos
+      de redação reportados — quebrando o padrão em que o próprio autor
+      da emenda a revisa e não vê o defeito que acabou de introduzir. A
+      auditoria achou 11 itens; todos corrigidos nesta task:
+      **(a) contradição** — a pergunta da sessão de Clarifications
+      listava `zero-reconhecida` entre os vereditos que a FR-010 nunca
+      produziria, negando o ramo de precedência que a própria FR-010
+      manda (ganhou nota datada, sem reescrever o registro histórico);
+      `FR-011` dizia "o veredito descrito na FR-010" quando a FR-010
+      descreve dois vereditos, exigindo por leitura literal exit `≠ 3`
+      justo onde a medição `f5` exige exit `3` (qualificado para
+      `cobertura-parcial`); `FR-012` dizia que a regra de severidade "já
+      é usada hoje" quando o Contexto do mesmo documento afirma que
+      nenhum achado estruturado existe hoje.
+      **(b) frase meta falsa** — "toda condição normativa desta
+      especificação é enunciada em termos dessas três contagens" era
+      falso (FR-007/008/009 e o Edge Case da constituição ausente não
+      usam `N`/`M`/`Q`); "cada requisito enuncia a regra vigente por
+      inteiro" era falso para as re-enunciações do `## Delta
+      Requirements`; a remissão "existe um contrato de saída já validado
+      (ver FR-014)" caracterizava mal a FR-014.
+      **(c) fórmula vs prosa** — o Edge Case de cobertura mista dizia
+      "com `Q == 0` o achado só dispara quando `M == 0`", omitindo o
+      conjuntivo `N > 0` (o caso `N == 0, M == 0, Q == 0` é
+      `sem-must-declarado`, sem achado — medição `f2`); o "em
+      particular" da FR-010 renderizava só um dos dois ramos
+      complementares da precedência (faltava o ramo `M > 0`); o
+      Acceptance Scenario 5 enumerava 2 das 3 combinações de `Q > 0`.
+      **(d) duplicação** — as cópias de `FR-010` e `FR-013` no `## Delta
+      Requirements` divergiam do corpo: a de `FR-010` perdia o `MUST
+      NOT` que proíbe alterar a ordem das guardas e o teste de
+      precedência; a de `FR-013` perdia a cláusula inteira de deferição
+      ao plano técnico. Ambas completadas.
+      Gates após as correções: `validate-sdd.sh` `errors=0 warnings=0`;
+      `delta-gate.sh` `errors=0`; `delta-merge.sh --dry-run`
+      `delta=applied added=5`; `validate-docs-rendered` `ERRO 0 AVISO 0`.
+
+## FASE 15 - Remoção da Prosa Auto-Referente do `spec.md` (dec-064)
+
+> **Origem: decisão humana `dec-064`** (resposta ao bloqueio humano aberto
+> pelo 5º ciclo de convergência, onda-015) — **não** é uma fase gerada pela
+> skill `converge`, e por isso não carrega marcador `converge-key`. A
+> revisão editorial integral da FASE 14 (`dec-056`) — a opção escolhida
+> para estancar a classe recorrente de defeitos de redação — REPRODUZIU a
+> classe: introduziu 3 novos defeitos de prosa auto-referente. Proveniência
+> provada: `git show d604814 | grep -c "Notação de contagens"` = 0 e
+> `grep -c "re-enuncia"` = 0; ambos presentes em `ce08a75`. Desta vez o
+> operador escolheu atacar a **causa** (prosa que descreve o próprio
+> documento, sem obrigação normativa, e que exige re-verificação a cada
+> edição — o mecanismo que falhou nos 5 ciclos) em vez de emendar mais um
+> sintoma.
+>
+> Escopo **estritamente editorial**, restrito a `spec.md`/`tasks.md`. MUST
+> NOT alterar `plugins/cstk/skills/converge/scripts/extract-must.sh`,
+> `tests/`, `research.md`, `contracts/` ou
+> `plugins/cstk/skills/converge/SKILL.md`. MUST NOT alterar o que a
+> especificação exige — conteúdo normativo re-verificado contra as 5
+> fixturas (task 15.1.6).
+
+### 15.1 Remover prosa auto-referente e resolver colisão de notação `[A]`
+
+Ref: `dec-064` · origem: decisão humana · classe: dívida de redação
+
+- [x] 15.1.1 Deletar as frases auto-referentes do parágrafo de reabertura
+      (round 2/issue #188, ~linhas 43-51): "O texto abaixo já está
+      consolidado: na seção `## Requirements`, cada requisito enuncia a
+      regra vigente por inteiro..." e "A seção `## Delta Requirements`
+      re-enuncia esses mesmos requisitos..." — falso por contagem:
+      `## Requirements` tem 14 FRs (`FR-001`..`FR-014`), `## Delta
+      Requirements` tem 5 (`FR-010`..`FR-014`), medido por
+      `grep -c "^- \*\*FR-"` em cada seção. Reescrita preserva o fato
+      rastreável (round 2, issue #188) e a regra de precedência normativa
+      (`## Requirements` prevalece em divergência com `## Delta
+      Requirements`), sem a alegação de identidade entre as duas seções.
+- [x] 15.1.2 Deletar a aritmética histórica do Apêndice A (~linhas
+      464-465, texto pré-onda): "o round 1 (...) foi escrito sob a
+      premissa de que só **dois** insumos mereciam achado: cobertura zero
+      com a palavra `MUST` presente (`N > 0` e `M == 0`)" — a frase
+      afirma "dois insumos" mas enumera UMA única condição (a conjunção
+      `N > 0` **e** `M == 0`); o round 1 definia uma única classe de
+      achado, não dois insumos distintos. Reescrito para "definia uma
+      única classe de achado: cobertura zero com a palavra `MUST`
+      presente (...)", preservando a tabela de revogação (FR-005/FR-006/
+      Acceptance Scenarios/SC-002/Edge Cases) intacta — ela é verificável
+      mecanicamente, fora da classe removida.
+- [x] 15.1.3 Resolver a colisão do símbolo `N` entre o parágrafo de
+      Contexto (~linha 24, pré-onda: "a contagem `N` (actionable) da
+      ETAPA 7 não é afetada") e a legenda `## Notação de contagens (N, M,
+      Q)` (~linha 93, pré-onda: `N` = ocorrências da palavra `MUST` no
+      arquivo) — são duas métricas diferentes (a variável `N` de
+      `converge/SKILL.md` ETAPA 7, linha ~444, conta achados
+      `missing+partial+contradicts`; o `N` desta especificação conta
+      ocorrências da palavra MUST). Desambiguado no sítio de origem (a
+      menção da ETAPA 7 reescrita para "a contagem de achados acionáveis
+      da ETAPA 7", sem o símbolo `N`), preferindo mexer no local
+      colidente a alterar a legenda — conforme instrução do operador. A
+      legenda `N`/`M`/`Q` permanece byte-idêntica.
+- [x] 15.1.4 Achado adicional, mesma classe, fora dos 3 nomeados pelo
+      operador: o parágrafo pós-legenda "Toda condição de **cobertura**
+      enunciada nesta especificação é expressa em termos dessas três
+      contagens, e nenhuma delas depende de contagem definida em outro
+      documento. Requisitos que não versam sobre cobertura (...) não
+      usam `N`, `M` nem `Q`..." — meta-descrição do próprio documento
+      (mesma superfície que já havia sido corrigida uma vez na task
+      14.1.6-b e voltou a se acumular), sem obrigação normativa, exigindo
+      reverificação a cada FR novo. Removido por inteiro; os bullets da
+      legenda `N`/`M`/`Q` preservados intactos.
+- [x] 15.1.5 Preservadas intactas, por instrução explícita do operador: a
+      tabela de revogação round 1 → round 2 (Apêndice A) e a legenda
+      `N`/`M`/`Q` (`## Notação de contagens`) — ambas verificáveis
+      mecanicamente (a tabela contra `git diff`, a legenda contra
+      `extract-must.sh --coverage`), fora da classe de prosa
+      auto-referente removida nesta fase.
+- [x] 15.1.6 Re-medidas as 5 fixturas de veredito contra
+      `plugins/cstk/skills/converge/scripts/extract-must.sh` (script MUST
+      NOT alterado nesta fase — apenas prosa de `spec.md` foi tocada):
+      suíte completa `tests/test_extract-must.sh` roda `39/39 ok`,
+      cobrindo os 5 vereditos descritos por `spec.md` — `f1(N=0,M=0,Q=1)`
+      → `cobertura-parcial`/`exit 4`
+      (`scenario_coverage_r02_so_de_heading_exit4`); `f2(N=0,M=0,Q=0)` →
+      `sem-must-declarado`/`exit 0`
+      (`scenario_coverage_veredito_sem_must_declarado_exit0_sem_aviso`);
+      `f3(M=1,Q=1)` → `cobertura-parcial`/`exit 4`
+      (`scenario_coverage_r02_cobertura_mista_exit4`); `f4(M=1,Q=0)` →
+      `ok`/`exit 0` (`scenario_coverage_veredito_ok_exit0`);
+      `f5(N=1,M=0,Q=1)` → `zero-reconhecida`/`exit 3`
+      (`scenario_coverage_r02_precedencia_zero_reconhecida_vence` +
+      `scenario_coverage_veredito_zero_reconhecida_exit3`). A
+      especificação revisada continua descrevendo exatamente esse
+      comportamento.
+- [x] 15.1.7 Submetido o `spec.md` revisado a auditoria de **leitor
+      novo** (subagente sem contexto da edição, munido apenas da legenda
+      `N`/`M`/`Q`, das 5 medições da task 15.1.6 e do critério do
+      operador desta fase como régua) ANTES do commit — mesmo método que
+      achou 11 defeitos na onda-014, 3 deles introduzidos pela própria
+      revisão que os corrigiu. A auditoria não achou nenhuma frase
+      meta-autorreferente remanescente, nenhuma colisão de `N`/`M`/`Q` e
+      nenhuma divergência de fórmula contra as 5 fixturas; achou 1 defeito
+      pré-existente fora do escopo das 4 tasks anteriores: a citação "ver
+      `extract-must.sh`, comentário linhas 82-83" (parágrafo de Contexto)
+      apontava para o trecho errado do script — o comentário deliberado
+      sobre exigir dois-pontos está nas **linhas 97-98**, verificado por
+      `grep -n "Exigir os dois-pontos" extract-must.sh` = `97`. Corrigido
+      nesta task (valor factual re-sourced do próprio script, não
+      removido — é referência verificável, não prosa auto-referente).
+      Gates após a correção: `validate-sdd.sh` `errors=0 warnings=0`;
+      `delta-gate.sh` `errors=0`; `delta-merge.sh --dry-run`
+      `delta=applied added=5`; `validate-docs-rendered` `ERRO 0 AVISO 0`;
+      `validate-tasks-template.sh` `critical=0 warning=0`;
+      `tests/test_extract-must.sh` `39/39 ok` (script intocado — apenas
+      a citação em `spec.md` mudou).
+
+## FASE 16 - Correção de Prosa Factual Falsa Ancorada em Referente Externo (dec-071)
+
+> **Origem: decisão humana `dec-071`** (resposta ao bloqueio humano
+> `block-003`, aberto pelo 6º ciclo de convergência, onda-017) — **não** é
+> uma fase gerada pela skill `converge`, e por isso não carrega marcador
+> `converge-key`. O 6º ciclo teve auditoria MECÂNICA 100% limpa (5
+> fixturas, legenda `N`/`M`/`Q`, colisão de `N`, citação 97-98, hardening,
+> `tests/test_extract-must.sh` `39/39`), mas a auditoria de prosa por
+> **leitor-novo** achou 6 defeitos de uma classe DIFERENTE da prosa
+> auto-referente removida na FASE 15: prosa que afirma um FATO externo
+> verificável (estado de uma issue do GitHub, o que uma issue mediu, uma
+> contradição textual entre dois arquivos, uma lacuna de formato de
+> ferramenta) e o fato afirmado está errado. O operador escolheu
+> `corrigir-os-6-e-reconvergir`, com a condição acordada: se o 7º ciclo
+> achar mais um defeito da mesma família, a auditoria por `converge`
+> se encerra e o residual é aceito.
+>
+> Escopo: `spec.md`, `research.md` (achado 3 exige — contradição está lá,
+> não em `spec.md`) e `tasks.md`. MUST NOT alterar
+> `plugins/cstk/skills/converge/scripts/extract-must.sh`, `tests/`,
+> `plugins/cstk/skills/converge/SKILL.md` ou `contracts/`. Toda correção
+> foi ancorada numa fonte verificada NO MOMENTO da edição (`gh issue view`,
+> `grep -n` no arquivo real, execução do script/gate) — nunca reescrita a
+> partir do que o relatório da convergência disse.
+
+### 16.1 Corrigir os 6 achados de prosa factual falsa e validar `[A]`
+
+Ref: `dec-071` · origem: decisão humana · classe: prosa factual falsa
+(referente externo, não auto-referente)
+
+- [x] 16.1.1 `c4962c78df5f` (HIGH) — `spec.md` linha 9 afirmava issue #173
+      `(OPEN)`. Reconfirmado via `gh issue view 173` em 2026-09-02: estado
+      real é `CLOSED`. Corrigido para `(CLOSED — reconfirmado via gh issue
+      view 173 em 2026-09-02; a issue permanece como registro histórico
+      da origem desta feature, mesmo já fechada)`.
+- [x] 16.1.2 `6b2eeb24eac3` (HIGH) — "caso-bandeira da issue #188"
+      misatribuído em 4 sítios (`spec.md`, Edge Case ~L221, FR-005 ~L254,
+      FR-010 ~L301, Apêndice A ~L479, numeração pré-onda). Fato medido via
+      `gh issue view 188`: a issue mediu `N=20`/`M=16`/`Q=2` → `ok`/
+      `exit=0` ("A linha do meio é o defeito"; "Este: `M > 0`, veredito
+      `ok`, exit 0") — o flagship real é o ramo `M > 0` **e** `Q > 0`
+      (mascaramento de 2 princípios `NON-NEGOTIABLE` sem regra legível),
+      não o ramo `N == 0`/`M == 0` que a spec atribuía à issue. Nos 4
+      sítios: a medição `N=0`/`M=0`/`Q=1` → `cobertura-parcial`/`exit=4`
+      foi PRESERVADA (é real, validada pela fixture `f1` de
+      `tests/test_extract-must.sh ::
+      scenario_coverage_r02_so_de_heading_exit4`) — só a atribuição à
+      issue #188 foi removida/corrigida, com o caso-bandeira real
+      (`M > 0` **e** `Q > 0`, `N=20`/`M=16`/`Q=2` → `ok`/`exit=0` antes
+      desta feature) apontado no lugar certo (FR-010 e Apêndice A). FR-005
+      e FR-010 (texto normativo) foram re-medidos após a edição: nenhuma
+      obrigação MUST/MUST NOT mudou de sentido, só a prosa explicativa
+      entre parênteses/travessões.
+- [x] 16.1.3 `025760516927` (MEDIUM) — `research.md` linha 400 afirmava
+      "FR-001..FR-005 e FR-007..FR-009 permanecem íntegros", mas o
+      Apêndice A de `spec.md` (tabela de revogação round 1 → round 2)
+      declara que a FR-005 ganhou o conjuntivo `Q == 0` que não tinha no
+      round 1 — não ficou íntegra/incondicional. Corrigido para
+      "FR-001..FR-004 e FR-007..FR-009 permanecem íntegros ... sem
+      qualificação nova", com parágrafo explícito de que FR-005 e FR-006
+      (as duas, mesma classe de mudança) ganharam o conjuntivo `Q == 0`
+      neste round, remetendo ao Apêndice A como fonte.
+- [x] 16.1.4 `9de0bdacf929` (MEDIUM) — a seção `## Delta Requirements` só
+      tinha `#### ADDED` (FR-010..FR-014); `delta-merge.sh` suporta
+      `#### MODIFIED` (linha ~168), e FR-005/FR-006 mudaram de texto no
+      round 2. Verificado com `delta-gate.sh` que
+      `docs/specs/current/converge-must-coverage-fail-closed.md` **não
+      existe** no corpus (`ls docs/specs/current/*.md` não lista esta
+      capability) — logo `#### MODIFIED` é estruturalmente inválido aqui
+      (regra 4 de `delta-section-format.md`: `MODIFIED` referencia um id
+      já existente no corpus; sem merge anterior, não há o que
+      referenciar — confirmado empiricamente: `delta-gate.sh` rejeitou a
+      primeira tentativa com `ref-not-found`). Fix aplicado: o grupo
+      `#### ADDED` passou a listar `FR-001..FR-014` por inteiro, com o
+      texto vigente (round 2, já qualificado) de cada requisito — não o
+      incondicional do round 1 — para que o primeiro merge produza uma
+      capability autoconsistente desde a origem. Nota de proveniência
+      registrada no Apêndice A (não normativa). Validado:
+      `delta-gate.sh spec.md` → `errors=0`; `delta-merge.sh spec.md
+      --feature converge-must-coverage-fail-closed --dry-run` →
+      `delta=applied added=14 modified=0 removed=0 renamed=0`.
+- [x] 16.1.5 `ea3c7fe6a9ff` (MEDIUM) — Key Entities (`spec.md`) descrevia
+      "Achado de Convergência" como produzido "especificamente para o
+      cenário 'cobertura de MUST zerada'" — preso ao round 1; no round 2
+      o mesmo tipo de achado também é produzido para "cobertura de MUST
+      parcial" (veredito `cobertura-parcial`, FR-010/FR-012), inclusive
+      quando `M > 0` (cobertura NÃO zerada). Corrigido para descrever os
+      dois cenários (`zero-reconhecida`/FR-001-002 e
+      `cobertura-parcial`/FR-010/FR-012) e as respectivas regras de
+      classificação/severidade.
+- [x] 16.1.6 `fc70c807e018` (MEDIUM) — a narrativa da User Story 1 e o
+      Independent Test (`spec.md`) descreviam só o caso `MUST` em prosa
+      corrida (`N > 0`/`M == 0`), excluindo por construção 2 das 3
+      combinações do próprio Acceptance Scenario 5 da US1 (`M > 0`; e
+      `N == 0` **e** `M == 0`). Ambos os parágrafos foram ampliados para
+      cobrir também o caso de princípio emitido só pelo rótulo do
+      heading (`Q > 0`), nas suas combinações, sem alterar a redação do
+      Scenario 5 em si (que já estava correta).
+- [x] 16.1.7 Submetido o `spec.md` revisado a auditoria de **leitor
+      novo** (subagente `data-veracity-verifier`, sem contexto da edição)
+      ANTES do commit — mesmo método que achou 11 defeitos na onda-014 e
+      1 pré-existente na onda-016. Resultado: as áreas 3 (research.md ×
+      Apêndice A), 4 (Delta `#### ADDED` vs `#### MODIFIED`), 5 (Key
+      Entities) e 6 (narrativa/Independent Test da US1) foram
+      **independentemente reconfirmadas** pelo leitor-novo lendo os
+      arquivos e o código de `delta-gate.sh` (achado 4 verificado duas
+      vezes: `Glob docs/specs/current/*.md` sem entrada para esta
+      capability, e leitura literal de `delta-gate.sh:334-354`
+      confirmando que `#### MODIFIED` seria rejeitado com
+      `ref-not-found` no estado atual do corpus). As áreas 1 e 2 (estado
+      da issue #173 e medição da issue #188) o leitor-novo não pôde
+      reverificar de forma independente por restrição de ferramentas da
+      própria sessão dele (sem `gh`/Bash) — não por dúvida sobre o dado;
+      ambas já haviam sido verificadas por mim nesta mesma onda via
+      `gh issue view 173`/`gh issue view 188` reais, com saída literal
+      capturada antes da edição (não uma alegação do relatório da
+      convergência). Nenhum defeito novo foi encontrado dentro das 6
+      áreas. O leitor-novo sinalizou 1 observação não-bloqueante fora do
+      escopo desta fase: a seção `Contexto` (não-normativa, ~linhas
+      20-29) descreve em tempo presente o estado PRÉ-feature do
+      `SKILL.md`/`extract-must.sh` ("hoje só instrui via prosa..."),
+      redação já defasada frente ao estado atual do repositório (a
+      feature já foi implementada nos dois rounds) — leitura como
+      enquadramento histórico deliberado (a seção descreve o estado no
+      momento da abertura da issue), não como um dos 6 achados
+      atribuídos pelo operador; deixado para o 7º ciclo de `converge`
+      julgar, não corrigido preventivamente aqui (fora do escopo desta
+      fase, que é reagir aos 6 achados nomeados, não fazer nova varredura
+      própria). Gates finais: `validate-sdd.sh spec.md`
+      `errors=0 warnings=0`; `delta-gate.sh spec.md` `errors=0
+      warnings=0`; `delta-merge.sh spec.md --feature
+      converge-must-coverage-fail-closed --dry-run` `delta=applied
+      added=14 modified=0 removed=0 renamed=0`; `validate-docs-rendered`
+      em `spec.md` `ERRO 0 AVISO 0` (`research.md` mantém os mesmos 4
+      AVISOS pré-existentes de fence sem linguagem, fora do diff desta
+      fase — confirmado por `git diff --stat`); `tests/test_extract-must.sh`
+      `39/39 ok` (nenhum executável tocado nesta fase).

@@ -33,6 +33,12 @@
 #      caminho `--coverage && ...` (ou equivalente) deve tratar exit 3 como
 #      "cobertura indeterminada, nao prosseguir silenciosamente", nunca
 #      como falha do proprio extract-must.sh.
+#   4  --coverage APENAS (r02, converge-must-coverage-fail-closed): veredito
+#      `cobertura-parcial` — pelo menos um principio foi emitido so pelo
+#      rotulo do heading "(NON-NEGOTIABLE)", sem NENHUMA linha de regra MUST
+#      legivel no corpo (`heading_only > 0`). Mesmo balde do exit 3: SINAL
+#      DE ESTADO fail-closed, nao erro de execucao — stdout continua
+#      completo.
 #
 # --- Por que NAO assumir numeracao romana (I, II, III...) ---
 # O template generico da skill `constitution` (templates/constitution.md)
@@ -116,17 +122,58 @@
 # `cobertura de MUST: <veredito>` + o exit code tornam esse estado
 # detectavel programaticamente, sem novo parsing de texto. N = ocorrencias
 # da palavra MUST (contagem independente); M = linhas de regra reconhecidas
-# pelo parser. 3 guardas ORDENADAS e mutuamente exclusivas — a primeira que
-# casar decide, nenhuma reavalia a anterior:
-#   1. M > 0             -> `ok`                  (parser leu regra real)
-#   2. N > 0 e M == 0     -> `zero-reconhecida`     (sintoma #171: fala de
+# pelo parser; Q = principios emitidos so por rotulo de heading (sem regra
+# MUST lida). 4 guardas ORDENADAS e mutuamente exclusivas (r02,
+# research.md Decision 11) — a primeira que casar decide, nenhuma reavalia
+# a anterior:
+#   1. N > 0 e M == 0     -> `zero-reconhecida`     (sintoma #171: fala de
 #                                                    MUST, parser nao le)
-#   3. N == 0             -> `sem-must-declarado`   (constitution de fato
+#   2. Q > 0               -> `cobertura-parcial`    (r02: pelo menos um
+#                                                    principio so entrou
+#                                                    pelo rotulo do heading,
+#                                                    sem regra MUST legivel)
+#   3. M > 0               -> `ok`                  (parser leu regra real
+#                                                    para TODO principio
+#                                                    emitido)
+#   4. senao                -> `sem-must-declarado`   (constitution de fato
 #                                                    nao declara MUST)
-# `zero-reconhecida` e o UNICO veredito que sai com `exit 3` — sinal de
-# estado fail-closed para quem chama (ver bloco EXIT no cabecalho). `ok` e
-# `sem-must-declarado` sao ambos `exit 0`: legitimamente nao ha lacuna a
-# reportar em nenhum dos dois.
+# A guarda 1 permanece em primeiro: `zero-reconhecida` e o sintoma mais
+# forte (fala de MUST, parser leu ZERO regras) e os dois podem coocorrer
+# (`N>0 && M==0` com `Q>0`) — a precedencia resolve o empate a favor do
+# sinal mais forte (research.md Decision 11).
+# `zero-reconhecida` sai com `exit 3`; `cobertura-parcial` sai com `exit 4`
+# — ambos sinal de estado fail-closed para quem chama (ver bloco EXIT no
+# cabecalho). `ok` e `sem-must-declarado` sao ambos `exit 0`: legitimamente
+# nao ha lacuna a reportar em nenhum dos dois.
+#
+# --- Identificacao nominal — linhas 7..N (r02, FR-013) ---
+# Quando, e somente quando, Q >= 1, o relatorio ganha uma linha adicional
+# por principio heading-only, apendada ESTRITAMENTE depois da linha de
+# veredito (6a linha), na ordem de aparicao no arquivo:
+#   principio sem regra MUST legivel: <nome do principio, verbatim>
+# Independe do veredito (aparece tambem no ramo `zero-reconhecida`, exit 3,
+# quando Q >= 1 — INV-r02-D, dec-020). Com Q == 0 a saida permanece
+# byte-identica ao formato de 6 linhas (INV-r02-A/B, FR-014): nenhuma linha
+# 7 e emitida, nenhum cabecalho, nenhum separador.
+#
+# Hardening de seguranca (dec-023, LLM10/consumo ilimitado + LLM01/ASI09):
+#   INV-r02-E: teto de 20 linhas de nome emitidas; havendo mais, a 20a e
+#     seguida de UMA linha "... mais <K> principio(s) omitido(s))" — a
+#     contagem exata continua na 5a linha, nao truncada.
+#   INV-r02-F: cada nome truncado em 200 caracteres, sufixo "..." quando
+#     truncado.
+#   INV-r02-G: caracteres de controle C0 (ESC, TAB, CR inclusive)
+#     substituidos por espaco antes da emissao; texto imprimivel preservado
+#     verbatim.
+#   INV-r02-H: no formato intermediario `classe<TAB>nome`, o nome e sempre
+#     o ULTIMO campo — extraido via posicao do primeiro TAB, nunca por
+#     split ingenuo, para sobreviver a um nome hostil contendo TAB.
+# O nome ecoado e DADO auditado, nunca instrucao (LLM01/ASI09) — quem
+# consome a linha 7..N (converge/SKILL.md) MUST trata-la como transcricao
+# nao-confiavel. O casamento do veredito (6a linha) MUST ser ANCORADO no
+# inicio da linha (`^cobertura de MUST: `) — o prefixo fixo
+# `principio sem regra MUST legivel: ` garante que nenhuma linha 7..N
+# satisfaca essa ancora, mesmo sob heading forjado (INV-r02-C).
 #
 # POSIX sh + awk (ferramentas POSIX canonicas, Constitution II). Zero eval
 # sobre conteudo lido (SEC-1). Todas as variaveis quotadas. Sem Bash-isms.
@@ -233,11 +280,14 @@ if [ "$_COVERAGE" = 1 ]; then
   # Classificacao de cada principio emitido: `with-must` (alguma regra MUST
   # foi de fato lida no corpo) x `heading-only` (entrou so pelo rotulo
   # "(NON-NEGOTIABLE)" do heading, sem nenhuma regra lida). Um unico passo —
-  # os dois numeros derivam da MESMA saida.
+  # os dois numeros derivam da MESMA saida. Formato intermediario
+  # `classe<TAB>nome` (r02, INV-r02-H): o nome (ja disponivel em `pending`)
+  # e carregado junto, sem leitura extra do arquivo — consumido mais
+  # abaixo para as linhas 7..N.
   _em_classes=$(awk -v must_re="$_EM_MUST_RE" '
     function flush() {
       if (pending != "" && (pending_nonneg || pending_hasmust)) {
-        print pending_hasmust ? "with-must" : "heading-only"
+        printf "%s\t%s\n", (pending_hasmust ? "with-must" : "heading-only"), pending
       }
     }
     /^### / {
@@ -253,7 +303,7 @@ if [ "$_COVERAGE" = 1 ]; then
   ' "$_CONST")
 
   _em_emitted=$(printf '%s' "$_em_classes" | grep -c . || :)
-  _em_heading_only=$(printf '%s' "$_em_classes" | grep -c '^heading-only' || :)
+  _em_heading_only=$(printf '%s' "$_em_classes" | grep -c '^heading-only	' || :)
 
   printf 'fontes declaradas: %s\n' "$_CONST"
   printf 'ocorrencias da palavra MUST no arquivo (contagem independente): %s\n' "$_em_words"
@@ -261,13 +311,16 @@ if [ "$_COVERAGE" = 1 ]; then
   printf 'principios emitidos: %s\n' "$_em_emitted"
   printf 'principios emitidos so por rotulo de heading (sem regra MUST lida): %s\n' "$_em_heading_only"
 
-  # Veredito de cobertura (converge-must-coverage-fail-closed) — 3 guardas
-  # ordenadas e mutuamente exclusivas; ver bloco de comentario "Veredito de
-  # cobertura + exit 3" no cabecalho do script.
-  if [ "$_em_lines" -gt 0 ]; then
-    _em_verdict=ok
-  elif [ "$_em_words" -gt 0 ]; then
+  # Veredito de cobertura (converge-must-coverage-fail-closed, r02) — 4
+  # guardas ordenadas e mutuamente exclusivas; ver bloco de comentario
+  # "Veredito de cobertura + exit 3" no cabecalho do script (research.md
+  # Decision 11).
+  if [ "$_em_words" -gt 0 ] && [ "$_em_lines" -eq 0 ]; then
     _em_verdict=zero-reconhecida
+  elif [ "$_em_heading_only" -gt 0 ]; then
+    _em_verdict=cobertura-parcial
+  elif [ "$_em_lines" -gt 0 ]; then
+    _em_verdict=ok
   else
     _em_verdict=sem-must-declarado
   fi
@@ -275,13 +328,43 @@ if [ "$_COVERAGE" = 1 ]; then
 
   # Sintoma exato de #171: o arquivo fala de MUST e o parser nao reconheceu
   # NENHUMA regra. Nesse estado o resultado do gate nao cobre as regras do
-  # arquivo — dizer isso alto e o ponto do relatorio.
+  # arquivo — dizer isso alto e o ponto do relatorio. Inalterado pelo r02
+  # (mesma guarda de antes, independente da nova guarda cobertura-parcial).
   if [ "$_em_words" -gt 0 ] && [ "$_em_lines" -eq 0 ]; then
     printf '%s: AVISO: o arquivo contem a palavra MUST mas NENHUMA linha de regra foi reconhecida — convencao de marcacao provavelmente nao suportada; o resultado NAO cobre as regras MUST deste arquivo.\n' "$_EM_NAME" >&2
   fi
 
+  # Identificacao nominal — linhas 7..N (r02, FR-013). Guardada por
+  # Q >= 1 (heading_only), INDEPENDENTE do veredito (INV-r02-D) — aparece
+  # tambem no ramo zero-reconhecida. Com Q == 0, nada e emitido aqui
+  # (INV-r02-A). Hardening: teto de 20 linhas (INV-r02-E), truncamento de
+  # 200 chars (INV-r02-F), saneamento de controle C0 (INV-r02-G), nome
+  # extraido pela posicao do primeiro TAB — nunca por split ingenuo
+  # (INV-r02-H).
+  if [ "$_em_heading_only" -gt 0 ]; then
+    printf '%s\n' "$_em_classes" | awk -F '\t' -v cap=20 -v total="$_em_heading_only" '
+      {
+        tabpos = index($0, "\t")
+        class = substr($0, 1, tabpos - 1)
+        name = substr($0, tabpos + 1)
+        if (class != "heading-only") next
+        shown++
+        if (shown > cap) next
+        gsub(/[\001-\037]/, " ", name)
+        if (length(name) > 200) name = substr(name, 1, 200) "..."
+        printf "principio sem regra MUST legivel: %s\n", name
+      }
+      END {
+        if (total + 0 > cap) {
+          printf "principio sem regra MUST legivel: (... mais %d principio(s) omitido(s))\n", total - cap
+        }
+      }
+    '
+  fi
+
   case "$_em_verdict" in
     zero-reconhecida) exit 3 ;;
+    cobertura-parcial) exit 4 ;;
     *) exit 0 ;;
   esac
 fi

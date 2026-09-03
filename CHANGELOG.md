@@ -5,6 +5,60 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.5.0] - 2026-09-02
+
+O gate de cobertura de MUST tinha um ponto cego: uma constituicao em que o
+parser reconhece alguma regra mas um principio e emitido so pelo rotulo do
+heading saia `ok`, `exit 0` — o proprio contador dizia que a cobertura era
+parcial e o veredito ignorava. A issue #188 mediu esse caso em campo
+(`N=20`, `M=16`, `Q=2`). Esta release fecha esse ramo com veredito e exit
+proprios, e nomeia no relatorio quais principios ficaram sem regra.
+
+### Added
+
+- **Veredito `cobertura-parcial` com `exit 4` em
+  `plugins/cstk/skills/converge/scripts/extract-must.sh`** (issue #188,
+  FR-010/FR-011). A cadeia passou a ter 4 guardas ordenadas e mutuamente
+  exclusivas: `N > 0 && M == 0` -> `zero-reconhecida` (`exit 3`), `Q > 0` ->
+  `cobertura-parcial` (`exit 4`), `M > 0` -> `ok`, senao
+  `sem-must-declarado` (ambos `exit 0`). A nova guarda entrou na **2a
+  posicao**: quando os dois sinais coocorrem, `zero-reconhecida` vence por
+  ser o mais forte (`research.md` Decision 11), e ha teste dedicado
+  asserindo essa precedencia.
+- **Identificacao nominal dos principios sem regra — linhas 7..N**
+  (FR-013). Emitidas sempre que `Q >= 1`, inclusive no ramo
+  `zero-reconhecida` (INV-r02-D), e nunca quando `Q == 0` — com `Q == 0` a
+  saida permanece em exatamente 6 linhas (INV-r02-A), preservando o contrato
+  de aditividade da v10.1.0. Hardening da entrada nao confiavel: teto de 20
+  nomes com linha de omissao (INV-r02-E), truncamento em 200 caracteres
+  (INV-r02-F), saneamento de controles C0 (INV-r02-G) e extracao do nome
+  pela posicao do primeiro TAB, nunca por split ingenuo (INV-r02-H).
+
+### Changed
+
+- **`plugins/cstk/skills/converge/SKILL.md`** passa a descrever os **4**
+  vereditos em 7 sitios normativos: vocabulario, casamento ancorado
+  `^cobertura de MUST: `, campos fixos do Gap sintetico, regra de
+  nao-supressao (LLM01/ASI09), allowlist e `exit 4` na secao de scripts
+  auxiliares. O Gap emitido em `cobertura-parcial` e **identico** ao de
+  `zero-reconhecida` (contrato `must-coverage-finding.md` §3.2), de modo que
+  a acionabilidade downstream nao muda entre os dois ramos.
+
+### Fixed
+
+- **Falso-negativo do gate quando ha cobertura parcial** (issue #188). Antes,
+  `M > 0` bastava para o veredito `ok` mesmo com `Q > 0`; medido apos a
+  mudanca, `M=1, Q=1` produz `cobertura-parcial` e `exit 4`. O caso
+  `N=0, M=0, Q>0` — que na v10.1.0 saia `sem-must-declarado`, `exit 0` —
+  tambem passa a sair `cobertura-parcial`, `exit 4`.
+
+### Tests
+
+- `tests/test_extract-must.sh` vai de 29 para **39 cenarios** (+201 linhas):
+  Scenarios 10-16 do `quickstart.md`, 4 cenarios dedicados aos tetos de
+  seguranca (INV-r02-E..H) e o cenario de precedencia
+  `zero-reconhecida` x `cobertura-parcial`.
+
 ## [10.4.0] - 2026-09-01
 
 Tres guardas que davam a resposta errada em execucao real. A allowlist de
@@ -7918,6 +7972,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.5.0]: https://github.com/JotJunior/cstk/releases/tag/v10.5.0
 [10.4.0]: https://github.com/JotJunior/cstk/releases/tag/v10.4.0
 [10.3.0]: https://github.com/JotJunior/cstk/releases/tag/v10.3.0
 [10.2.1]: https://github.com/JotJunior/cstk/releases/tag/v10.2.1
