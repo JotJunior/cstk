@@ -263,6 +263,29 @@ test("handleCollectOptins (3.4.2 allowlist): content com token fora do enum nunc
   assert.equal(atomic?.outcome, "failed");
 });
 
+test("handleCollectOptins (issue #192, regra R-4): registro channel=inherited (reabertura) => reused, elicitInput NAO chamado — nunca re-pergunta o opt-in herdado", async () => {
+  const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+  let called = false;
+  const server: ElicitationServer = {
+    getClientCapabilities: () => ({ elicitation: {} }),
+    elicitInput: async () => {
+      called = true;
+      throw new Error("nao deveria ser chamado — opt-in herdado do round anterior (FR-022)");
+    },
+  };
+  const deps = {
+    ...baseDeps(server),
+    stateRwHelperPath: join(FIXTURES_DIR, "fake-collect-optins-state-rw-inherited.sh"),
+  };
+
+  const response = await handleCollectOptins(input, deps);
+
+  assert.equal(called, false);
+  assert.equal(response.outcome, "accepted");
+  assert.deepEqual(response.result?.reused, ["atomic_commit"]);
+  assert.deepEqual(response.result?.fields, [{ field: "atomic_commit", outcome: "accepted", applied_value: "true" }]);
+});
+
 test("handleCollectOptins (cap M6, task 3.3.1): todos os campos aplicaveis ja registrados => reused, elicitInput NAO chamado", async () => {
   const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
   let called = false;

@@ -64,11 +64,12 @@ top-level, **append-only**, uma entrada por campo por execucao.
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
 | `field` | enum | `atomic_commit` \| `roadmap_mode` \| `delivery_tier` | Identifica o opt-in |
-| `channel` | enum | `structured` \| `prose` | Canal que produziu a resposta (FR-004) |
+| `channel` | enum | `structured` \| `prose` \| `inherited` | Canal que produziu a resposta (FR-004); `inherited` = reabertura (`/feature-00c --reopen`, issue #192): nenhum dialogo ocorreu, valor copiado do round anterior |
 | `outcome` | enum | `accepted` \| `declined` \| `absent` \| `timeout` \| `unavailable` \| `failed` | Ver tabela de desfechos abaixo |
 | `applied_value` | string | valor final gravado, serializado (`"true"`, `"false"`, token do tier) | Espelha o que foi escrito na camada 1 |
 | `recorded_at` | string | ISO 8601 UTC | Timestamp do registro |
-| `reason` | string \| null | opcional, saneado | Diagnostico curto em `failed`; `null` nos demais |
+| `reason` | string \| null | opcional, saneado | Diagnostico curto em `failed`; em `inherited` sem registro-fonte, explica que o valor veio de `.atomic_commit_enabled`; `null` nos demais |
+| `inherited_from` | string \| null | so em `channel: "inherited"` | Rotulo do round de origem (`rounds/<label>`, ex. `r01`); ausente/`null` nos demais canais |
 
 ### Primitiva de escrita e comportamento por backend
 
@@ -132,6 +133,19 @@ Consequencia pratica:
 vez** por campo por execucao. Se o registro mais recente ja tem
 `channel: "prose"`, o campo esta encerrado qualquer que seja o `outcome` —
 garante FR-007/SC-002 (nunca travar) mesmo se a prosa tambem falhar.
+
+**Regra R-4 (heranca em reabertura, issue #192)**: uma execucao criada por
+`/feature-00c --reopen` NAO coleta o opt-in — herda o valor do round
+anterior (feature-reopen FR-022). O command pai grava, logo apos o `init`,
+UM registro `channel: "inherited"` com `applied_value` = valor herdado,
+`outcome` copiado do registro mais recente do round anterior (ou `absent`
+com `reason` quando o round anterior nao tem registro — o evento de decisao
+nao e observavel, so o valor), e `inherited_from` = rotulo do round. Esse
+registro satisfaz a Invariante I-2 sem dialogo; `collect_optins` NAO e
+invocado pelo orquestrador (a linha do ramo estruturado nao e injetada no
+spawn) e, se for, devolve `reused` como para qualquer registro existente.
+`channel: "prose"` NUNCA e gravado numa reabertura: afirmaria um dialogo que
+nao ocorreu (Principio VI).
 
 ### Enum `outcome` — desfechos e origem do sinal
 
