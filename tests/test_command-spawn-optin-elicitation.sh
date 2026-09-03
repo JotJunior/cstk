@@ -346,7 +346,9 @@ scenario_persistencia_legado_optin_responses_feature() {
 _scenario_gate_toolset_cmd() {
   # $1=arquivo $2=regex do prompt de prosa (ancora de ordem)
   _l_cand=$(_first_line_of "$1" '_optin_branch="candidato"')
-  _l_pf=$(_first_line_of "$1" 'mcp-launch\.sh preflight 2>/dev/null')
+  # issue #190: preflight recebe --projeto-alvo-path (6o check); a ancora
+  # aceita as duas formas para nao acoplar este teste ao valor do path.
+  _l_pf=$(_first_line_of "$1" 'mcp-launch\.sh preflight( --projeto-alvo-path [^ ]+)? 2>/dev/null')
   _l_ts=$(_first_line_of "$1" 'select:mcp__cstk-state__collect_optins')
   _l_prompt=$(_first_line_of "$1" "$2")
   [ -n "$_l_cand" ] && [ -n "$_l_pf" ] && [ -n "$_l_ts" ] && [ -n "$_l_prompt" ] \

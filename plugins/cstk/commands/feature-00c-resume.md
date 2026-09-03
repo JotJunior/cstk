@@ -29,6 +29,9 @@ $ARGUMENTS
 short_name           = primeiro argumento posicional (OBRIGATORIO, kebab-case)
 --resposta-bloqueio  = string OBRIGATORIA se status = aguardando_humano
 --projeto PATH       = default = cwd (caso operador esteja em diretorio diferente)
+--allow-target-outside-session = opcional; capturar em `_scope_allow`
+                       (`--allow-outside` quando presente). Bypass explicito e
+                       auditado do passo 2.bis (issues #189/#190/#191).
 ```
 
 ### 2. Localizar state dir
@@ -43,6 +46,13 @@ if [ ! -d "$AGENTE_00C_STATE_DIR" ]; then
   stderr "Verifique o short-name ou invoque /feature-00c novamente"
   exit 6
 fi
+
+# 2.bis. projeto-alvo sob a raiz DESTA sessao (issues #189/#190/#191) —
+# mesma guarda do pre-flight 1.bis do /feature-00c: hooks de guarda e
+# servidor MCP so operam sob a raiz da sessao; retomar de outra raiz roda
+# a onda SEM guarda enforced (tool_calls=0) e com toda tool MCP em
+# SESSION_MISMATCH. Fail-closed ANTES do lock; bypass explicito auditado.
+session-scope.sh check --projeto-alvo-path "$_proj" $_scope_allow || exit 3
 
 # Backend-agnostico (state-db-runtime-parity, v6.3): sob backend SQLite
 # NAO existe state.json — o estado transacional e state.db. Exigir
@@ -173,17 +183,25 @@ fi
 
 6.bis. verificar saude do servidor MCP (paridade FR-011, sem restart) —
    FASE 6 task 6.2.2. Best-effort, puramente observacional: `status --live`
-   roda um health check REAL quando mode=docker e a sessao nao esta
-   stopped, mas NUNCA reinicia o container nem muta o descritor em disco
-   (contracts/mcp-session-lifecycle.md "cstk mcp status --live"). Roda a
-   cada retomada, independente do passo 6:
+   roda um health check REAL — em mode=docker (legado), a sonda do
+   container; em mode=direct (issue #191), apresenta o `session_id` do
+   descritor a `mcp-session.sh resolve` sob a raiz da sessao, o MESMO
+   caminho de autorizacao que toda tool percorre — e NUNCA reinicia nada
+   nem muta o descritor em disco (contracts/mcp-session-lifecycle.md
+   "cstk mcp status --live"). Roda a cada retomada, independente do
+   passo 6, e o `status=` DEVE ser lido (nao descartado):
 
-     cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" --live >/dev/null 2>&1 || :
+     _mcp_live=$(cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" --live 2>/dev/null | sed -n 's/^status=//p') || :
 
-   Se a sonda reportar `status=unavailable` (container caiu durante a
-   pausa), nenhuma acao adicional AQUI — o proximo spawn segue via
-   caminho Bash. Esta etapa cobre so a verificacao de saude, nao a
-   comutacao mid-onda (essa e o protocolo da task 5.5).
+   - `active` = sonda saudavel (descritor ok E token resolve).
+   - `unresolvable` (mode=direct: descritor ok, token NAO resolve sob a raiz
+     desta sessao — `reason=token-unresolvable-under:<raiz>`), `unavailable`
+     (container caiu durante a pausa), `stopped`, `unknown` ou vazio = sonda
+     NAO saudavel: nenhuma acao adicional AQUI — o proximo spawn segue via
+     caminho Bash. Antes da #191 o mode=direct respondia `active`
+     incondicionalmente e instruia o orquestrador a usar tools que falhavam
+     100% das vezes. Esta etapa cobre so a verificacao de saude, nao a
+     comutacao mid-onda (essa e o protocolo da task 5.5).
 
    **Injecao do token de capacidade (dec-043 / SEC-H3, generalizada
    FR-013)**: apos a sonda, leia o descritor e injete o token no contexto
@@ -199,8 +217,9 @@ fi
      `MCP: servidor de estado ativo; session_id=<token>. Prefira as tools
      mcp__cstk-state__* apresentando ESTE session_id; em erro de
      transporte, contrato de queda mid-onda e comutacao para Bash.`
-   - Token vazio ou sonda unavailable ⇒ NAO mencione MCP no prompt
-     (caminho Bash, zero regressao). Token NUNCA ecoado em stdout/logs.
+   - Token vazio ou sonda NAO saudavel (`_mcp_live` != `active`) ⇒
+     NAO mencione MCP no prompt (caminho Bash, zero regressao).
+     Token NUNCA ecoado em stdout/logs.
 
    **Idempotencia dos opt-ins em retomada (task 5.4.1 — mcp-elicitation-optins,
    FR-008/FR-011)**: este resume NUNCA re-pergunta o opt-in de atomic-commit

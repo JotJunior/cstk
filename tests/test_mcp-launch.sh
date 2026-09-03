@@ -286,6 +286,80 @@ scenario_preflight_ready_quando_dist_presente() {
   esac
 }
 
+# ---- preflight --projeto-alvo-path (issue #190: 6o check da decisao de ramo) ----
+
+# _run_preflight_target SSD TARGET — como _run_preflight, com cwd controlado
+# (= raiz da sessao simulada) e CLAUDE_PROJECT_DIR desligada.
+_run_preflight_target() {
+  _rpt_ssd=$1
+  _rpt_target=$2
+  _rpt_cwd=$3
+  _rpt_bin="$TMPDIR_TEST/bin-pf-target"
+  mkdir -p "$_rpt_bin"; _stub_node "$_rpt_bin" 22
+  capture sh -c 'cd -- "$1" && unset CLAUDE_PROJECT_DIR && exec env PATH="$2:$PATH" CSTK_MCP_STATE_SERVER_DIR="$3" "$4" preflight --projeto-alvo-path "$5" < /dev/null' \
+    _ "$_rpt_cwd" "$_rpt_bin" "$_rpt_ssd" "$SCRIPT" "$_rpt_target"
+}
+
+scenario_preflight_target_alinhado_continua_ready() {
+  _ssd="$TMPDIR_TEST/ssd-pf-target-ok"
+  _make_state_server_dir_with_dist "$_ssd"
+  _root="$TMPDIR_TEST/session-root"; mkdir -p "$_root"
+  _run_preflight_target "$_ssd" "$_root" "$_root"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "preflight target alinhado" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "ready|$_ssd/dist/src/index.js" || return 1
+}
+
+scenario_preflight_target_fora_da_raiz_idle_exit_3_mesmo_com_dist() {
+  _ssd="$TMPDIR_TEST/ssd-pf-target-out"
+  _make_state_server_dir_with_dist "$_ssd"
+  _root="$TMPDIR_TEST/session-root"; mkdir -p "$_root"
+  _other="$TMPDIR_TEST/other-worktree"; mkdir -p "$_other"
+  _run_preflight_target "$_ssd" "$_other" "$_root"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight target fora" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "idle|projeto-alvo fora da raiz da sessao" || return 1
+  assert_stdout_contains "resolve tokens sob " || return 1
+  # forma PURA: diagnostico nunca grava enforcement-log no alvo
+  [ ! -e "$_other/.claude/enforcement-log.jsonl" ] \
+    || { _fail "log" "preflight nao pode gravar enforcement-log (forma pura)"; return 1; }
+}
+
+scenario_preflight_target_fora_ignora_bypass_de_env() {
+  # O bypass do pre-flight (CSTK_ALLOW_TARGET_OUTSIDE_SESSION) nao faz a
+  # tool funcionar: o preflight continua idle.
+  _ssd="$TMPDIR_TEST/ssd-pf-target-byp"
+  _make_state_server_dir_with_dist "$_ssd"
+  _root="$TMPDIR_TEST/session-root"; mkdir -p "$_root"
+  _other="$TMPDIR_TEST/other-worktree"; mkdir -p "$_other"
+  _bin="$TMPDIR_TEST/bin-pf-byp"; mkdir -p "$_bin"; _stub_node "$_bin" 22
+  capture sh -c 'cd -- "$1" && unset CLAUDE_PROJECT_DIR && CSTK_ALLOW_TARGET_OUTSIDE_SESSION=1 exec env PATH="$2:$PATH" CSTK_MCP_STATE_SERVER_DIR="$3" "$4" preflight --projeto-alvo-path "$5" < /dev/null' \
+    _ "$_root" "$_bin" "$_ssd" "$SCRIPT" "$_other"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight bypass" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "idle|projeto-alvo fora da raiz da sessao" || return 1
+}
+
+scenario_preflight_target_inexistente_idle_exit_3() {
+  _ssd="$TMPDIR_TEST/ssd-pf-target-404"
+  _make_state_server_dir_with_dist "$_ssd"
+  _root="$TMPDIR_TEST/session-root"; mkdir -p "$_root"
+  _run_preflight_target "$_ssd" "$TMPDIR_TEST/nao-existe" "$_root"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight target 404" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "idle|session-scope.sh verdict falhou" || return 1
+}
+
+scenario_preflight_flag_desconhecida_exit_2() {
+  _ssd="$TMPDIR_TEST/ssd-pf-flag"
+  _make_state_server_dir_with_dist "$_ssd"
+  capture env CSTK_MCP_STATE_SERVER_DIR="$_ssd" "$SCRIPT" preflight --bogus < /dev/null
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "preflight flag" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_preflight_projeto_alvo_path_sem_valor_exit_2() {
+  _ssd="$TMPDIR_TEST/ssd-pf-noval"
+  _make_state_server_dir_with_dist "$_ssd"
+  capture env CSTK_MCP_STATE_SERVER_DIR="$_ssd" "$SCRIPT" preflight --projeto-alvo-path < /dev/null
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "preflight sem valor" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 scenario_preflight_idle_state_server_ausente_exit_3() {
   _run_preflight "$TMPDIR_TEST/nao-existe-pf"
   [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight idle exit" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }

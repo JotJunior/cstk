@@ -1,6 +1,6 @@
 ---
 description: 'Inicia execucao do orquestrador autonomo agente-00C sobre um projeto-alvo. Cria state em <projeto-alvo>/.claude/agente-00c-state/ e delega pipeline SDD ao agente-00c-orchestrator.'
-argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>] [--canonical-project <name>]"
+argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>] [--canonical-project <name>] [--allow-target-outside-session]"
 allowed-tools:
   - Agent
   - Read
@@ -125,7 +125,10 @@ execucao nao-interativa e abortar inviabilizaria automacao"`.
 
 Extrair `descricao-curta` (primeiro posicional, minimo 10 chars),
 `--stack`, `--whitelist`, `--projeto-alvo-path` (default = cwd),
-`--canonical-project NAME` (opcional, capturar em `_canonical_flag`).
+`--canonical-project NAME` (opcional, capturar em `_canonical_flag`) e
+`--allow-target-outside-session` (opcional, capturar em `_scope_allow` =
+`--allow-outside` quando presente; bypass explicito e auditado da
+validacao de raiz da sessao na secao 2 — issues #189/#190/#191).
 
 `--canonical-project` fixa a identidade de projeto na knowledge.db/anti-eco
 com PRECEDENCIA sobre a deteccao de worktree (secao 2, `_canonical`). Uso:
@@ -174,6 +177,16 @@ ja preparado fora do script), apenas defensivo.
   fora das zonas proibidas (`/`, `/etc`, `/usr`, `/var`, `~/.claude`,
   `~/.ssh`, `~/.config`, `~/.aws`, `~/.docker`) — FR-024.
   Use `path-guard.sh validate-target --projeto-alvo-path <PAP>`.
+- `<PAP>` deve ser a RAIZ DESTA SESSAO (issues #189/#190/#191): o harness
+  carrega os hooks de guarda e o servidor MCP da raiz da sessao, e ambos
+  ancoram "ha execucao ativa?" nela — um PAP em outro diretorio roda a
+  execucao inteira com a guarda de Bash INERTE (tool_calls=0, medido) e
+  toda tool mcp__cstk-state__* em SESSION_MISMATCH, com todo diagnostico
+  reportando verde. Fail-closed ANTES de lock/state:
+  `session-scope.sh check --projeto-alvo-path <PAP> $_scope_allow || exit 3`
+  (exit 4 = recusado; repita o stderr ao operador — remediacao:
+  `cd <PAP> && claude`). Com bypass (`verdict=diverged-allowed`), o ramo
+  de opt-in cai obrigatoriamente em `legado` (secao 3, 6o check).
 - `descricao-curta` <= 500 chars; sanitizar antes de qualquer uso em
   commit message, issue ou path — FR-025.
   Use `sanitize.sh check-length --max 500`.
@@ -359,9 +372,13 @@ fi
 #   (c) a tool visivel no SEU toolset — unica prova real (cobre tambem
 #       sessao bootada antes do .mcp.json e servidor de projeto nao
 #       aprovado, que nenhum probe de disco enxerga).
+# `--projeto-alvo-path <PAP>` (issue #190, 6o check): o servidor MCP desta
+# sessao resolve tokens sob a RAIZ DA SESSAO, nao sob o PAP — alvo fora da
+# raiz (so possivel via bypass da secao 2) => `idle|projeto-alvo fora da
+# raiz da sessao ...` e o ramo cai em legado sem queimar a onda-001.
 _optin_preflight=""
 if [ "$_optin_branch" = "candidato" ]; then
-  _optin_preflight=$(mcp-launch.sh preflight 2>/dev/null) || :
+  _optin_preflight=$(mcp-launch.sh preflight --projeto-alvo-path "<PAP>" 2>/dev/null) || :
   case "$_optin_preflight" in
     ready\|*) : ;;                       # servidor real serviria as tools
     *)        _optin_branch="legado" ;;  # `idle|<motivo>` ou helper ausente

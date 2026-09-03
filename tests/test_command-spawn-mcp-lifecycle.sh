@@ -96,6 +96,54 @@ scenario_resume_feat_menciona_sem_restart() {
   assert_exit 0 grep -Eiq 'sem restart|sem reiniciar|nao reinicia' "$CMD_RES_FEAT" || return 1
 }
 
+# ==== issues #189/#190/#191: projeto-alvo != raiz da sessao ====
+# Os 4 commands recusam (fail-closed, bypass auditado) um projeto-alvo fora
+# da raiz da sessao ANTES do lock; os 2 inits passam o alvo ao preflight do
+# launcher (6o check); os 2 resumes LEEM o status= do --live (unresolvable
+# nao e saudavel).
+
+scenario_session_scope_check_nos_4_commands() {
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    grep -Eq 'session-scope\.sh check --projeto-alvo-path .*\$_scope_allow \|\| exit 3' "$_f" \
+      || { _fail "session-scope" "$_f nao invoca session-scope.sh check ... \$_scope_allow || exit 3"; return 1; }
+    grep -Fq -- '--allow-target-outside-session' "$_f" \
+      || { _fail "bypass" "$_f nao documenta --allow-target-outside-session"; return 1; }
+  done
+}
+
+scenario_session_scope_check_precede_lock_nos_4_commands() {
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    _l_ss=$(grep -n 'session-scope\.sh check --projeto-alvo-path' "$_f" | head -1 | cut -d: -f1)
+    _l_lock=$(grep -n 'state-lock\.sh acquire' "$_f" | head -1 | cut -d: -f1)
+    [ -n "$_l_ss" ] && [ -n "$_l_lock" ] \
+      || { _fail "ancora" "$_f: session-scope=$_l_ss lock=$_l_lock"; return 1; }
+    [ "$_l_ss" -lt "$_l_lock" ] \
+      || { _fail "ordem" "$_f: session-scope ($_l_ss) deve preceder o lock ($_l_lock)"; return 1; }
+  done
+}
+
+scenario_preflight_recebe_projeto_alvo_nos_2_inits() {
+  grep -Eq 'mcp-launch\.sh preflight --projeto-alvo-path "\$_proj"' "$CMD_INIT_FEAT" \
+    || { _fail "preflight" "feature-00c.md: preflight sem --projeto-alvo-path \"\$_proj\""; return 1; }
+  grep -Eq 'mcp-launch\.sh preflight --projeto-alvo-path "<PAP>"' "$CMD_INIT_AGENTE" \
+    || { _fail "preflight" "agente-00c.md: preflight sem --projeto-alvo-path \"<PAP>\""; return 1; }
+}
+
+scenario_resumes_leem_status_do_live_e_tratam_unresolvable() {
+  for _f in "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    grep -Eq "_mcp_live=.*cstk mcp status .*--live.*sed -n 's/\^status=//p'" "$_f" \
+      || { _fail "live" "$_f nao le o status= do --live em _mcp_live"; return 1; }
+    grep -Fq 'unresolvable' "$_f" \
+      || { _fail "live" "$_f nao trata status=unresolvable"; return 1; }
+    grep -Fq '_mcp_live` != `active`' "$_f" \
+      || { _fail "live" "$_f: injecao do token deve exigir _mcp_live == active"; return 1; }
+    # o descarte antigo (>/dev/null ... || :) nao pode sobreviver
+    if grep -Eq 'cstk mcp status --state-dir [^|]*--live >/dev/null 2>&1 \|\| :' "$_f"; then
+      _fail "live" "$_f ainda descarta a saida do --live"; return 1
+    fi
+  done
+}
+
 # ==== 6.2.3: stop somente em estado terminal (concluida|abortada) ====
 
 scenario_init_agente_instrui_mcp_stop_terminal() {

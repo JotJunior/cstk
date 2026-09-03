@@ -47,6 +47,8 @@
 #
 # Subcomandos:
 #   guard-hooks-status.sh check --projeto-alvo-path PATH [--quiet]
+#       (issue #189: alvo fora da raiz da sessao => aviso ATENCAO em stderr
+#        via session-scope.sh verdict; TSV e exit inalterados)
 #       [--include-loose-usage] [--verify-registration]
 #       — stdout: uma linha TSV por hook (4 colunas; 5 com
 #         --verify-registration):
@@ -572,6 +574,24 @@ _gh_cmd_check() {
       _gh_err "posttooluse-loose-usage.sh esta present+registered, mas CSTK_OTEL_ENDPOINT esta AUSENTE no ambiente desta invocacao — o hook gateia nessa variavel (Passo 1) e sai 0 mudo, entao a captura de consumo avulso fica INERTE e 'cstk usage' responde 'nao medido'."
       _gh_err "  Remediacao: exportar CSTK_OTEL_ENDPOINT no ambiente do processo 'claude' — o wrapper 'claude()' de 'cstk help telemetry' (README.md, secao de telemetria) faz isso a cada lancamento."
       _gh_err "  Se o wrapper JA estiver instalado, esta leitura pode ser um falso alarme: o ambiente que conta e o do processo 'claude', nao o deste terminal."
+    fi
+  fi
+
+  # Efetividade (issue #189): `present registered current` responde sobre o
+  # PROJETO-ALVO; nenhuma das tres colunas responde "esses hooks vao disparar
+  # na sessao que conduz esta execucao?". O harness carrega hooks da RAIZ DA
+  # SESSAO e a guarda ancora "ha execucao ativa?" no cwd/ancestrais — com o
+  # alvo fora da raiz, 3/3 verde e guarda inerte (tool_calls=0 medido em 3
+  # ondas). Aviso em stderr (nao muda o TSV nem o exit: consumidores parseiam
+  # as 4 colunas; o gate real e session-scope.sh check no pre-flight dos
+  # commands). Forma PURA `verdict`: nunca grava enforcement-log daqui.
+  if [ "$_quiet" = 0 ] && [ -n "$_GH_RR_SELF_DIR" ] && [ -f "$_GH_RR_SELF_DIR/session-scope.sh" ]; then
+    if _ss_out=$(sh "$_GH_RR_SELF_DIR/session-scope.sh" verdict --projeto-alvo-path "$_pap" 2>/dev/null); then
+      :
+    elif [ "$?" -eq 4 ]; then
+      _ss_root=$(printf '%s\n' "$_ss_out" | sed -n 's/^session_root=//p')
+      _gh_err "ATENCAO: hooks registrados em $_pap NAO sao efetivos nesta sessao — raiz da sessao e ${_ss_root:-?}, e o harness so carrega hooks (e ancora a guarda) na raiz. Estado real: guarda de Bash INERTE, tool_calls=0 (issue #189)."
+      _gh_err "  Remediacao: abra a sessao no projeto-alvo (cd $_pap && claude). O pre-flight dos commands 00c recusa esta combinacao por default (session-scope.sh check)."
     fi
   fi
 
