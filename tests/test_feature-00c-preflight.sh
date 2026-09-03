@@ -545,6 +545,77 @@ scenario_T28b_atomic_commit_ausencia_equivale_false() {
 }
 
 # ---------------------------------------------------------------------------
+# T-28c/T-28d — 3'.bis (issue #192): registro `channel: "inherited"` em
+# .optin_responses[] replica literal do bloco de feature-00c.md, com e sem
+# registro-fonte no round anterior; I-2 satisfeita sem dialogo.
+# ---------------------------------------------------------------------------
+_t28_inherit_block() {
+  # $1=HOME $2=SD $3=label $4=_atomic — replica o bloco 3'.bis do command
+  _ib_home=$1; _ib_sd=$2; _label=$3; _atomic=$4
+  _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  _prev_rec="null"
+  if [ -n "$_label" ]; then
+    _prev_rec=$(env HOME="$_ib_home" "$RW" get --state-dir "$_ib_sd/rounds/$_label" \
+      --field '([.optin_responses // [] | .[] | select(.field == "atomic_commit")] | sort_by(.recorded_at) | last) // null' \
+      2>/dev/null) || _prev_rec="null"
+  fi
+  _cur=$(env HOME="$_ib_home" "$RW" get --state-dir "$_ib_sd" --field '.optin_responses // []')
+  _cur=$(printf '%s' "$_cur" | jq -c \
+    --argjson prev "$_prev_rec" --arg v "$_atomic" --arg ts "$_now" --arg from "${_label:-}" \
+    '. + [{
+       field: "atomic_commit",
+       channel: "inherited",
+       outcome: (if $prev != null then $prev.outcome else "absent" end),
+       applied_value: $v,
+       recorded_at: $ts,
+       reason: (if $prev != null then null
+                else "round anterior sem registro em .optin_responses[]; valor herdado de .atomic_commit_enabled" end),
+       inherited_from: (if $from == "" then null else $from end)
+     }]')
+  env HOME="$_ib_home" "$RW" set --state-dir "$_ib_sd" --field '.optin_responses' --value "$_cur" >/dev/null 2>&1
+}
+
+_t28_fixture() {
+  # $1=sufixo $2=optin_responses do round anterior (JSON) ou "" para nenhum
+  _home="$TMPDIR_TEST/home-$1"; mkdir -p "$_home/.claude/cstk"
+  printf 'state_backend=json\n' > "$_home/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/$1/.claude/feature-00c-state/demo"; mkdir -p "$_sd/rounds/r01"
+  env HOME="$_home" "$RW" init --state-dir "$_sd/rounds/r01" --execucao-id "exec-$1-r1" \
+    --projeto-alvo-path "/tmp/proj-$1" --descricao "descricao de teste com tamanho suficiente" \
+    --key-aspects '["a","b","c"]' --atomic-commit true >/dev/null 2>&1 || return 2
+  if [ -n "$2" ]; then
+    env HOME="$_home" "$RW" set --state-dir "$_sd/rounds/r01" --field '.optin_responses' --value "$2" >/dev/null 2>&1 || return 2
+  fi
+  env HOME="$_home" "$RW" init --state-dir "$_sd" --execucao-id "exec-$1-r2" \
+    --projeto-alvo-path "/tmp/proj-$1" --descricao "descricao de teste com tamanho suficiente" \
+    --key-aspects '["a","b","c"]' --atomic-commit true >/dev/null 2>&1 || return 2
+}
+
+scenario_T28c_optin_herdado_copia_outcome_do_round_anterior() {
+  _t28_fixture t28c '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null}]' \
+    || { _error "fixture" "init falhou"; return 2; }
+  _t28_inherit_block "$_home" "$_sd" r01 true
+  _rec=$(env HOME="$_home" "$RW" get --state-dir "$_sd" --field '.optin_responses[-1]' 2>/dev/null)
+  printf '%s' "$_rec" | jq -e '.channel == "inherited" and .outcome == "accepted" and .applied_value == "true" and .inherited_from == "r01" and .reason == null' >/dev/null \
+    || { _fail "T-28c" "registro inesperado: $_rec"; return 1; }
+  # nunca `prose`: nenhum dialogo aconteceu
+  printf '%s' "$_rec" | grep -q '"prose"' && { _fail "T-28c" "channel prose numa reabertura"; return 1; }
+  # I-2 satisfeita sem dialogo: onda-001 abre
+  capture env HOME="$_home" "$SCRIPTS_DIR/state-ondas.sh" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-28c" "I-2 recusou onda-001: $_CAPTURED_STDERR"; return 1; }
+  return 0
+}
+
+scenario_T28d_optin_herdado_sem_registro_fonte_outcome_absent_com_reason() {
+  _t28_fixture t28d "" || { _error "fixture" "init falhou"; return 2; }
+  _t28_inherit_block "$_home" "$_sd" r01 false
+  _rec=$(env HOME="$_home" "$RW" get --state-dir "$_sd" --field '.optin_responses[-1]' 2>/dev/null)
+  printf '%s' "$_rec" | jq -e '.channel == "inherited" and .outcome == "absent" and .applied_value == "false" and .inherited_from == "r01" and (.reason | test("herdado de .atomic_commit_enabled"))' >/dev/null \
+    || { _fail "T-28d" "registro inesperado: $_rec"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # T-29 — spec arquivada restaurada; _archived/ permanece intacto (diff -r)
 # ---------------------------------------------------------------------------
 scenario_T29_spec_arquivada_restaurada_archived_intacto() {

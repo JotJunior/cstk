@@ -113,6 +113,18 @@ scenario_start_onda001_aceita_com_optin_feature00c() {
   assert_stdout_contains "onda-001" || return 1
 }
 
+scenario_start_onda001_aceita_com_optin_inherited_feature00c() {
+  # issue #192: reabertura grava channel=inherited (nenhum dialogo); a
+  # Invariante I-2 exige registro do campo, nao um canal especifico.
+  _sd="$TMPDIR_TEST/feature-00c-state/demo-feature/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"inherited","outcome":"accepted","applied_value":"true","recorded_at":"2026-09-02T00:00:00Z","reason":null,"inherited_from":"r01"}]'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-001" || return 1
+}
+
 scenario_start_onda001_recusada_agente00c_faltam_2_de_3_campos() {
   _sd="$TMPDIR_TEST/agente-00c-state"
   _init_state "$_sd"

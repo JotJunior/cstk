@@ -580,7 +580,56 @@ fi
 ```
 
 Ausencia, leitura falha ou valor nao reconhecido ⇒ `_atomic="false"`
-(default seguro, FR-022, literal). Nenhum `--force` e necessario nem
+(default seguro, FR-022, literal).
+
+**3'.bis — registro do opt-in herdado em `.optin_responses[]` (issue #192)**.
+Logo apos o `state-rw.sh init` de 3', e independentemente de
+`_optin_branch`, grave o registro com `channel: "inherited"` — o unico
+canal que diz a verdade sobre uma reabertura: nenhum dialogo aconteceu
+(3' acabou de pular o prompt), entao `channel: "prose"` seria proveniencia
+fabricada (Principio VI), e sem registro algum o guard M4/I-2 recusa a
+onda-001 ou o orquestrador chama `collect_optins` e RE-PERGUNTA, contra a
+FR-022. `outcome` e `applied_value` sao copiados do registro mais recente
+do round anterior quando ele existe; sem registro (round anterior
+pre-`mcp-elicitation-optins`), o VALOR vem de `.atomic_commit_enabled`
+(ja em `_atomic`) e o `outcome` e `absent` com `reason` explicando — o
+evento de decisao nao e observavel, so o valor aplicado.
+
+```bash
+_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+_prev_rec="null"
+if [ -n "$_label" ]; then
+  _prev_rec=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR/rounds/$_label" \
+    --field '([.optin_responses // [] | .[] | select(.field == "atomic_commit")] | sort_by(.recorded_at) | last) // null' \
+    2>/dev/null) || _prev_rec="null"
+fi
+_cur=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.optin_responses // []')
+_cur=$(printf '%s' "$_cur" | jq -c \
+  --argjson prev "$_prev_rec" --arg v "$_atomic" --arg ts "$_now" --arg from "${_label:-}" \
+  '. + [{
+     field: "atomic_commit",
+     channel: "inherited",
+     outcome: (if $prev != null then $prev.outcome else "absent" end),
+     applied_value: $v,
+     recorded_at: $ts,
+     reason: (if $prev != null then null
+              else "round anterior sem registro em .optin_responses[]; valor herdado de .atomic_commit_enabled" end),
+     inherited_from: (if $from == "" then null else $from end)
+   }]')
+state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" --field '.optin_responses' --value "$_cur"
+_optin_inherited="1"
+```
+
+Com `_optin_inherited="1"`: o passo 3.ter NAO roda (o registro ja existe e
+e o unico honesto) e a linha `MCP: ramo estruturado de opt-ins ativo` NAO
+e injetada no spawn (secao 4) — o orquestrador nao chama `collect_optins`;
+se chamasse, o servidor devolveria `reused` (qualquer registro do campo
+encerra a coleta, `collect_optins.ts:mostRecentByField`), mas a instrucao
+honesta e nao pedir. Nao ha "confirmar com default" nesta reabertura:
+reabertura herda (FR-022), retomada le (`/feature-00c-resume`), e nenhuma
+das duas pergunta.
+
+Nenhum `--force` e necessario nem
 existe: a raiz do state-dir esta sem `state.json`/`state.db` apos a
 rotacao (ou, no caso `_skip_rotate`, ja estava sem desde a rotacao
 anterior), entao as guardas de "state.json ja existe" do `init` nao
@@ -836,8 +885,12 @@ acima. Escopo `feature-00c` (dec-083): SOMENTE `atomic_commit` — nenhum
 outro campo de opt-in (os demais campos de `agente-00c` sao exclusivos
 dele, ver `scenario_ausente_em_feature_00c_commands`).
 
+Reabertura (`_optin_inherited = "1"`, passo 3'.bis, issue #192): pule este
+passo — o registro `channel: "inherited"` ja foi gravado e gravar `prose`
+aqui afirmaria um dialogo que nao aconteceu.
+
 ```bash
-if [ "$_optin_branch" = "legado" ]; then
+if [ "$_optin_branch" = "legado" ] && [ "${_optin_inherited:-}" != "1" ]; then
   _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   _cur=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.optin_responses // []')
   [ "$_atomic" = "true" ] && _out="accepted" || _out="declined"
@@ -900,7 +953,9 @@ fi
 >   contrato de queda mid-onda (0 retries + 1 confirmacao via cstk mcp
 >   status --live) e comutacao para Bash no resto da onda.`
 > - **Ramo `_optin_branch = "estruturado"` (decisao de ramo acima, task
->   5.3.1/5.5.1 — mcp-elicitation-optins)**: acrescente TAMBEM, na mesma
+>   5.3.1/5.5.1 — mcp-elicitation-optins) E `_optin_inherited` vazio**
+>   (reabertura ja gravou `channel: "inherited"` em 3'.bis — issue #192 —
+>   e NAO pode re-perguntar): acrescente TAMBEM, na mesma
 >   injecao, a linha: `MCP: ramo estruturado de opt-ins ativo (dec-080).
 >   Chame mcp__cstk-state__collect_optins como o PRIMEIRO ato desta
 >   execucao, ANTES de qualquer state-ondas.sh start/open_wave da

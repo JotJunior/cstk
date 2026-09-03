@@ -126,6 +126,37 @@ qualquer outro valor faz `init` sair `2`
 Nenhum `--force` e necessario nem existe: apos a rotacao a raiz do state-dir nao
 tem mais `state.json`/`state.db`, e as guardas das L411-418 nao disparam.
 
+### Passo 3'.bis — registro do opt-in herdado *(novo, issue #192)*
+
+A heranca de FR-022 precisa de representacao em `.optin_responses[]`
+(Invariante I-2 do `state-ondas.sh start` exige registro do campo
+`atomic_commit` antes da onda-001). O enum `channel` de
+`mcp-elicitation-optins` ganhou o valor `inherited` (data-model.md, regra
+R-4) exatamente para isto — `prose` afirmaria um dialogo que 3' acabou de
+pular, e a ausencia de registro faria o orquestrador re-perguntar via
+`collect_optins`.
+
+```sh
+# logo apos o init de 3', independentemente do ramo de opt-in
+_prev_rec = registro mais recente de atomic_commit em rounds/<label> (ou null)
+append em .optin_responses[]:
+  { field: "atomic_commit", channel: "inherited",
+    outcome: _prev_rec.outcome | "absent",
+    applied_value: "$_atomic_herdado", recorded_at: <agora>,
+    reason: null | "round anterior sem registro ...; valor herdado de .atomic_commit_enabled",
+    inherited_from: "<label>" }
+_optin_inherited=1
+```
+
+Consequencias normativas na reabertura:
+
+- o passo 3.ter do `feature-00c.md` (registro `prose` do ramo legado) NAO
+  roda;
+- a linha `MCP: ramo estruturado de opt-ins ativo` NAO e injetada no spawn
+  — o orquestrador nao chama `collect_optins`;
+- reabertura **herda**, retomada (`/feature-00c-resume`) **le**; nenhuma
+  das duas pergunta nem "confirma com default".
+
 ### Passo 3'' — ponteiro e Decisao *(novo)*
 
 ```sh

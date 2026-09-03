@@ -343,6 +343,29 @@ scenario_persistencia_legado_optin_responses_feature() {
 #       estruturado no spawn, nunca o token; linha presente + tool ausente
 #       => devolve o turno em vez de "seguir para o passo 2/4".
 
+# ==== issue #192: reabertura grava channel=inherited, nunca prose ====
+
+scenario_reopen_grava_channel_inherited_e_nao_prose() {
+  _f="$REPO_ROOT/plugins/cstk/commands/feature-00c.md"
+  grep -Fq "3'.bis" "$_f" || { _fail "3'.bis" "feature-00c.md sem o passo 3'.bis (issue #192)"; return 1; }
+  grep -Fq 'channel: "inherited"' "$_f" || { _fail "inherited" "feature-00c.md nao grava channel inherited"; return 1; }
+  grep -Fq 'inherited_from:' "$_f" || { _fail "inherited_from" "registro herdado sem inherited_from"; return 1; }
+  grep -Fq '_optin_inherited="1"' "$_f" || { _fail "flag" "3'.bis nao seta _optin_inherited"; return 1; }
+  # 3.ter guardado pela flag: nunca grava prose numa reabertura
+  grep -Fq 'if [ "$_optin_branch" = "legado" ] && [ "${_optin_inherited:-}" != "1" ]; then' "$_f" \
+    || { _fail "3.ter" "3.ter nao esta guardado por _optin_inherited"; return 1; }
+  # linha do ramo estruturado condicionada a _optin_inherited vazio
+  grep -Fq 'E `_optin_inherited` vazio**' "$_f" \
+    || { _fail "spawn" "linha do ramo estruturado nao condicionada a _optin_inherited"; return 1; }
+}
+
+scenario_reopen_contrato_e_data_model_declaram_inherited() {
+  grep -Fq '`inherited`' "$REPO_ROOT/docs/specs/mcp-elicitation-optins/data-model.md" \
+    || { _fail "data-model" "enum channel sem inherited"; return 1; }
+  grep -Fq "Passo 3'.bis" "$REPO_ROOT/docs/specs/feature-reopen/contracts/reopen-flow.md" \
+    || { _fail "reopen-flow" "contrato sem o passo 3'.bis"; return 1; }
+}
+
 _scenario_gate_toolset_cmd() {
   # $1=arquivo $2=regex do prompt de prosa (ancora de ordem)
   _l_cand=$(_first_line_of "$1" '_optin_branch="candidato"')
