@@ -5,6 +5,95 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.0] - 2026-09-03
+
+Quatro achados de uma unica reabertura real (`/feature-00c --reopen` numa
+worktree comandada do checkout principal) tinham a mesma raiz: o harness
+carrega os hooks de guarda (`.claude/settings.json`) e o servidor MCP
+(`.mcp.json`) da RAIZ DA SESSAO, e ambos ancoram "ha execucao ativa?" nela.
+Com `--projeto` apontando para outro diretorio, todo diagnostico respondia
+verde — `guard-hooks-status` 3/3, `cstk mcp start` cunhando token, `preflight`
+`ready`, `--live` `active` — enquanto a guarda de Bash ficava inerte
+(`tool_calls=0` em 3 ondas medidas, issue #189) e 100% das tools
+`mcp__cstk-state__*` caiam em `SESSION_MISMATCH` (issues #190/#191). A quarta
+(issue #192) era independente: a reabertura herdava o opt-in de atomic-commit
+sem ter como representar isso em `.optin_responses[]`. Esta release fecha as
+quatro e registra em `SECURITY.md` o aceite consciente da #177.
+
+### Added
+
+- **`plugins/cstk/skills/agente-00c-runtime/scripts/session-scope.sh`**
+  (issues #189/#190/#191): unica implementacao da pergunta "o projeto-alvo
+  esta sob a raiz desta sessao?". `resolve` (`CLAUDE_PROJECT_DIR` para
+  hooks; `pwd -P` na tool Bash — o mesmo sinal que `mcp-launch.sh` entrega ao
+  servidor MCP; sem override por env, que seria bypass nao auditado),
+  `verdict` (comparacao PURA, sem log nem bypass, para consumidores que so
+  diagnosticam) e `check` (fail-closed `exit 4`; bypass explicito
+  `--allow-outside` / `CSTK_ALLOW_TARGET_OUTSIDE_SESSION=1`, auditado em
+  `<alvo>/.claude/enforcement-log.jsonl` como `source: "session-scope"`,
+  `outcome: refused|bypass-allowed`). Igualdade ESTRITA de caminhos
+  canonicos: subdiretorio nao e alinhado (o hook nunca desce; o servidor so
+  varre `<raiz>/.claude/`). Coberto por `tests/test_session-scope.sh` (27
+  cenarios, com mutation test da comparacao).
+- **Flag `--allow-target-outside-session`** nos 4 commands (`/agente-00c`,
+  `/agente-00c-resume`, `/feature-00c`, `/feature-00c-resume`): os commands
+  chamam `session-scope.sh check` ANTES do lock e recusam o alvo fora da raiz
+  por default; o bypass so registra que o operador aceitou rodar SEM guarda
+  enforced — nao faz hook nem tool MCP funcionarem.
+- **`mcp-launch.sh preflight --projeto-alvo-path PATH`** (issue #190): 6o
+  check da decisao de ramo de opt-in. Alvo fora da raiz ⇒
+  `idle|projeto-alvo fora da raiz da sessao — o servidor MCP desta sessao
+  resolve tokens sob <raiz>` (`exit 3`) e o ramo cai em `legado` sem queimar a
+  onda-001 em `SESSION_MISMATCH`. Ignora o bypass do pre-flight de proposito.
+- **`channel: "inherited"` em `.optin_responses[]`** (issue #192,
+  `mcp-elicitation-optins` data-model regra R-4 + `feature-reopen`
+  reopen-flow passo 3'.bis): a reabertura grava, logo apos o `init`, um
+  registro com `applied_value` herdado, `outcome` copiado do registro mais
+  recente do round anterior (ou `absent` + `reason` quando o round nao tem
+  registro — so o valor e observavel, nunca o evento de decisao) e
+  `inherited_from: <label>`. Satisfaz a Invariante I-2 sem dialogo; o passo
+  3.ter (registro `prose`) e a linha do ramo estruturado no spawn ficam
+  condicionados a `_optin_inherited` — reabertura herda, retomada le, nenhuma
+  pergunta. Zero mudanca de codigo no servidor: `collect_optins` ja devolve
+  `reused` para qualquer registro do campo (teste TS novo prova).
+
+### Changed
+
+- **`cstk mcp status --live` em `mode=direct`** (issue #191) deixa de ser
+  no-op: apresenta o `session_id` do descritor a `mcp-session.sh resolve`
+  sob a raiz da sessao — o MESMO caminho de autorizacao que toda tool percorre
+  — e reporta `active` (token resolve), `unresolvable`
+  (`reason=token-unresolvable-under:<raiz>`) ou `unknown` (sonda
+  indisponivel; nunca promovido a `active` por omissao). `bash-fallback`
+  (legado) e `docker` seguem como antes. `/agente-00c-resume` §5.e e
+  `/feature-00c-resume` §6.bis passam a LER o `status=` em vez de descartar a
+  saida, e so injetam a linha MCP no spawn com `active`.
+- **`guard-hooks-status.sh check`** (issue #189) emite `ATENCAO` em stderr
+  quando os hooks do alvo nao sao efetivos nesta sessao (raiz divergente),
+  citando a raiz e a remediacao; TSV de 4 colunas e exit inalterados
+  (consumidores parseiam as colunas; o gate real e o `check` do
+  `session-scope.sh` no pre-flight).
+- **`SECURITY.md`**: nova nota "hooks are effective only for the session's
+  project root" (#189); "Known limitation — integrity, not provenance"
+  registrando o aceite da issue #177 (verificar attestation exigiria `gh` ou
+  `cosign` no cliente, ou viraria verificacao decorativa) — issue fechada
+  como risco aceito, nao como resolvida; e a secao do servidor MCP corrigida
+  para `mode=direct` (dizia "one Docker container per execution", falso
+  desde a v8.0.0).
+
+### Fixed
+
+- **Guarda enforced inerte com diagnostico verde** (issue #189): os 4
+  commands recusam a combinacao antes de qualquer escrita; o caso medido
+  (3 ondas com `tool_calls=0` e sidecar de tick ausente) passa a ser
+  impossivel sem bypass explicito e logado.
+- **Onda-001 queimada em `SESSION_MISMATCH` com 5 checks verdes** (issue
+  #190): o preflight do launcher agora responde pela unica pergunta que
+  importa — se o token e resoluvel pelo servidor que atende ESTA sessao.
+- **Proveniencia fabricada no reopen** (issue #192): `channel: "prose"`
+  nunca mais e gravado numa reabertura (nenhum dialogo ocorreu), e o ramo
+  estruturado nunca mais re-pergunta o opt-in herdado (FR-022).
+
 ## [10.5.0] - 2026-09-02
 
 O gate de cobertura de MUST tinha um ponto cego: uma constituicao em que o
@@ -7972,6 +8061,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.0]: https://github.com/JotJunior/cstk/releases/tag/v10.6.0
 [10.5.0]: https://github.com/JotJunior/cstk/releases/tag/v10.5.0
 [10.4.0]: https://github.com/JotJunior/cstk/releases/tag/v10.4.0
 [10.3.0]: https://github.com/JotJunior/cstk/releases/tag/v10.3.0
