@@ -260,6 +260,92 @@ scenario_status_state_dir_inexistente_exit_1() {
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "state-dir inexistente exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ---------- status --live em mode=direct (issue #191: sonda REAL por token) ----------
+# Antes: --live era no-op em mode=direct e respondia `active` com 100% das
+# tools em SESSION_MISMATCH (descritor ok, mas token irresoluvel sob a raiz
+# da sessao hospedeira). Agora exercita `mcp-session.sh resolve
+# --project-path <raiz da sessao>` com o session_id do descritor.
+
+# _mk_live_direct_fixture -> ROOT (raiz da sessao) com execucao feature-00c
+# ativa + descritor mode=direct, e OTHER (outra raiz). Define _LD_ROOT,
+# _LD_OTHER, _LD_SD.
+_mk_live_direct_fixture() {
+  _LD_ROOT="$TMPDIR_TEST/session-root"
+  _LD_OTHER="$TMPDIR_TEST/other-root"
+  mkdir -p "$_LD_ROOT" "$_LD_OTHER"
+  _LD_ROOT=$(CDPATH='' cd -- "$_LD_ROOT" && pwd -P)
+  _LD_OTHER=$(CDPATH='' cd -- "$_LD_OTHER" && pwd -P)
+  _LD_SD="$_LD_ROOT/.claude/feature-00c-state/minha-feature"
+  _init_active_exec_at "$_LD_ROOT" "$_LD_SD"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fixture" "init falhou: $_CAPTURED_STDERR"; return 1; }
+  _write_descriptor "$_LD_SD" "tok-live-direct-0123456789abcdef" "direct" ""
+}
+
+# _cstk_mcp_from CWD ARGS... -> `cstk mcp` com cwd controlado e
+# CLAUDE_PROJECT_DIR desligada (raiz da sessao = cwd, como na tool Bash).
+_cstk_mcp_from() {
+  _cmf_cwd=$1; shift
+  capture sh -c 'cd -- "$1" && _lib=$2 && _bin=$3 && shift 3 && unset CLAUDE_PROJECT_DIR && exec env CSTK_LIB="$_lib" sh "$_bin" mcp "$@"' \
+    _ "$_cmf_cwd" "$CSTK_LIB_DIR" "$CSTK_BIN" "$@"
+}
+
+scenario_status_live_direct_token_resolve_sob_raiz_da_sessao_active() {
+  _mk_live_direct_fixture || return 1
+  _cstk_mcp_from "$_LD_ROOT" status --state-dir "$_LD_SD" --live
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "live direct exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status=active" || return 1
+  assert_stdout_contains "reason=-" || return 1
+  assert_stdout_contains "mode=direct" || return 1
+}
+
+scenario_status_live_direct_token_irresoluvel_fora_da_raiz_reporta_unresolvable() {
+  _mk_live_direct_fixture || return 1
+  _cstk_mcp_from "$_LD_OTHER" status --state-dir "$_LD_SD" --live
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "live direct exit" "consulta respondida nunca falha: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status=unresolvable" || return 1
+  assert_stdout_contains "reason=token-unresolvable-under:$_LD_OTHER" || return 1
+  assert_stdout_contains "session_id=tok-live-direct-0123456789abcdef" || return 1
+  assert_stdout_not_contains "status=active" || return 1
+  # observacional: descritor intacto
+  _stopped=$(jq -r '.stopped_at // ""' "$_LD_SD/mcp-server.json")
+  [ -z "$_stopped" ] || { _fail "descritor mutado" "$_stopped"; return 1; }
+}
+
+scenario_status_live_direct_sem_live_continua_so_descritor() {
+  # Sem --live o contrato antigo permanece: so o descritor, sem sonda.
+  _mk_live_direct_fixture || return 1
+  _cstk_mcp_from "$_LD_OTHER" status --state-dir "$_LD_SD"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "status exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status=active" || return 1
+}
+
+scenario_status_live_direct_execucao_terminal_reporta_unresolvable() {
+  # Descritor sem stopped_at, mas execucao ja terminal no state: a sonda
+  # segue o status REAL (dec-060/dec-061), como uma tool faria.
+  _mk_live_direct_fixture || return 1
+  capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" set --state-dir "$_LD_SD" \
+    --field '.execution.status' --value '"concluida"' \
+    --field '.execution.finished_at' --value '"2026-09-02T00:00:00Z"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fixture" "set terminal falhou: $_CAPTURED_STDERR"; return 1; }
+  _cstk_mcp_from "$_LD_ROOT" status --state-dir "$_LD_SD" --live
+  assert_stdout_contains "status=unresolvable" || return 1
+}
+
+scenario_status_live_direct_helper_ausente_reporta_unknown_nunca_active() {
+  _mk_live_direct_fixture || return 1
+  # Copia isolada de cli/lib: `$CSTK_LIB/../../plugins/...` nao existe, HOME
+  # sandbox sem catalogo, PATH sem mcp-session.sh => sonda indisponivel.
+  # Nunca promove a active por omissao.
+  _iso="$TMPDIR_TEST/isolated/cli/lib"; mkdir -p "$_iso" "$TMPDIR_TEST/home-vazio"
+  cp "$CSTK_LIB_DIR"/*.sh "$_iso/"
+  capture sh -c 'cd -- "$1" && unset CLAUDE_PROJECT_DIR && exec env HOME="$2" CSTK_LIB="$3" sh "$4" mcp status --state-dir "$5" --live' \
+    _ "$_LD_ROOT" "$TMPDIR_TEST/home-vazio" "$_iso" "$CSTK_BIN" "$_LD_SD"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "live direct exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status=unknown" || return 1
+  assert_stdout_contains "reason=probe-unavailable" || return 1
+  assert_stdout_not_contains "status=active" || return 1
+}
+
 # ---------- status --live (task 5.3.3, FR-010: reverifica saude sem reiniciar) ----------
 
 scenario_status_live_mode_docker_saudavel_permanece_active() {

@@ -42,6 +42,21 @@ prompt to read what the hook does. The answer here: it is a passive local
 counter with an empty-output/always-zero-exit contract, enforced by its test
 suite (`tests/test_posttooluse-tool-call-tick.sh`).
 
+**Hooks are effective only for the session's project root.** Claude Code
+loads hooks from the `.claude/settings.json` of the directory the session
+was started in, and the Bash guard anchors "is a 00c execution active?" on
+that root (cwd and its ancestors, never a sibling or child directory). An
+execution whose `--projeto`/`--projeto-alvo-path` points elsewhere — e.g. a
+`cstk session start` worktree driven from the main checkout — runs with the
+guard **inert** while every registration check reports green (measured:
+`tool_calls: 0` across 3 waves, issue #189). The four 00c
+commands now refuse that combination before taking the lock
+(`session-scope.sh check`, exit 4), `guard-hooks-status.sh check` prints an
+effectiveness warning, and the only way through is the explicit, audited
+bypass `--allow-target-outside-session` (or
+`CSTK_ALLOW_TARGET_OUTSIDE_SESSION=1`), logged to the target's
+`enforcement-log.jsonl` as `source: "session-scope"`.
+
 ### What the Bash guard blocks
 
 During an active autonomous execution, `bash-guard.sh` blocks (among others):
@@ -68,6 +83,18 @@ by `secrets-filter.sh` **before** being truncated and written.
   `github.com.evil.com` and `user@evil.com` lookalikes (CWE-290) do not
   match. `install`, `self-update` and `serve` all check the host **before**
   any download; plain `http://` is rejected.
+- **Known limitation — integrity, not provenance (issue #177, accepted
+  risk).** The asset + `.sha256` pair proves the bytes you received are the
+  bytes that were published; it does not prove *who* published them, since
+  both files are written by the same release actor. A compromised release
+  workflow produces an internally consistent pair and `cstk serve` reports
+  `verified`. Build-provenance attestation was evaluated and deliberately
+  **not** adopted: verifying it on the client requires `gh` or `cosign`, which
+  would either become a hard dependency of a bootstrap that today needs only
+  `curl`/`tar`/`sha256sum`, or be checked opportunistically — a decorative
+  verification that is worse than none. The risk is accepted and recorded
+  here so it does not become a silent assumption; revisit if a
+  POSIX-verifiable attestation format becomes available.
 - **Two delivery paths, comparable but distinct guarantees.** The classic
   path (`curl | sh` + `cstk install`) is protected by the checksum + host
   allowlist above, applied by cstk's own code. The native plugin path is
@@ -96,19 +123,30 @@ by `secrets-filter.sh` **before** being truncated and written.
 
 ## MCP state server confinement
 
-The optional `cstk mcp` layer runs one Docker container per execution:
+The optional `cstk mcp` layer runs the state server as a direct process of
+the Claude Code session (`mode=direct`, since v8.0.0 — no container is
+created any more; `cstk mcp gc` only cleans up containers left by
+pre-cutover sessions):
 
-- The container mounts **only** that execution's state dir, the runtime
-  scripts (read-only) and that execution's enforcement log — never another
-  execution's state, never `knowledge.db`.
+- Confinement is by **authorization, not by process**: the server inherits
+  the user's filesystem like any other process, but every mutation goes
+  through the POSIX helpers, which only touch the state dir resolved from
+  the token presented in that call. The earlier Docker mount confinement
+  was deliberately given up in that cutover and is recorded as a declared
+  regression, not claimed as parity (`docs/specs/mcp-direct-transport/`).
 - Every tool call must present the execution's capability token (≥128-bit
   CSPRNG, stored in the state dir). Missing/mismatched/terminal-execution
   tokens are rejected fail-closed (`SESSION_MISMATCH`) — there is no
-  fallback to "the most likely active execution".
+  fallback to "the most likely active execution". Tokens are resolved
+  **under the session's project root**, which is why an execution targeting
+  another directory cannot use the MCP tools at all (issues #190/#191); the
+  pre-flight and `cstk mcp status --live` now say so instead of reporting
+  green.
 - The Node→POSIX boundary uses `execFile` with argv arrays; no free-text
-  field ever reaches a shell.
-- Docker unavailable degrades to the plain Bash path with none of the above
-  — the MCP layer adds confinement, it is not the source of it.
+  field ever reaches a shell, and error messages never echo the token.
+- Server unavailable degrades to the plain Bash path with none of the above
+  — the MCP layer adds an authorization boundary, it is not the source of
+  the guards.
 
 ## Autonomous orchestrator blast radius
 

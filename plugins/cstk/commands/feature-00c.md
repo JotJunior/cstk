@@ -1,6 +1,6 @@
 ---
 description: 'Inicia execucao feature-00c sobre UMA feature individual em projeto com briefing+constitution ratificados. Cria state em .claude/feature-00c-state/<short-name>/ e delega pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→converge→review-task) ao agente-00c-feature-orchestrator.'
-argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>] [--canonical-project <name>]'
+argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>] [--canonical-project <name>] [--allow-target-outside-session]'
 allowed-tools:
   - Agent
   - Read
@@ -114,6 +114,13 @@ descricao_curta  = primeiro argumento (string em quotes, OBRIGATORIO, <=500 char
 short_name       = segundo argumento posicional opcional (kebab-case);
                    se omitido, derivar via specify
 --projeto PATH   = default = cwd
+--allow-target-outside-session = opcional; capturar em `_scope_allow`
+                   (`--allow-outside` quando presente, vazio caso contrario).
+                   Bypass EXPLICITO e AUDITADO do pre-flight 1.bis (issues
+                   #189/#190/#191): projeto-alvo fora da raiz da sessao =
+                   hooks de guarda inertes + tools MCP em SESSION_MISMATCH.
+                   Nunca use por rotina; o caminho certo e abrir a sessao
+                   no projeto-alvo (`cd <projeto> && claude`).
 --whitelist CSV  = URLs externas adicionais ao .env (opcional)
 --canonical-project NAME = opcional; capturar em `_canonical_flag`.
                    Identidade de projeto explicita para a knowledge.db/
@@ -163,6 +170,24 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
 1. realpath do projeto:
    _proj=$(realpath "$PROJETO" 2>/dev/null) || abortar exit 1
    - rejeitar zonas proibidas via path-guard.sh validate-target
+
+1.bis. projeto-alvo sob a raiz DESTA sessao (issues #189/#190/#191):
+   session-scope.sh check --projeto-alvo-path "$_proj" $_scope_allow || exit 3
+   - fail-closed ANTES de lock/state: o harness carrega hooks (.claude/
+     settings.json) e o servidor MCP (.mcp.json) da RAIZ DA SESSAO, e ambos
+     ancoram "ha execucao ativa?" nessa raiz. Com `--projeto` apontando
+     para outro diretorio (caso real: worktree irma comandada do checkout
+     principal), guard-hooks-status responde 3/3 verde e a guarda de Bash
+     fica INERTE (tool_calls=0 em 3 ondas medidas) — e toda tool
+     mcp__cstk-state__* cai em SESSION_MISMATCH. O helper compara
+     `pwd -P`/CLAUDE_PROJECT_DIR com `$_proj` (igualdade estrita de paths
+     canonicos) e grava a decisao em <alvo>/.claude/enforcement-log.jsonl.
+   - exit 4 = recusado: repita a mensagem do stderr ao operador (remediacao:
+     `cd $_proj && claude`, ou `--allow-target-outside-session` consciente).
+   - exit 0 com `verdict=diverged-allowed` (bypass): siga, mas o ramo de
+     opt-in cai OBRIGATORIAMENTE em `legado` (secao 3, 6o check) — o bypass
+     nao faz a tool funcionar, so registra que o operador aceitou rodar SEM
+     guarda enforced.
 
 2. sanitizar descricao_curta:
    _desc=$(printf '%s' "$DESC" | sanitize.sh limit-length --max 500)
@@ -716,9 +741,15 @@ fi
 #   (c) a tool visivel no SEU toolset — unica prova real (cobre tambem
 #       sessao bootada antes do .mcp.json e servidor de projeto nao
 #       aprovado, que nenhum probe de disco enxerga).
+# `--projeto-alvo-path "$_proj"` (issue #190, 6o check): o servidor MCP
+# desta sessao resolve tokens SOB A RAIZ DA SESSAO (`mcp-session.sh:272`,
+# `_feat_root="$_project_path/.claude/feature-00c-state"`), nao sob o
+# projeto-alvo. Alvo fora da raiz (so possivel via bypass do 1.bis) =>
+# preflight responde `idle|projeto-alvo fora da raiz da sessao ...` e o
+# ramo cai em legado AQUI, sem queimar a onda-001 em SESSION_MISMATCH.
 _optin_preflight=""
 if [ "$_optin_branch" = "candidato" ]; then
-  _optin_preflight=$(mcp-launch.sh preflight 2>/dev/null) || :
+  _optin_preflight=$(mcp-launch.sh preflight --projeto-alvo-path "$_proj" 2>/dev/null) || :
   case "$_optin_preflight" in
     ready\|*) : ;;                       # servidor real serviria as tools
     *)        _optin_branch="legado" ;;  # `idle|<motivo>` ou helper ausente

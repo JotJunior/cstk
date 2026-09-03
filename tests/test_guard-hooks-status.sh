@@ -184,6 +184,57 @@ scenario_check_completo_exit0() {
   return 0
 }
 
+# ==== issue #189: efetividade — alvo fora da raiz da sessao ====
+# `present registered current` responde sobre o alvo; a sessao carrega hooks
+# da propria raiz. 3/3 verde + guarda inerte era o caso medido (tool_calls=0
+# em 3 ondas). O check avisa em stderr sem mudar TSV nem exit.
+
+# _ghs_from CWD ARGS... — check com cwd controlado (= raiz da sessao) e
+# CLAUDE_PROJECT_DIR desligada.
+_ghs_from() {
+  _gf_cwd=$1; shift
+  capture sh -c 'cd -- "$1" && shift && unset CLAUDE_PROJECT_DIR && exec env HOME="$TMPDIR_TEST/.home-sem-plugin" CLAUDE_PLUGIN_ROOT="" CSTK_OTEL_ENDPOINT="" sh "$@"' \
+    _ "$_gf_cwd" "$SCRIPT" "$@"
+}
+
+scenario_check_alvo_fora_da_raiz_da_sessao_avisa_inefetivo_sem_mudar_tsv() {
+  _p=$(_mkproj proj-worktree)
+  _fully_provisioned "$_p"
+  _root="$TMPDIR_TEST/session-root"; mkdir -p "$_root"
+  _ghs_from "$_root" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (TSV/exit inalterados), obtido $_CAPTURED_EXIT"; return 1; }
+  for _h in $_HOOKS; do
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current$" \
+      || { _fail "TSV" "esperado '$_h present registered current' intacto"; return 1; }
+  done
+  assert_stderr_contains "NAO sao efetivos nesta sessao" || return 1
+  assert_stderr_contains "issue #189" || return 1
+  assert_stderr_contains "session-scope.sh check" || return 1
+  # forma PURA: o diagnostico nunca grava enforcement-log no alvo
+  [ ! -e "$_p/.claude/enforcement-log.jsonl" ] \
+    || { _fail "log" "check nao pode gravar enforcement-log"; return 1; }
+}
+
+scenario_check_alvo_na_raiz_da_sessao_nao_avisa_inefetivo() {
+  _p=$(_mkproj proj-raiz)
+  _fully_provisioned "$_p"
+  _ghs_from "$_p" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"NAO sao efetivos"*) _fail "stderr" "alinhado nao deve avisar: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_check_quiet_suprime_aviso_de_efetividade() {
+  _p=$(_mkproj proj-quiet)
+  _fully_provisioned "$_p"
+  _root="$TMPDIR_TEST/session-root"; mkdir -p "$_root"
+  _ghs_from "$_root" check --projeto-alvo-path "$_p" --quiet
+  case "$_CAPTURED_STDERR" in
+    *"NAO sao efetivos"*) _fail "stderr" "--quiet deveria suprimir o aviso"; return 1 ;;
+  esac
+}
+
 # ==== INV-3: projeto virgem (o caso real: 35 ondas, zero hooks) ====
 
 scenario_check_nenhum_hook_exit1() {

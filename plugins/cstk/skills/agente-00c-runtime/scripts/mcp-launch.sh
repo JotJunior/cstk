@@ -67,7 +67,9 @@
 #
 # Uso:
 #   mcp-launch.sh              # entrypoint stdio (registrado no .mcp.json)
-#   mcp-launch.sh preflight    # diagnostico READ-ONLY (bugfix 8.3.1)
+#   mcp-launch.sh preflight [--projeto-alvo-path PATH]   # diagnostico READ-ONLY
+#       (bugfix 8.3.1; --projeto-alvo-path = 6o check da issue #190: alvo fora
+#        da raiz da sessao => `idle|projeto-alvo fora da raiz da sessao ...`)
 #
 # `preflight` (bugfix 8.3.1 — caso real: `/mcp` mostrava `cstk-state ·
 # connected · no tools` e o command pai, decidindo o ramo de opt-ins so pelo
@@ -110,11 +112,32 @@ _ml_die() {
 # "preflight" (diagnostico read-only). Qualquer outro argumento e uso
 # incorreto — o harness invoca SEM argumentos, entao nada quebra no boot.
 _ml_mode="serve"
+_ml_pf_target=""
 case "${1:-}" in
   "") ;;
-  preflight) _ml_mode="preflight" ;;
+  preflight)
+    _ml_mode="preflight"
+    shift
+    # `--projeto-alvo-path PATH` (issue #190): 6o check da decisao de ramo
+    # de opt-in. O servidor MCP desta sessao resolve tokens SOB A RAIZ DA
+    # SESSAO (`CSTK_MCP_PROJECT_PATH:-$(pwd)` abaixo); um projeto-alvo fora
+    # dela faz TODA chamada de tool cair em SESSION_MISMATCH mesmo com
+    # `.mcp.json` presente, `cstk mcp start` cunhando token e o entrypoint
+    # buildado — os cinco checks anteriores passavam verdes e a onda-001
+    # era queimada. A comparacao e delegada a session-scope.sh verdict
+    # (forma PURA: sem enforcement-log, sem bypass — o bypass do pre-flight
+    # nao faz a tool funcionar).
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --projeto-alvo-path)
+          [ "$#" -ge 2 ] || _ml_die "preflight: --projeto-alvo-path exige valor" 2
+          _ml_pf_target=$2; shift 2 ;;
+        *) _ml_die "preflight: argumento desconhecido: $1" 2 ;;
+      esac
+    done
+    ;;
   -h|--help)
-    printf 'uso: %s.sh [preflight]\n' "$_ML_NAME"
+    printf 'uso: %s.sh [preflight [--projeto-alvo-path PATH]]\n' "$_ML_NAME"
     exit 0
     ;;
   *) _ml_die "argumento desconhecido: $1 (aceito: preflight)" 2 ;;
@@ -256,6 +279,20 @@ fi
 # read-only para as causas mais comuns (mesmos pre-requisitos que
 # mcp-build-lazy.sh exige, sem executa-los).
 if [ "$_ml_mode" = "preflight" ]; then
+  if [ -n "$_ml_pf_target" ]; then
+    _ml_ss="$_ml_script_dir/session-scope.sh"
+    [ -f "$_ml_ss" ] \
+      || _ml_unavailable "session-scope.sh ausente em $_ml_script_dir — impossivel provar que o projeto-alvo esta sob a raiz da sessao"
+    if _ml_ss_out=$(sh "$_ml_ss" verdict --projeto-alvo-path "$_ml_pf_target" 2>/dev/null); then
+      :
+    else
+      _ml_ss_rc=$?
+      _ml_ss_root=$(printf '%s\n' "$_ml_ss_out" | sed -n 's/^session_root=//p')
+      [ "$_ml_ss_rc" -eq 4 ] \
+        || _ml_unavailable "session-scope.sh verdict falhou (exit $_ml_ss_rc) para --projeto-alvo-path $_ml_pf_target"
+      _ml_unavailable "projeto-alvo fora da raiz da sessao — o servidor MCP desta sessao resolve tokens sob ${_ml_ss_root:-?} (issue #190); abra a sessao no projeto-alvo ou siga pelo ramo legado"
+    fi
+  fi
   _ml_pf_entry="$_ml_state_server_dir/dist/src/index.js"
   if [ ! -f "$_ml_pf_entry" ]; then
     _ml_pf_why="dist/src/index.js ausente em $_ml_state_server_dir — build lazy nao concluiu nesta maquina"

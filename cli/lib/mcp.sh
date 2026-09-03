@@ -48,8 +48,10 @@
 # mode=docker (legado), roda um health check DE VERDADE (`_mcp_docker_
 # healthcheck` abaixo) em vez de so ecoar o descritor — usado pelo command
 # pai em cada `-resume` para reverificar saude SEM reiniciar o container.
-# Para `mode=direct` (toda sessao criada apos o cutover), `--live` e no-op
-# (ST-3): o guard `mode = "docker"` simplesmente nunca casa.
+# Para `mode=direct` (toda sessao criada apos o cutover), `--live` foi no-op
+# ate a issue #191 (`active` com 100% das tools em SESSION_MISMATCH); agora
+# exercita a resolucao POR TOKEN sob a raiz da sessao — ver
+# _mcp_live_direct_probe (status active|unresolvable|unknown).
 #
 # `gc` (task 5.4, CHK064): detecta e remove containers gerenciados cujo
 # state-dir dono esta em estado terminal ou nao existe mais — ver comentario
@@ -495,11 +497,90 @@ _mcp_print_status_from_descriptor() {
     fi
   fi
 
+  # `--live` em mode=direct (issue #191): ate aqui o --live so inspecionava o
+  # descritor (caminho --state-dir), enquanto TODA chamada de tool resolve
+  # por token a partir da raiz da sessao hospedeira (caminho --project-path,
+  # `mcp-session.sh resolve`). Sao dois caminhos distintos; a sonda cobria
+  # so o primeiro e respondia `active` com 100% das tools em
+  # SESSION_MISMATCH. Agora exercita o MESMO caminho de autorizacao que
+  # uma tool: apresenta o session_id do descritor ao resolve sob a raiz
+  # da sessao (session-scope.sh resolve = pwd -P/CLAUDE_PROJECT_DIR, o
+  # mesmo sinal que mcp-launch.sh entrega ao servidor). Desfechos:
+  #   active        descritor ok E token resolve
+  #   unresolvable  descritor ok, token NAO resolve (reason cita a raiz)
+  #   unknown       sonda indisponivel (helper ausente/erro) — nunca
+  #                 promovido a active por omissao
+  # Restrito a mode=direct: `bash-fallback` e legado pre-cutover (sem
+  # servidor real por tras) e `docker` ja tem a sonda propria acima.
+  if [ "$_live" = "1" ] && [ "$_mode" = "direct" ]; then
+    _mcp_live_direct_probe "$_sid" "$_container" "$_mode"
+    return 0
+  fi
+
   printf 'status=active\n'
   printf 'reason=-\n'
   printf 'container=%s\n' "$_container"
   printf 'session_id=%s\n' "$_sid"
   printf 'mode=%s\n' "$_mode"
+}
+
+# _mcp_live_direct_probe SID CONTAINER MODE — sonda REAL de resolubilidade
+# do token (issue #191). Imprime o bloco de status completo; nunca falha
+# (consulta respondida, nao veredito). Delega a resolucao a
+# mcp-session.sh resolve (SEC-H3) e a raiz da sessao a session-scope.sh
+# — nenhuma das duas regras e reimplementada aqui.
+_mcp_live_direct_probe() {
+  _lp_sid=$1
+  _lp_container=$2
+  _lp_mode=$3
+
+  _lp_ms=$(_mcp_runtime_script_path mcp-session.sh) || _lp_ms=""
+  if [ -z "$_lp_ms" ] || [ -z "$_lp_sid" ] || [ "$_lp_sid" = "-" ]; then
+    printf 'status=unknown\n'
+    printf 'reason=probe-unavailable:mcp-session.sh-ausente-ou-session_id-vazio\n'
+    printf 'container=%s\n' "$_lp_container"
+    printf 'session_id=%s\n' "$_lp_sid"
+    printf 'mode=%s\n' "$_lp_mode"
+    return 0
+  fi
+
+  _lp_root=""
+  if _lp_ss=$(_mcp_runtime_script_path session-scope.sh); then
+    _lp_root=$(sh "$_lp_ss" resolve 2>/dev/null | sed -n 's/^session_root=//p')
+  fi
+  [ -n "$_lp_root" ] || _lp_root=$(pwd -P 2>/dev/null) || _lp_root=""
+  if [ -z "$_lp_root" ]; then
+    printf 'status=unknown\n'
+    printf 'reason=probe-unavailable:raiz-da-sessao-irresolvivel\n'
+    printf 'container=%s\n' "$_lp_container"
+    printf 'session_id=%s\n' "$_lp_sid"
+    printf 'mode=%s\n' "$_lp_mode"
+    return 0
+  fi
+
+  if sh "$_lp_ms" resolve --project-path "$_lp_root" --token "$_lp_sid" >/dev/null 2>&1; then
+    _lp_rc=0
+  else
+    _lp_rc=$?
+  fi
+  case "$_lp_rc" in
+    0)
+      printf 'status=active\n'
+      printf 'reason=-\n'
+      ;;
+    3)
+      printf 'status=unresolvable\n'
+      printf 'reason=token-unresolvable-under:%s\n' "$_lp_root"
+      ;;
+    *)
+      printf 'status=unknown\n'
+      printf 'reason=probe-failed:mcp-session.sh-exit-%s\n' "$_lp_rc"
+      ;;
+  esac
+  printf 'container=%s\n' "$_lp_container"
+  printf 'session_id=%s\n' "$_lp_sid"
+  printf 'mode=%s\n' "$_lp_mode"
+  return 0
 }
 
 # _mcp_gen_token -> imprime em stdout um token hex de 32 bytes (256 bits,
