@@ -5,6 +5,29 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.3] - 2026-09-08
+
+Bugfix de perda de dados no runtime 00c (issue #197, PR #201): o
+`suggestions.md` compartilhado entre execucoes deixava de ser reescrito
+por inteiro a cada register — a segunda execucao no mesmo projeto-alvo
+apagava silenciosamente os blocos da primeira.
+
+### Fixed
+
+- **`suggestions.sh` preserva blocos de outras execucoes no md
+  compartilhado.** `register` e `mark-issue` regeravam o arquivo INTEIRO a
+  partir do `.suggestions[]` do state-dir da propria execucao e
+  sobrescreviam com `mv -f` — destrutivo num arquivo compartilhado por
+  projeto (`agente-00c-suggestions.md`; `feature-00c-suggestions.md` e
+  "compartilhada per-projeto" por decisao em `_audit-paths.md`). Novo
+  `_sg_merge_md` preserva verbatim todo bloco cujo cabecalho H1
+  (`# Sugestoes do Agente-00C — <execution.id>`) pertenca a outra
+  execucao e substitui in-place (ou anexa) apenas o bloco proprio;
+  `_sg_write_md` centraliza render + merge + escrita atomica (tmp + mv).
+  `render-md` em stdout segue emitindo so a secao da execucao corrente.
+  3 cenarios novos em `tests/test_suggestions.sh`, verificados por
+  mutacao (falham contra o script antigo). Fecha a issue #197.
+
 ## [10.6.2] - 2026-09-07
 
 Release do painel: o transcript de sessao passa a exibir as mensagens de
@@ -8096,6 +8119,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.3]: https://github.com/JotJunior/cstk/releases/tag/v10.6.3
 [10.6.2]: https://github.com/JotJunior/cstk/releases/tag/v10.6.2
 [10.6.1]: https://github.com/JotJunior/cstk/releases/tag/v10.6.1
 [10.6.0]: https://github.com/JotJunior/cstk/releases/tag/v10.6.0
