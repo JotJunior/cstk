@@ -146,11 +146,19 @@ function PreOrMermaid({ node: _node, children, ...rest }: ComponentProps<'pre'> 
 export interface MarkdownViewProps {
   /** Markdown BRUTO de um artefato de documentacao — UNTRUSTED (Principio V). */
   content: string;
+  /**
+   * Classe CSS ADICIONAL (somada a `markdown-view`, nunca no lugar dela) —
+   * usada por variantes de densidade, como o transcript de sessao
+   * (`markdown-view--compact`). Puramente visual: nao ha caminho por onde
+   * uma classe altere a postura de seguranca (sanitize/urlTransform sao
+   * fixos abaixo).
+   */
+  className?: string;
 }
 
-export function MarkdownView({ content }: MarkdownViewProps) {
+export function MarkdownView({ content, className = '' }: MarkdownViewProps) {
   return (
-    <div className="markdown-view">
+    <div className={`markdown-view${className ? ' ' + className : ''}`}>
       <Markdown
         // remark-gfm habilita as EXTENSOES GFM exigidas por FR-006 (tabelas,
         // strikethrough, task lists, autolinks) — opera no nivel do PARSER de

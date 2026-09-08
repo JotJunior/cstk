@@ -277,6 +277,31 @@
 .markdown-view hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .markdown-view img { max-width: 100%; border-radius: var(--r-xs); }
 
+/* Variante compacta (transcript de sessao — SessionDetail.tsx). Mesma
+ * postura de seguranca do doc-viewer (so muda densidade): mensagens de
+ * agente sao curtas e empilhadas dezenas por tela, entao o espacamento
+ * generoso do doc-viewer viraria rolagem inutil. */
+.markdown-view--compact { font-size: 12.5px; line-height: 1.55; }
+.markdown-view--compact h1, .markdown-view--compact h2, .markdown-view--compact h3,
+.markdown-view--compact h4, .markdown-view--compact h5, .markdown-view--compact h6 {
+  margin: 12px 0 6px;
+}
+.markdown-view--compact h1 { font-size: 16px; }
+.markdown-view--compact h2 { font-size: 14.5px; }
+.markdown-view--compact h3 { font-size: 13px; }
+.markdown-view--compact h4, .markdown-view--compact h5, .markdown-view--compact h6 { font-size: 12.5px; }
+.markdown-view--compact p { margin: 0 0 8px; }
+.markdown-view--compact ul, .markdown-view--compact ol { margin: 0 0 8px; padding-left: 20px; }
+.markdown-view--compact li { margin: 2px 0; }
+.markdown-view--compact pre { margin: 0 0 8px; padding: 8px 10px; }
+.markdown-view--compact code { font-size: 11.5px; }
+.markdown-view--compact table { margin: 0 0 8px; font-size: 12px; }
+.markdown-view--compact th, .markdown-view--compact td { padding: 4px 8px; }
+.markdown-view--compact blockquote { margin: 0 0 8px; }
+.markdown-view--compact hr { margin: 12px 0; }
+/* Ultimo bloco nao empurra a borda inferior da entrada do transcript. */
+.markdown-view--compact > *:last-child { margin-bottom: 0; }
+
 /* Diagramas Mermaid (blocos ```mermaid — MermaidDiagram.tsx). O SVG gerado
  * ja vem com max-width/width responsivos (useMaxWidth default da lib);
  * overflow-x cobre diagramas mais largos que o card em telas estreitas. */

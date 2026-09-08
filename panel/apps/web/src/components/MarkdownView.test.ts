@@ -230,4 +230,33 @@ describe('Auditoria de fonte — ausencia de dangerouslySetInnerHTML (task 5.3.3
   it('hooks.ts (camada de dados useFeatureDocs/useFeatureDocContent) nao usa dangerouslySetInnerHTML', () => {
     expect(readSrc('lib/hooks.ts')).not.toMatch(USAGE_RE);
   });
+
+  it('SessionDetail.tsx (consumidor do transcript, texto de agente) nao usa dangerouslySetInnerHTML', () => {
+    expect(readSrc('screens/SessionDetail.tsx')).not.toMatch(USAGE_RE);
+  });
+});
+
+describe('MarkdownView — variante de densidade via className (transcript de sessao)', () => {
+  it('SOMA a classe extra a markdown-view, nunca substitui', () => {
+    const html = renderToStaticMarkup(
+      createElement(MarkdownView, { content: '# oi', className: 'markdown-view--compact' }),
+    );
+    expect(html).toContain('class="markdown-view markdown-view--compact"');
+  });
+
+  it('sem className continua exatamente markdown-view (sem espaco sobrando)', () => {
+    const html = renderToStaticMarkup(createElement(MarkdownView, { content: '# oi' }));
+    expect(html).toContain('class="markdown-view"');
+  });
+
+  it('a variante NAO afrouxa a sanitizacao (HTML ativo segue inerte)', () => {
+    const html = renderToStaticMarkup(
+      createElement(MarkdownView, {
+        content: '<script>alert(1)</script>\n\n[x](javascript:alert(1))',
+        className: 'markdown-view--compact',
+      }),
+    );
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('javascript:');
+  });
 });
