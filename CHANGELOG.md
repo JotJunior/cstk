@@ -5,6 +5,20 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.1] - 2026-09-07
+
+Release cosmetica: o help geral do binario `cstk` ganha identidade visual.
+Nenhuma mudanca de contrato, flag ou comportamento.
+
+### Added
+
+- **Cabecalho ASCII no help do `cstk`.** `cstk help` / `cstk --help` (forma
+  sem argumento, `_cmd_help` em `cli/cstk`) agora abre com a arte ASCII
+  "CSTK" acima do titulo "cstk — Claude Specs Toolkit CLI". Os helps por
+  subcomando (`cstk help <cmd>`) permanecem inalterados; os cenarios de
+  `tests/cstk/test_cstk-main.sh` (que asseram `USO:`/`COMANDOS`) seguem
+  passando sem ajuste.
+
 ## [10.6.0] - 2026-09-03
 
 Quatro achados de uma unica reabertura real (`/feature-00c --reopen` numa
@@ -8061,6 +8075,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.1]: https://github.com/JotJunior/cstk/releases/tag/v10.6.1
 [10.6.0]: https://github.com/JotJunior/cstk/releases/tag/v10.6.0
 [10.5.0]: https://github.com/JotJunior/cstk/releases/tag/v10.5.0
 [10.4.0]: https://github.com/JotJunior/cstk/releases/tag/v10.4.0
