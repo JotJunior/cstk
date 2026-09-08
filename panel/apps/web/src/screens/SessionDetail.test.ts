@@ -4,7 +4,7 @@
  * (`sessionDetailDegradedCopy`, `sessionEntryKey`) e testada em isolamento.
  */
 import { describe, it, expect } from 'vitest';
-import { sessionDetailDegradedCopy, sessionEntryKey } from './SessionDetail.js';
+import { sessionDetailDegradedCopy, sessionEntryKey, sessionEntryRendersMarkdown } from './SessionDetail.js';
 
 describe('sessionDetailDegradedCopy — cobre TODOS os reasons de GET /sessions/:id/tail (US3)', () => {
   it('cobre session-not-found', () => {
@@ -42,5 +42,19 @@ describe('sessionEntryKey', () => {
 
   it('cai para o indice quando uuid e null (linhas legadas sem uuid)', () => {
     expect(sessionEntryKey({ uuid: null }, 2)).toBe('entry-2');
+  });
+});
+
+describe('sessionEntryRendersMarkdown — so a mensagem vira markdown', () => {
+  it('renderiza markdown para kind=text (mensagem escrita em markdown)', () => {
+    expect(sessionEntryRendersMarkdown('text')).toBe(true);
+  });
+
+  it('mantem literal o resumo de tool_use (glob/comando nao pode virar enfase)', () => {
+    expect(sessionEntryRendersMarkdown('tool_use')).toBe(false);
+  });
+
+  it('mantem literal o marcador de tool_result', () => {
+    expect(sessionEntryRendersMarkdown('tool_result')).toBe(false);
   });
 });

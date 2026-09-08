@@ -7,7 +7,11 @@
  * `live: false` ainda exibe conteudo normalmente.
  *
  * `entries[].text` e UNTRUSTED (FR-005, Principio V) — renderizado via
- * `TextBlockRaw`, NUNCA `dangerouslySetInnerHTML`.
+ * `MarkdownView` (mensagens) ou `TextBlockRaw` (resumo de ferramenta),
+ * NUNCA `dangerouslySetInnerHTML`. As duas rotas escapam/sanitizam: o
+ * markdown passa por `rehype-sanitize` + allowlist de esquema de URL, sem
+ * `rehype-raw` — HTML bruto embutido no texto do agente continua inerte
+ * (ver MarkdownView.tsx).
  *
  * Ref: contracts/sessions-api.md; tasks.md §6.3.2.
  */
@@ -15,7 +19,7 @@ import { useParams } from 'react-router-dom';
 import { useSessionTail } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
-import { FreshnessLabel, TextBlockRaw } from '@/components/index.js';
+import { FreshnessLabel, MarkdownView, TextBlockRaw } from '@/components/index.js';
 import { fmtRelative, fmtTimestamp } from '@/lib/format.js';
 import type { SessionTailEntryDTO, DegradedReason } from '@cstk-panel/shared-types';
 
@@ -57,6 +61,25 @@ export function sessionDetailDegradedCopy(reason: DegradedReason | string | null
 /** Chave estavel de uma linha do tail — `uuid` quando presente, senao o indice. */
 export function sessionEntryKey(entry: Pick<SessionTailEntryDTO, 'uuid'>, index: number): string {
   return entry.uuid ?? `entry-${index}`;
+}
+
+/**
+ * Decide se o `text` de uma entrada e renderizado como MARKDOWN.
+ *
+ * Somente `kind === 'text'`: e a unica origem cujo conteudo foi de fato
+ * ESCRITO em markdown (mensagem de usuario/assistente — tabelas, listas,
+ * `code`, **negrito**). As outras duas origens sao texto sintetico do
+ * proprio painel e continuam literais:
+ *
+ * - `tool_use`    — resumo de UMA linha do input (path, comando, query);
+ *                   markdown ali so distorceria (`*` de glob virando enfase,
+ *                   `_` sumindo no meio de identificador);
+ * - `tool_result` — marcador de tamanho colapsado, sem markdown algum.
+ *
+ * Exportada para teste unitario direto (sem DOM) — ver SessionDetail.test.ts.
+ */
+export function sessionEntryRendersMarkdown(kind: SessionTailEntryDTO['kind']): boolean {
+  return kind === 'text';
 }
 
 export function SessionDetail() {
@@ -174,7 +197,9 @@ export function SessionDetail() {
                 {entry.text !== '' && (
                   entry.kind === 'tool_result'
                     ? <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{entry.text}</div>
-                    : <TextBlockRaw value={entry.text} />
+                    : sessionEntryRendersMarkdown(entry.kind)
+                      ? <MarkdownView content={entry.text} className="markdown-view--compact" />
+                      : <TextBlockRaw value={entry.text} />
                 )}
                 {entry.textTruncated && (
                   <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>[texto truncado]</div>
