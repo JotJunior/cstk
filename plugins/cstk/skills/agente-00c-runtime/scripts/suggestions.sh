@@ -11,8 +11,11 @@
 #
 # Sugestoes vivem em DOIS lugares:
 #   1. state.json `.suggestions[]` (ground truth, JSON estruturado)
-#   2. agente-00c-suggestions.md (export human-readable, regerado a cada
-#      register a partir do estado).
+#   2. agente-00c-suggestions.md (export human-readable). O arquivo e
+#      COMPARTILHADO entre execucoes no mesmo projeto-alvo (issue #197):
+#      cada register/mark-issue substitui apenas o bloco da PROPRIA
+#      execucao (cabecalho H1 com o execution.id) e preserva verbatim os
+#      blocos das demais — nunca reescreve o arquivo inteiro.
 #
 # Subcomandos:
 #   suggestions.sh register --state-dir DIR --suggestions-file FILE
@@ -88,6 +91,69 @@ _sg_validate_severidade() {
     informativa|aviso|impeditiva) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# _sg_exec_id FILE (documento materializado) — id da execucao corrente
+_sg_exec_id() {
+  jq -r '(.execution.id // .execucao.id)' "$1"
+}
+
+# _sg_merge_md OLD_MD NEW_SECTION_FILE EXEC_ID -> stdout
+# O suggestions.md e compartilhado entre execucoes (per-projeto). Blocos de
+# OUTRAS execucoes (delimitados pelo cabecalho H1 "# Sugestoes do
+# Agente-00C — <id>") sao preservados verbatim; apenas o bloco de EXEC_ID e
+# substituido in-place (ou anexado ao final se ausente). Issue #197.
+_sg_merge_md() {
+  _old=$1
+  _new=$2
+  _mid=$3
+  if [ ! -f "$_old" ]; then
+    cat -- "$_new"
+    return 0
+  fi
+  awk -v id="$_mid" -v newfile="$_new" '
+    function print_new(   l) {
+      while ((getline l < newfile) > 0) print l
+      close(newfile)
+      printed = 1
+    }
+    /^# Sugestoes do Agente-00C — / {
+      hid = $0
+      sub(/^# Sugestoes do Agente-00C — /, "", hid)
+      if (hid == id) {
+        if (!printed) print_new()
+        skip = 1
+        next
+      }
+      skip = 0
+    }
+    skip { next }
+    { print; last = $0 }
+    END {
+      if (!printed) {
+        if (NR > 0 && last != "") print ""
+        print_new()
+      }
+    }
+  ' "$_old"
+}
+
+# _sg_write_md STATE_FILE MD_PATH — regenera a secao da execucao corrente e
+# mescla no arquivo compartilhado com escrita atomica.
+_sg_write_md() {
+  _wsf=$1
+  _wmd=$2
+  _wid=$(_sg_exec_id "$_wsf")
+  if ! _sg_render_md "$_wsf" > "$_wmd.new.$$"; then
+    rm -f -- "$_wmd.new.$$" 2>/dev/null
+    _sg_die "render-md falhou" 1
+  fi
+  if ! _sg_merge_md "$_wmd" "$_wmd.new.$$" "$_wid" > "$_wmd.tmp.$$"; then
+    rm -f -- "$_wmd.new.$$" "$_wmd.tmp.$$" 2>/dev/null
+    _sg_die "merge md falhou" 1
+  fi
+  rm -f -- "$_wmd.new.$$" 2>/dev/null
+  mv -f -- "$_wmd.tmp.$$" "$_wmd"
 }
 
 # ---------- Subcomandos ----------
@@ -172,14 +238,11 @@ _sg_cmd_register() {
       --field '.accumulated_metrics.global_skill_suggestions_total' --value "$_total"
   fi
 
-  # Regenera suggestions.md a partir do estado ATUALIZADO (re-materializa;
-  # sem secrets-filter — caller aplica se quiser)
+  # Regenera a secao desta execucao a partir do estado ATUALIZADO e mescla
+  # no arquivo compartilhado preservando blocos de outras execucoes
+  # (issue #197; sem secrets-filter — caller aplica se quiser)
   _sf_after=$(state_read_materialize "$_sd")
-  _sg_render_md "$_sf_after" > "$_sf_md.tmp.$$" || {
-    rm -f -- "$_sf_md.tmp.$$" 2>/dev/null
-    _sg_die "render-md falhou" 1
-  }
-  mv -f -- "$_sf_md.tmp.$$" "$_sf_md"
+  _sg_write_md "$_sf_after" "$_sf_md"
 
   printf '%s\n' "$_id"
 }
@@ -288,16 +351,11 @@ _sg_cmd_mark_issue() {
       --field '.accumulated_metrics.toolkit_issues_opened' --value "$_total"
   fi
 
-  # Regenera suggestions.md se path passado (a partir do estado atualizado)
+  # Regenera suggestions.md se path passado (a partir do estado atualizado;
+  # mescla preservando blocos de outras execucoes — issue #197)
   if [ -n "$_sf_md" ]; then
     _sf_after=$(state_read_materialize "$_sd")
-    if _sg_render_md "$_sf_after" > "$_sf_md.tmp.$$"; then
-      mv -f -- "$_sf_md.tmp.$$" "$_sf_md" \
-        || { rm -f -- "$_sf_md.tmp.$$" 2>/dev/null; _sg_die "mv md falhou" 1; }
-    else
-      rm -f -- "$_sf_md.tmp.$$" 2>/dev/null
-      _sg_die "render-md falhou" 1
-    fi
+    _sg_write_md "$_sf_after" "$_sf_md"
   fi
 }
 

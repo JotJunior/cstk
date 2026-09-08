@@ -145,6 +145,71 @@ scenario_render_md_sem_sugestoes() {
   assert_stdout_contains "Nenhuma sugestao" || return 1
 }
 
+# ==== Arquivo compartilhado entre execucoes (issue #197) ====
+# O suggestions.md e per-projeto, compartilhado por execucoes distintas.
+# register/mark-issue devem substituir SO o bloco da propria execucao
+# (cabecalho H1 com o execution.id) e preservar verbatim os demais.
+
+_init_exec() {
+  # $1 = state-dir; $2 = execucao-id
+  _ie_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_ie_home"
+  capture env HOME="$_ie_home" "$RW" init --state-dir "$1" --execucao-id "$2" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC suggestions shared md"
+}
+
+scenario_register_preserva_bloco_de_outra_execucao() {
+  _sda="$TMPDIR_TEST/state-a"; _sdb="$TMPDIR_TEST/state-b"
+  _md="$TMPDIR_TEST/shared-sug.md"
+  _init_exec "$_sda" "exec-a"
+  _init_exec "$_sdb" "exec-b"
+  _register_default "$_sda" "$_md" clarify aviso
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register A" "$_CAPTURED_STDERR"; return 1; }
+  _register_default "$_sdb" "$_md" plan impeditiva
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register B" "$_CAPTURED_STDERR"; return 1; }
+  grep -q "Agente-00C — exec-a" "$_md" \
+    || { _fail "issue #197" "bloco de exec-a destruido pelo register de exec-b"; return 1; }
+  grep -q "Agente-00C — exec-b" "$_md" \
+    || { _fail "bloco exec-b ausente" ""; return 1; }
+  grep -q "skill \`clarify\`" "$_md" || { _fail "sugestao de exec-a sumiu" ""; return 1; }
+  grep -q "skill \`plan\`" "$_md" || { _fail "sugestao de exec-b sumiu" ""; return 1; }
+}
+
+scenario_register_substitui_proprio_bloco_sem_duplicar() {
+  _sda="$TMPDIR_TEST/state-a"; _sdb="$TMPDIR_TEST/state-b"
+  _md="$TMPDIR_TEST/shared-sug.md"
+  _init_exec "$_sda" "exec-a"
+  _init_exec "$_sdb" "exec-b"
+  _register_default "$_sda" "$_md" clarify aviso
+  _register_default "$_sdb" "$_md" plan impeditiva
+  # 2o register de exec-a: substitui o proprio bloco IN-PLACE, sem duplicar
+  # cabecalho nem apagar o bloco de exec-b.
+  _register_default "$_sda" "$_md" specify informativa
+  _ca=$(grep -c "Agente-00C — exec-a" "$_md")
+  [ "$_ca" = "1" ] || { _fail "bloco exec-a duplicado" "esperado 1 cabecalho, obtido $_ca"; return 1; }
+  _cb=$(grep -c "Agente-00C — exec-b" "$_md")
+  [ "$_cb" = "1" ] || { _fail "bloco exec-b" "esperado 1 cabecalho, obtido $_cb"; return 1; }
+  grep -q "skill \`specify\`" "$_md" || { _fail "sug-002 de exec-a ausente" ""; return 1; }
+  grep -q "skill \`plan\`" "$_md" || { _fail "bloco exec-b perdeu conteudo" ""; return 1; }
+}
+
+scenario_mark_issue_preserva_bloco_de_outra_execucao() {
+  _sda="$TMPDIR_TEST/state-a"; _sdb="$TMPDIR_TEST/state-b"
+  _md="$TMPDIR_TEST/shared-sug.md"
+  _init_exec "$_sda" "exec-a"
+  _init_exec "$_sdb" "exec-b"
+  _register_default "$_sda" "$_md" clarify impeditiva
+  _register_default "$_sdb" "$_md" plan aviso
+  capture "$SCRIPT" mark-issue --state-dir "$_sda" --suggestions-file "$_md" \
+    --suggestion-id "sug-001" \
+    --issue "https://github.com/JotJunior/cstk/issues/197"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-issue" "$_CAPTURED_STDERR"; return 1; }
+  grep -q "issues/197" "$_md" || { _fail "issue nao refletida no md" ""; return 1; }
+  grep -q "Agente-00C — exec-b" "$_md" \
+    || { _fail "issue #197" "mark-issue de exec-a destruiu bloco de exec-b"; return 1; }
+  grep -q "skill \`plan\`" "$_md" || { _fail "conteudo de exec-b sumiu" ""; return 1; }
+}
+
 # --- Back-compat: fixture pt-BR legada lida via reader-fallback (.en // .pt) ---
 # schema-en-migration §6: os readers (count/list/next-id/render-md) usam paths EN
 # com fallback pt-BR. Prova que um state.json legado (escrito antes da migracao,
