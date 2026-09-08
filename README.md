@@ -8,6 +8,38 @@
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/cstk-blue?logo=readthedocs)](https://jotjunior.github.io/cstk/)
 [![Publish Site](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml)
 
+```text
+                        ██   ██
+                      ██   ██     ██████╗ ███████╗████████╗██╗  ██╗
+   ▄██████▄   ▄████▄ ▄███████▄   ██╔════╝ ██╔════╝╚══██╔══╝██║ ██╔╝
+  ██████████▄▄██████ ████  ███   ██║      ███████╗   ██║   █████╔╝
+  ▀████████▀  ▀████▀ █████████   ██║      ╚════██║   ██║   ██╔═██╗
+    ▀▀▀▀▀▀    ▄████▄  ▀▀▀▀ ▀▀▀   ╚██████╗ ███████║   ██║   ██║  ██╗
+            ▄█▀▄█▀ ▀█▄            ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝
+          ▄█▀ ▄█▀    ▀█▄
+```
+
+**Why the leaf-cutter ant?** We asked Claude: *if cstk had a definitive
+O'Reilly guide, which animal would be on the cover?* The answer, without
+hesitation:
+
+> The leaf-cutter ant. The cover animal has to tell the product's story, and
+> the leaf-cutter tells every chapter: it doesn't eat the leaf it cuts — it
+> orchestrates. The heavy lifting is done by the colony, in parallel waves,
+> each worker carrying a piece that fits its own context. If one falls along
+> the way, another resumes exactly where it left off, because the pheromone
+> trail is the shared memory of the work — their `knowledge.db`, an auditable
+> trace any of them can consult before deciding the next step. And model
+> routing comes for free: worker caste for the volume, soldiers for the heavy
+> stuff, a queen that only decides. Autonomy without a black box, with
+> provenance recorded on the ground.
+>
+> And in the colophon, that classic footnote about the animal: *"the
+> leaf-cutter ant thrives in any POSIX environment and considers logs without
+> provenance a threat to its habitat."*
+
+That's why the ant lives in the `cstk` CLI header.
+
 A set of tools to boost day-to-day development productivity with
 [Claude Code](https://claude.ai/code): **skills** and **hooks** for
 documentation, development, security and code quality.

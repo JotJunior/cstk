@@ -8,6 +8,38 @@
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/cstk-blue?logo=readthedocs)](https://jotjunior.github.io/cstk/)
 [![Publish Site](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml)
 
+```text
+                        ██   ██
+                      ██   ██     ██████╗ ███████╗████████╗██╗  ██╗
+   ▄██████▄   ▄████▄ ▄███████▄   ██╔════╝ ██╔════╝╚══██╔══╝██║ ██╔╝
+  ██████████▄▄██████ ████  ███   ██║      ███████╗   ██║   █████╔╝
+  ▀████████▀  ▀████▀ █████████   ██║      ╚════██║   ██║   ██╔═██╗
+    ▀▀▀▀▀▀    ▄████▄  ▀▀▀▀ ▀▀▀   ╚██████╗ ███████║   ██║   ██║  ██╗
+            ▄█▀▄█▀ ▀█▄            ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝
+          ▄█▀ ▄█▀    ▀█▄
+```
+
+**Por que a formiga-cortadeira?** Perguntamos ao Claude: *se o cstk tivesse
+um guia definitivo da O'Reilly, que animal acha que seria exibido na capa?* A
+resposta, sem hesitar:
+
+> A formiga-cortadeira. O animal da capa precisa contar a história do produto,
+> e a saúva conta cada capítulo: ela não come a folha que corta, ela
+> orquestra — o trabalho pesado quem faz é a colônia, em levas paralelas, cada
+> operária carregando um pedaço que cabe no próprio contexto. Se uma cai no
+> meio do caminho, outra retoma exatamente de onde parou, porque a trilha de
+> feromônio é a memória compartilhada do trabalho — o `knowledge.db` delas, um
+> rastro auditável que qualquer uma consegue consultar antes de decidir o
+> próximo passo. E ainda tem o roteamento de modelos de graça: casta operária
+> para o volume, soldado para o que é pesado, rainha que só decide. Autonomia
+> sem caixa-preta, com proveniência gravada no chão.
+>
+> E no colofão, aquela nota de rodapé clássica sobre o animal: *"a
+> formiga-cortadeira prospera em qualquer ambiente POSIX e considera logs sem
+> proveniência uma ameaça ao seu habitat."*
+
+É por isso que a formiga vive no cabeçalho do CLI `cstk`.
+
 Conjunto de ferramentas para aumentar a produtividade no desenvolvimento do dia a dia com
 o [Claude Code](https://claude.ai/code): **skills** e **hooks** para
 documentação, desenvolvimento, segurança e qualidade de código.
