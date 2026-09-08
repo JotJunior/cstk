@@ -5,6 +5,27 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.2] - 2026-09-07
+
+Release do painel: o transcript de sessao passa a exibir as mensagens de
+agente como markdown renderizado (PR #199), com a mesma postura de
+sanitizacao do doc-viewer. Nenhuma mudanca em CLI, skills ou runtime 00c.
+
+### Changed
+
+- **Transcript de sessao renderiza markdown nas mensagens (painel).**
+  `SessionDetail.tsx` passa a renderizar entradas `kind === 'text'` via
+  `MarkdownView` com a nova variante de densidade `markdown-view--compact`
+  (`prototype.css`); resumos de `tool_use` e marcadores de `tool_result`
+  continuam literais via `TextBlockRaw` (`sessionEntryRendersMarkdown`,
+  exportada e testada sem DOM). `MarkdownView` ganha prop `className`
+  ADITIVA (somada a `markdown-view`, nunca substituta) — puramente visual:
+  a sanitizacao permanece fixa (`rehype-sanitize` + allowlist de esquema de
+  URL, sem `rehype-raw`), coberta por novos cenarios em
+  `MarkdownView.test.ts` (HTML ativo segue inerte sob a variante) e pela
+  auditoria de ausencia de `dangerouslySetInnerHTML` estendida a
+  `SessionDetail.tsx`.
+
 ## [10.6.1] - 2026-09-07
 
 Release cosmetica: o help geral do binario `cstk` ganha identidade visual.
@@ -8075,6 +8096,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.2]: https://github.com/JotJunior/cstk/releases/tag/v10.6.2
 [10.6.1]: https://github.com/JotJunior/cstk/releases/tag/v10.6.1
 [10.6.0]: https://github.com/JotJunior/cstk/releases/tag/v10.6.0
 [10.5.0]: https://github.com/JotJunior/cstk/releases/tag/v10.5.0
