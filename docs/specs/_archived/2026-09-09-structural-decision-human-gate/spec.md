@@ -411,8 +411,4 @@ declarado acima.
 
 ## Delta Requirements
 
-**Skip**: o corpus `docs/specs/current/` nao possui capability para Decisoes
-auditaveis/score nem para os gates de briefing/plan — a feature e aditiva sobre
-comportamento ainda nao capturado no corpus; o archive desta feature
-introduzira a capability correspondente — Claude (sessao do operador),
-2026-08-19
+**Skip**: o corpus `docs/specs/current/` nao possui capability para Decisoes auditaveis/score nem para os gates de briefing/plan; a feature e aditiva sobre comportamento ainda nao capturado no corpus; o archive desta feature introduzira a capability correspondente — Claude (sessao do operador), 2026-08-19

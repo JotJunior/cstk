@@ -29,3 +29,9 @@ Consultar o corpus MUST responder "como o sistema se comporta hoje" para qualque
 
 *Introduzida por: living-specs (2026-07-28)*
 
+### FR-013
+
+Uma especificacao ja arquivada MUST poder retornar ao caminho ativo para receber um incremento, sem que o diretorio de arquivo do round anterior seja movido, alterado ou removido — o historico sob o arquivo permanece a trilha do que foi entregue naquela rodada, e a especificacao ativa passa a ser a rodada em curso.
+
+*Introduzida por: feature-reopen (2026-09-09)*
+

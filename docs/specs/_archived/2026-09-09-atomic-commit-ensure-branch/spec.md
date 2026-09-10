@@ -145,3 +145,7 @@ fluxos sem prompt (resume/reopen) a falha vira aviso e a execucao segue
   permanece integral).
 - `cstk session start` automatico (worktree e mais pesado; permanece
   como remediacao sugerida, nao como pre-requisito).
+
+## Delta Requirements
+
+**Skip**: a unica capability do corpus `docs/specs/current/` relacionada ao modo atomic-commit e `atomic-commit-staging`, que cobre apenas a allowlist de staging (FR-014..FR-016); a garantia de branch no opt-in (`commit-mode.sh ensure-branch`) e comportamento aditivo sem capability correspondente a alterar via delta — Claude (sessao do operador), 2026-09-09

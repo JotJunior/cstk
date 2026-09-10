@@ -266,12 +266,7 @@ como sucesso total.
 
 ## Delta Requirements
 
-**Skip**: nenhuma capability documentada em `docs/specs/current/` cobre
-hoje o comportamento de checagem de integridade (`cstk doctor`) nem o
-formato de `.cstk-manifest` — a feature introduz comparacao/estado novos
-sobre um mecanismo existente que ainda nao tem entrada correspondente no
-corpus canonico de living-specs; nao ha bloco `### Capability:` para
-reusar ou fragmentar — agente-00c-feature-orchestrator, 2026-08-27.
+**Skip**: nenhuma capability documentada em `docs/specs/current/` cobre hoje o comportamento de checagem de integridade (`cstk doctor`) nem o formato de `.cstk-manifest`; a feature introduz comparacao/estado novos sobre um mecanismo existente que ainda nao tem entrada correspondente no corpus canonico de living-specs; nao ha bloco `### Capability:` para reusar ou fragmentar — agente-00c-feature-orchestrator, 2026-08-27.
 
 ## Clarifications
 

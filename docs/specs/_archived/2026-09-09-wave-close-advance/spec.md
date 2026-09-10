@@ -147,3 +147,7 @@ terminal) permanece no helper (fonte unica de regra).
 - Validacao de coerencia em `state-validate.sh` (o campo continua
   free-text; a coerencia passa a ser garantida por construcao no
   produtor).
+
+## Delta Requirements
+
+**Skip**: nenhuma capability do corpus `docs/specs/current/` (atomic-commit-staging, bash-guard-enforcement, delta-archive-gate, guards-defense-in-depth, serve-integrity, spec-corpus, spec-delta-requirements, trusted-release-hosts) cobre a maquina de fechamento de onda ou o ponteiro de resume (`state-ondas.sh end` / `next_instruction`); comportamento aditivo sem alvo de delta no corpus — Claude (sessao do operador), 2026-09-09
