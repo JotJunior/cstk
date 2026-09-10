@@ -428,9 +428,4 @@ lançamento.
 
 ## Delta Requirements
 
-**Skip**: feature inteiramente nova — introduz o conceito de "leva
-paralela" sobre o modo roadmap já existente (`roadmap-mode`), mas o modo
-roadmap ainda não foi arquivado no corpus canônico
-(`docs/specs/current/`) e nenhuma capability existente descreve
-lançamento paralelo de sessões; não há comportamento ativo documentado
-para alterar via delta. — agente-00c-feature-orchestrator, 2026-08-17
+**Skip**: feature inteiramente nova: introduz o conceito de "leva paralela" sobre o modo roadmap já existente (`roadmap-mode`), mas o modo roadmap ainda não foi arquivado no corpus canônico (`docs/specs/current/`) e nenhuma capability existente descreve lançamento paralelo de sessões; não há comportamento ativo documentado para alterar via delta — agente-00c-feature-orchestrator, 2026-08-17

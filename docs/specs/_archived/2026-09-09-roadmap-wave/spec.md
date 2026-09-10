@@ -220,13 +220,4 @@ e a remediação, sem lançar nada.
 
 ## Delta Requirements
 
-**Skip**: a oferta de leva paralela por gatilho de fim-de-execução
-(`.execution.termination_reason == concluido_roadmap`) já existe e está
-documentada na spec `roadmap-parallel-launch`, mas essa feature ainda
-não foi dobrada ao corpus canônico `docs/specs/current/` (nenhum slug
-relacionado a roadmap/leva-paralela encontrado lá nesta data) — não há
-capability ativa documentada no corpus para declarar delta contra.
-`roadmap-wave` introduz um segundo caminho de entrada (retomada manual,
-fora do fim-de-execução) para o mesmo mecanismo de cálculo/oferta/
-lançamento, reaproveitado por referência, não uma mudança em
-comportamento hoje documentado como ativo no corpus. — agente-00c-feature-orchestrator, 2026-08-18
+**Skip**: a oferta de leva paralela por gatilho de fim-de-execução (`.execution.termination_reason == concluido_roadmap`) já existe e está documentada na spec `roadmap-parallel-launch`, mas essa feature ainda não foi dobrada ao corpus canônico `docs/specs/current/` (nenhum slug relacionado a roadmap/leva-paralela encontrado lá nesta data); não há capability ativa documentada no corpus para declarar delta contra; `roadmap-wave` introduz um segundo caminho de entrada (retomada manual, fora do fim-de-execução) para o mesmo mecanismo de cálculo/oferta/lançamento, reaproveitado por referência, não uma mudança em comportamento hoje documentado como ativo no corpus — agente-00c-feature-orchestrator, 2026-08-18

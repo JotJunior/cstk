@@ -235,11 +235,4 @@ marcação especial que a distinga das demais.
 
 ## Delta Requirements
 
-**Skip**: nenhum capability doc em `docs/specs/current/` cobre hoje a
-máquina de etapas do pipeline SDD ou o comportamento do gate de
-convergência — o comportamento existente vive apenas na prosa dos agentes
-orquestradores (`agente-00c-orchestrator.md` /
-`agente-00c-feature-orchestrator.md`), fora do corpus canônico de
-capabilities ativas. Esta feature formaliza e estende esse comportamento
-como capability nova, sem alvo de delta identificável. — feature-00c
-orchestrator, 2026-08-21
+**Skip**: nenhum capability doc em `docs/specs/current/` cobre hoje a máquina de etapas do pipeline SDD ou o comportamento do gate de convergência; o comportamento existente vive apenas na prosa dos agentes orquestradores (`agente-00c-orchestrator.md` / `agente-00c-feature-orchestrator.md`), fora do corpus canônico de capabilities ativas; esta feature formaliza e estende esse comportamento como capability nova, sem alvo de delta identificável — feature-00c orchestrator, 2026-08-21

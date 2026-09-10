@@ -23,7 +23,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 CMD_INIT_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
 CMD_RESUME_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
-CT_DELIVERY_TIER="$REPO_ROOT/docs/specs/delivery-tier/contracts/cli-delivery-tier.md"
+CT_DELIVERY_TIER="$REPO_ROOT/docs/specs/_archived/2026-09-09-delivery-tier/contracts/cli-delivery-tier.md"
 
 # ==== Prompt de finalidade presente, com as 4 opcoes e default cloud-public (FR-001) ====
 

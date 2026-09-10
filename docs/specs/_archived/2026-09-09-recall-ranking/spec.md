@@ -202,8 +202,4 @@ formaram sua posicao final.
 
 ## Delta Requirements
 
-**Skip**: o comportamento de ranking de `cstk recall` nao esta documentado
-como capability ativa no corpus `docs/specs/current/` (nenhum arquivo la
-trata do recall) — nao ha entrada existente para gerar delta contra; esta
-feature introduz comportamento novo sem capability correspondente no corpus
-de living-specs — agente-00c-feature-orchestrator, 2026-08-20.
+**Skip**: o comportamento de ranking de `cstk recall` nao esta documentado como capability ativa no corpus `docs/specs/current/` (nenhum arquivo la trata do recall); nao ha entrada existente para gerar delta contra; esta feature introduz comportamento novo sem capability correspondente no corpus de living-specs — agente-00c-feature-orchestrator, 2026-08-20.

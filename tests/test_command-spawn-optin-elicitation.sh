@@ -362,7 +362,7 @@ scenario_reopen_grava_channel_inherited_e_nao_prose() {
 scenario_reopen_contrato_e_data_model_declaram_inherited() {
   grep -Fq '`inherited`' "$REPO_ROOT/docs/specs/mcp-elicitation-optins/data-model.md" \
     || { _fail "data-model" "enum channel sem inherited"; return 1; }
-  grep -Fq "Passo 3'.bis" "$REPO_ROOT/docs/specs/feature-reopen/contracts/reopen-flow.md" \
+  grep -Fq "Passo 3'.bis" "$REPO_ROOT/docs/specs/_archived/2026-09-09-feature-reopen/contracts/reopen-flow.md" \
     || { _fail "reopen-flow" "contrato sem o passo 3'.bis"; return 1; }
 }
 

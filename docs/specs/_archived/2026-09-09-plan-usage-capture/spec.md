@@ -331,9 +331,4 @@ subsequente via CLI reporta "nao medido", nunca o valor `0`.
 
 ## Delta Requirements
 
-**Skip**: feature adiciona uma capacidade inteiramente nova (captura de
-gauge de limite do plano via statusline); nao ha nenhuma capability
-documentada em `docs/specs/current/` referente a captura de uso do plano ou
-`rate_limits` a ser alterada, removida ou renomeada — o corpus canonico
-atual cobre apenas atomic-commit-staging, guards e gates de delta/spec, sem
-sobreposicao com este escopo — agente-00c-feature-orchestrator, 2026-08-10
+**Skip**: feature adiciona uma capacidade inteiramente nova (captura de gauge de limite do plano via statusline); nao ha nenhuma capability documentada em `docs/specs/current/` referente a captura de uso do plano ou `rate_limits` a ser alterada, removida ou renomeada; o corpus canonico atual cobre apenas atomic-commit-staging, guards e gates de delta/spec, sem sobreposicao com este escopo — agente-00c-feature-orchestrator, 2026-08-10

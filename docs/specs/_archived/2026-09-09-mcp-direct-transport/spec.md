@@ -301,9 +301,4 @@ claro.
 
 ## Delta Requirements
 
-**Skip**: nao ha entrada correspondente em `docs/specs/current/` para o
-ciclo de vida do servidor MCP — a feature-base (`state-mcp-server`,
-arquivada) e o pre-requisito lógico ainda nao-mergeado
-(`orchestrator-mcp-allowlist`) nunca chegaram a compor o corpus canonico
-`docs/specs/current/`. Sem capability ativa documentada para herdar/alterar,
-esta spec nao preenche blocos `### Capability:`. — agente-00c-feature-orchestrator, 2026-08-16
+**Skip**: nao ha entrada correspondente em `docs/specs/current/` para o ciclo de vida do servidor MCP; a feature-base (`state-mcp-server`, arquivada) e o pre-requisito lógico ainda nao-mergeado (`orchestrator-mcp-allowlist`) nunca chegaram a compor o corpus canonico `docs/specs/current/`; sem capability ativa documentada para herdar/alterar, esta spec nao preenche blocos `### Capability:` — agente-00c-feature-orchestrator, 2026-08-16

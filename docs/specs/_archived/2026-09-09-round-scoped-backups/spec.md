@@ -188,9 +188,4 @@ com sucesso, sem erro por causa da ausencia.
 
 ## Delta Requirements
 
-**Skip**: a capacidade de rotacao de round (`state-rounds.sh`) ainda vive
-inteiramente dentro da spec ativa `feature-reopen` (nao arquivada em
-`docs/specs/current/`) — nao existe corpus canonico a emendar via Delta
-Requirements. O contrato afetado
-(`docs/specs/feature-reopen/contracts/state-rounds.md`) e atualizado
-diretamente como parte da implementacao desta feature. — agente-00c-feature-orchestrator, 2026-08-21
+**Skip**: a capacidade de rotacao de round (`state-rounds.sh`) ainda vive inteiramente dentro da spec ativa `feature-reopen` (nao arquivada em `docs/specs/current/`); nao existe corpus canonico a emendar via Delta Requirements; o contrato afetado (`docs/specs/feature-reopen/contracts/state-rounds.md`) e atualizado diretamente como parte da implementacao desta feature — agente-00c-feature-orchestrator, 2026-08-21
