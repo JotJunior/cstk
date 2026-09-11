@@ -5,6 +5,30 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.4] - 2026-09-11
+
+Housekeeping do portfolio de specs: 16 features concluidas arquivadas com
+merge no corpus canonico de living-specs, e a historia da capa no README.
+Sem mudanca de codigo, skill ou contrato.
+
+### Changed
+
+- **Archive de 16 features concluidas em `docs/specs/_archived/2026-09-09-*/`
+  (PR #204).** Cada uma passou pelo fluxo `delta-gate.sh` -> `delta-merge.sh`
+  -> `mv`; o merge criou 3 capabilities novas no corpus canonico
+  (`docs/specs/current/converge-must-coverage-fail-closed.md`,
+  `delivery-tier.md`, `roadmap-mode.md`) e atualizou `spec-corpus.md`.
+  9 specs tiveram o marcador `**Skip**` reunificado em linha unica (formato
+  exigido pelo parser do `delta-gate.sh`) e 2 specs released sem secao
+  `## Delta Requirements` (`atomic-commit-ensure-branch`,
+  `wave-close-advance`) ganharam Skip verificado contra o corpus.
+  `tests/test_command-spawn-delivery-tier.sh` e
+  `tests/test_command-spawn-optin-elicitation.sh` reapontados para os
+  contratos sob `_archived/`. Restam ativas: `mcp-elicitation-optins`,
+  `orchestrator-mcp-allowlist`, `panel-monorepo`.
+- **README: formiga-cortadeira no topo com a historia da capa O'Reilly
+  (PR #203).**
+
 ## [10.6.3] - 2026-09-08
 
 Bugfix de perda de dados no runtime 00c (issue #197, PR #201): o
@@ -8119,6 +8143,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.4]: https://github.com/JotJunior/cstk/releases/tag/v10.6.4
 [10.6.3]: https://github.com/JotJunior/cstk/releases/tag/v10.6.3
 [10.6.2]: https://github.com/JotJunior/cstk/releases/tag/v10.6.2
 [10.6.1]: https://github.com/JotJunior/cstk/releases/tag/v10.6.1
