@@ -513,6 +513,72 @@ scenario_preflight_unverified_endpoint_arquivo() {
   return 0
 }
 
+# ==== #206: o formato de ambiente do HARNESS ====
+#
+# Dentro do Claude Code — o UNICO contexto em que os commands 00c chamam
+# `preflight` — `OTEL_METRICS_EXPORTER` nao chega ao subprocesso da tool
+# Bash (`CLAUDE_CODE_ENABLE_TELEMETRY` e `CSTK_OTEL_ENDPOINT` chegam).
+# Enquanto o gate exigia a variavel ausente, TODO preflight real saia
+# `disabled`/exit 0 e o conflito de porta — a razao de existir do
+# subcomando — nunca era avaliado. Os cenarios acima nao pegavam isso
+# porque todos exportam as duas variaveis.
+#
+# Estes dois cenarios fixam os dois lados do gate: ausente (harness) segue
+# para a checagem de porta; visivel-e-outro-exporter continua `disabled`.
+
+# _pf_run_harness STUB_DIR ENDPOINT — igual a _pf_run, mas com o ambiente
+# do harness: telemetria ligada, OTEL_METRICS_EXPORTER REMOVIDA do
+# ambiente (env -u, nao string vazia) e CSTK_OTEL_ENDPOINT presente.
+_pf_run_harness() {
+  capture env -u OTEL_METRICS_EXPORTER \
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+    CSTK_OTEL_ENDPOINT="$2" \
+    PATH="$1:$PATH" sh "$SCRIPT" preflight --endpoint "$2"
+}
+
+scenario_preflight_harness_sem_exporter_var_detecta_conflito_exit3() {
+  _stub="$TMPDIR_TEST/pf-harness"
+  _pf_stub_lsof "$_stub" "1" "/Users/outro/projeto-alheio"
+  _pf_run_harness "$_stub" "http://127.0.0.1:29464/metrics"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit" "esperado 3 (conflito visivel sem OTEL_METRICS_EXPORTER), obtido $_CAPTURED_EXIT / $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=port-conflict*owner_pid=1*) : ;;
+    *) _fail "stdout" "esperado port-conflict, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_harness_sem_exporter_var_detecta_exporter_down_exit4() {
+  # Mesmo ambiente do harness, porta livre e ninguem escutando: o caminho
+  # exporter-down tambem estava inalcancavel.
+  _stub="$TMPDIR_TEST/pf-harness-down"
+  _pf_stub_lsof "$_stub" "" ""
+  _pf_run_harness "$_stub" "http://127.0.0.1:9/metrics"
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT / $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=exporter-down*) : ;;
+    *) _fail "stdout" "esperado status=exporter-down, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_exporter_var_visivel_outro_valor_disabled() {
+  # Fora do harness a variavel EXISTE e e informacao legitima: exporter
+  # que nao e prometheus nao tem endpoint para raspar — segue `disabled`,
+  # sem aviso. Contraprova do cenario acima (mutacao que ignorasse a
+  # variavel por completo passaria no anterior e falharia aqui).
+  _stub="$TMPDIR_TEST/pf-otlp"
+  _pf_stub_lsof "$_stub" "1" "/Users/outro/projeto-alheio"
+  capture env CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=otlp \
+    PATH="$_stub:$PATH" sh "$SCRIPT" preflight --endpoint "http://127.0.0.1:29464/metrics"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=disabled*) : ;;
+    *) _fail "stdout" "esperado status=disabled, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
 scenario_preflight_flag_desconhecida_exit2() {
   assert_exit 2 sh "$SCRIPT" preflight --nao-existe || return 1
   return 0

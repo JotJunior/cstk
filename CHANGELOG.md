@@ -5,6 +5,54 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.5] - 2026-09-17
+
+Bugfix de diagnostico cego (issue #206, PR #209): `otel-usage.sh
+preflight` respondia `status=disabled` em TODA execucao real dentro do
+Claude Code, deixando inalcancavel a deteccao de porta do exporter presa
+por outro processo — a unica razao de o subcomando existir.
+
+### Fixed
+
+- **`otel-usage.sh preflight` deixa de gatear por variavel que o harness
+  filtra (issue #206).** O gate exigia `OTEL_METRICS_EXPORTER=prometheus`,
+  e essa variavel NAO chega ao subprocesso da tool Bash do Claude Code —
+  que e o unico contexto em que `agente-00c.md` e `feature-00c.md` chamam
+  o subcomando. Como o `return 0` do gate vinha antes da checagem de
+  porta, `status=port-conflict` (exit 3) e `status=exporter-down` (exit 4)
+  nunca eram avaliados: o operador jamais recebia o aviso de que a
+  execucao inteira sairia com `otel_usage` null em toda onda. O gate agora
+  exige apenas `CLAUDE_CODE_ENABLE_TELEMETRY=1` (essa atravessa o filtro,
+  medido em macOS e Linux); `OTEL_METRICS_EXPORTER` so desqualifica quando
+  esta VISIVEL e aponta para outro exporter, de modo que fora do harness a
+  informacao continua respeitada. A medicao em si (`snapshot`/`delta`)
+  nunca foi afetada — so o diagnostico. Verificado na sessao real do
+  harness: o mesmo endpoint que respondia `status=disabled` passou a
+  responder `status=ok owner_pid=<pid>`, e contra porta de processo
+  nao-ancestral responde `status=port-conflict ... exit=3`.
+- **Aviso de `exporter-down` passa a declarar o que nao consegue
+  verificar.** Dentro do harness o script nao enxerga
+  `OTEL_METRICS_EXPORTER`, entao a mensagem agora diz isso em vez de
+  deixar o operador supor a causa.
+- **Comentario que originou o defeito corrigido em
+  `posttooluse-loose-usage.sh`.** Afirmava que `CLAUDE_CODE_ENABLE_TELEMETRY`
+  e `OTEL_METRICS_EXPORTER` eram ambas filtradas pelo harness; a primeira
+  CHEGA ao subprocesso (medido). O gatilho do hook por `CSTK_OTEL_ENDPOINT`
+  permanece correto e inalterado — e ancora de identidade do processo. A
+  mesma afirmacao errada foi removida da tabela de scripts em
+  `agente-00c-orchestrator.md`.
+
+### Added
+
+- **3 cenarios de regressao em `tests/test_otel-usage.sh`.** Cobrem o
+  formato de ambiente do harness (`env -u OTEL_METRICS_EXPORTER` +
+  `CSTK_OTEL_ENDPOINT` presente) chegando a `port-conflict`/exit 3 e a
+  `exporter-down`/exit 4, mais a contraprova `OTEL_METRICS_EXPORTER=otlp`
+  -> `disabled`. Nenhum cenario anterior exercitava esse formato: todos
+  exportavam as duas variaveis, o que escondia o comportamento real.
+  Mutation test nas duas direcoes: com o gate antigo os dois cenarios de
+  harness falham; ignorando a variavel por completo, falha a contraprova.
+
 ## [10.6.4] - 2026-09-11
 
 Housekeeping do portfolio de specs: 16 features concluidas arquivadas com
@@ -8143,6 +8191,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.5]: https://github.com/JotJunior/cstk/releases/tag/v10.6.5
 [10.6.4]: https://github.com/JotJunior/cstk/releases/tag/v10.6.4
 [10.6.3]: https://github.com/JotJunior/cstk/releases/tag/v10.6.3
 [10.6.2]: https://github.com/JotJunior/cstk/releases/tag/v10.6.2
