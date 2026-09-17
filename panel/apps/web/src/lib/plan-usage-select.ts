@@ -109,6 +109,108 @@ export function tightestScope(byScope: PlanUsageScopeState[]): PlanUsageScopeSta
 }
 
 /**
+ * Rotulo CURTO da janela, para o KPI compacto onde as DUAS precisam caber na
+ * mesma linha. Escopo desconhecido cai no identificador bruto, como o rotulo
+ * longo.
+ */
+export const SHORT_SCOPE_LABEL: Record<string, string> = {
+  five_hour: '5h',
+  seven_day: '7d',
+};
+
+export function shortScopeLabel(scope: string): string {
+  return SHORT_SCOPE_LABEL[scope] ?? scope;
+}
+
+/**
+ * Frescor da captura de UMA janela.
+ *
+ * Existe por causa de uma ambiguidade real do lado do toolkit: a captura e
+ * throttled (`_pu_throttle_discard` em `cli/lib/plan-usage.sh` descarta
+ * captura de valor identico a anterior), entao `capturedAt` antigo tanto pode
+ * significar "valor estavel" quanto "nenhuma sessao capturou ha horas" — e o
+ * card era o mesmo nos dois casos (issue #208).
+ *
+ * O intervalo tipico NAO e um numero arbitrado: e a mediana dos intervalos
+ * REALMENTE observados entre capturas daquela janela no recorte. Com menos de
+ * dois pontos nao ha base de comparacao e o estado e `unknown` — a idade
+ * continua sendo exibida, mas nenhuma suspeita e afirmada.
+ */
+export type PlanUsageCaptureState = 'unknown' | 'fresh' | 'aging';
+
+export interface PlanUsageCapture {
+  capturedAt: string | null;
+  /** idade da captura mais recente, em segundos; null sem captura ou data invalida */
+  ageSec: number | null;
+  /** mediana dos intervalos observados entre capturas, em segundos; null com < 2 pontos */
+  typicalIntervalSec: number | null;
+  state: PlanUsageCaptureState;
+}
+
+/**
+ * Quantas vezes o intervalo tipico a captura precisa passar para virar
+ * `aging`. Fator, nao limite absoluto: uma base que captura de 30 em 30s e
+ * outra que captura de hora em hora nao podem dividir o mesmo corte fixo.
+ */
+export const CAPTURE_AGING_FACTOR = 3;
+
+function medianOf(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? (sorted[mid] as number)
+    : (((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2);
+}
+
+export function planUsageCapture(
+  scope: PlanUsageScopeState | null | undefined,
+  series: PlanUsagePoint[],
+  nowMs: number,
+): PlanUsageCapture {
+  const capturedAt = scope?.capturedAt ?? null;
+  const capturedMs = capturedAt != null ? Date.parse(capturedAt) : NaN;
+  const ageSec = Number.isNaN(capturedMs)
+    ? null
+    : Math.max(0, Math.round((nowMs - capturedMs) / 1000));
+
+  const stamps = series
+    .filter(p => scope != null && p.scope === scope.scope)
+    .map(p => Date.parse(p.capturedAt))
+    .filter(ms => !Number.isNaN(ms))
+    .sort((a, b) => a - b);
+
+  const gaps: number[] = [];
+  for (let i = 1; i < stamps.length; i += 1) {
+    gaps.push(((stamps[i] as number) - (stamps[i - 1] as number)) / 1000);
+  }
+  const median = medianOf(gaps);
+  // Mediana <= 0 (duas capturas no mesmo segundo) nao e base de comparacao:
+  // qualquer idade passaria do corte e TUDO viraria suspeita.
+  const typicalIntervalSec = median != null && median > 0 ? median : null;
+
+  let state: PlanUsageCaptureState = 'unknown';
+  if (ageSec != null && typicalIntervalSec != null) {
+    state = ageSec > typicalIntervalSec * CAPTURE_AGING_FACTOR ? 'aging' : 'fresh';
+  }
+
+  return { capturedAt, ageSec, typicalIntervalSec, state };
+}
+
+/**
+ * Idade relativa da captura ("agora", "ha 4m", "ha 2h", "ha 3d"), a partir de
+ * segundos ja calculados — o relogio fica no chamador (funcao pura, mesmo
+ * contrato de `fmtResetsIn`). Ausencia continua sendo "—", nunca "agora".
+ */
+export function fmtCaptureAge(ageSec: number | null | undefined): string {
+  if (ageSec == null) return '—';
+  if (ageSec < 60) return 'agora';
+  if (ageSec < 3600) return `ha ${Math.floor(ageSec / 60)}m`;
+  if (ageSec < 86400) return `ha ${Math.floor(ageSec / 3600)}h`;
+  return `ha ${Math.floor(ageSec / 86400)}d`;
+}
+
+/**
  * Formata o percentual do plano. `null` vira "não medido", NUNCA "0%" —
  * um gauge sem leitura e um plano intocado sao afirmacoes diferentes.
  * O valor vem sem arredondamento da origem (inclusive com ruido de float, ex.

@@ -29,7 +29,8 @@ import type { DonutDatum } from '@/components/index.js';
 import { selectOverview, type OverviewRaw } from '@/lib/overview-select.js';
 import { selectModelUsage } from '@/lib/model-usage-select.js';
 import {
-  selectPlanUsage, tightestScope, scopeLabel, fmtPlanPct, fmtResetsIn, planUsageBand,
+  selectPlanUsage, tightestScope, scopeLabel, shortScopeLabel, fmtPlanPct, fmtResetsIn,
+  planUsageBand, planUsageCapture, fmtCaptureAge, CAPTURE_AGING_FACTOR,
 } from '@/lib/plan-usage-select.js';
 import type { ModelUsageResult, PlanUsageResult } from '@cstk-panel/shared-types';
 import { fmtNum, fmtDur, fmtPct, fmtRelative, fmtTokens } from '@/lib/format.js';
@@ -121,11 +122,20 @@ export function Overview({ period, project = '' }: OverviewProps) {
   // misturaria as fontes e subestimaria pela metade (constituicao 1.3.0 §III).
   const subagentCacheShare = cacheReadShare(otelSubagentTokens(otelUsage));
 
-  // Cota do plano (schema v14). O KPI compacto mostra a janela mais APERTADA
-  // e diz QUAL e — selecionar uma serie e permitido, fundir as duas nao.
+  // Cota do plano (schema v14). O numero grande e a janela mais APERTADA —
+  // selecionar uma serie e permitido, fundir as duas nao. Mas o card TAMBEM
+  // lista as duas janelas: enquanto a troca de lider aparecia so na nota
+  // pequena, o numero grande mudava de base sem sinal e "56% -> 49%" era lido
+  // como queda de consumo quando a metrica e que havia trocado (issue #208).
   const planVm = selectPlanUsage(planUsageQuery.data?.data as PlanUsageResult | null | undefined);
   const planTightest = tightestScope(planVm.byScope);
   const planBand = planUsageBand(planTightest?.usedPercentage);
+  // Frescor da captura da janela lider: `capturedAt` antigo e ambiguo (valor
+  // estavel x captura parada) porque o toolkit descarta captura de valor
+  // identico — o card agora mostra a idade e marca a suspeita quando ela passa
+  // do multiplo do intervalo OBSERVADO.
+  const planCapture = planUsageCapture(planTightest, planVm.series, Date.now());
+  const planAging = planCapture.state === 'aging';
 
   // KPIs derivados
   const nCriticos = (alertas as Record<string, unknown>[]).filter(a => deriveSeverity(a) === 'critical').length;
@@ -170,13 +180,50 @@ export function Overview({ period, project = '' }: OverviewProps) {
           value={planTightest ? fmtPlanPct(planTightest.usedPercentage) : '—'}
           icon="wait"
           footnote={planTightest
-            ? `${scopeLabel(planTightest.scope)} · reseta ${fmtResetsIn(planTightest.resetsAt, Date.now())}`
+            ? (
+              <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                {/* As DUAS janelas, sempre — a lider (a do numero grande) em
+                    destaque. Nao e fusao: sao dois valores rotulados lado a
+                    lado, cada um da sua serie. */}
+                <span className="tnum">
+                  {planVm.byScope.map((sc, i) => {
+                    const isLead = sc.scope === planTightest.scope;
+                    return (
+                      <span key={sc.scope}>
+                        {i > 0 && <span style={{ color: 'var(--text-3)' }}> · </span>}
+                        <span
+                          style={isLead
+                            ? { color: 'var(--text-1)', fontWeight: 600 }
+                            : { color: 'var(--text-3)' }}
+                          title={isLead
+                            ? `${scopeLabel(sc.scope)} — janela mais apertada, é ela que o número grande mostra`
+                            : scopeLabel(sc.scope)}
+                        >
+                          {shortScopeLabel(sc.scope)} {fmtPlanPct(sc.usedPercentage)}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </span>
+                <span style={{ color: 'var(--text-3)' }}>
+                  reseta {fmtResetsIn(planTightest.resetsAt, Date.now())}
+                  {planCapture.ageSec != null && (
+                    <>
+                      {' · captura '}
+                      <span style={planAging ? { color: 'var(--warning)' } : undefined}>
+                        {fmtCaptureAge(planCapture.ageSec)}{planAging ? ' ?' : ''}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </span>
+            )
             : planVm.state === 'degraded'
               ? 'não coletado nesta base'
               : 'captura não ligada'}
           accent={planBand === 'critical' ? 'critical' : planBand === 'warn' ? 'warning' : undefined}
           tip={planTightest
-            ? `Percentual da cota da CONTA já consumido na ${scopeLabel(planTightest.scope).toLowerCase()} — medido pelo Claude Code e capturado pelo hook de statusline. Pico do recorte: ${fmtPlanPct(planTightest.peakUsedPercentage)}. Não se soma nem se compara com custo/tokens: é outro eixo (quota, não consumo).`
+            ? `Cota da CONTA já consumida. O número grande é a ${scopeLabel(planTightest.scope).toLowerCase()} — a mais apertada agora; a liderança troca, por isso as duas janelas aparecem embaixo. São séries independentes: não se somam. Pico do recorte: ${fmtPlanPct(planTightest.peakUsedPercentage)}. É quota, não consumo — não se compara com custo/tokens.${planAging ? ` Última captura mais velha que ${CAPTURE_AGING_FACTOR}x o intervalo observado (${fmtDur(planCapture.typicalIntervalSec != null ? Math.round(planCapture.typicalIntervalSec) : null)} entre capturas): pode ser valor estável — capturas idênticas são descartadas — ou captura parada. O painel não decide entre as duas.` : ''}`
             : planVm.state === 'degraded'
               ? 'Exige knowledge.db em schema v14 (cstk ≥ 7.2.0) com a tabela plan_usage.'
               : 'A captura é opt-in: cstk statusline install. Sem o hook a cota não é medida — ausência de captura não significa plano livre.'}

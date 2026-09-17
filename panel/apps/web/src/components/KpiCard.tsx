@@ -5,6 +5,7 @@
  * Retrocompativel com o uso atual ({label, value, trend, accent}); adiciona
  * unit/footnote/icon/tip/spark do prototipo. `trend` e alias de `footnote`.
  */
+import type { ReactNode } from 'react';
 import { Icon } from './Icon.js';
 import { Sparkline } from './charts.js';
 
@@ -14,8 +15,10 @@ interface KpiCardProps {
   label: string;
   value: string | number;
   /** Alias historico de footnote. */
-  trend?: string;
-  footnote?: string;
+  trend?: ReactNode;
+  /** Texto simples ou no composto (ex: as duas janelas da cota, com a lider
+      destacada — ver `Overview.tsx`, issue #208). */
+  footnote?: ReactNode;
   unit?: string;
   accent?: Accent | undefined;
   icon?: string;

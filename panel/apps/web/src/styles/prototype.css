@@ -54,7 +54,12 @@
   flex-direction: column;
   gap: 6px;
   position: relative;
-  overflow: hidden;
+  /* SEM `overflow: hidden`: o tooltip do icone `?` vive na primeira linha do
+     card e e um `::after` do proprio `.kpi`, entao qualquer recorte aqui o
+     cortava — e `z-index` nao ajuda, `overflow` recorta descendente
+     independentemente de empilhamento (issue #207). Nada mais neste card
+     transborda: `.kpi .spark` e um SVG de 96x28 ancorado a 8px das bordas, e
+     o gradiente das variantes ja e contido pelo `border-radius`. */
   min-height: 96px;
 }
 .kpi .label {
@@ -217,9 +222,23 @@
   content: attr(data-tip);
   position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
   background: var(--bg-4); border: 1px solid var(--border-strong); border-radius: 4px;
-  padding: 4px 8px; font-size: 11px; white-space: nowrap; color: var(--text-0);
+  padding: 6px 9px; font-size: 11px; color: var(--text-0);
+  /* `width: max-content` mantem os tooltips curtos (sidebar, tabelas) numa
+     linha so, como antes; `normal` + teto deixa os longos quebrarem. Os tips
+     dos KPI tem 180-250 caracteres — com `nowrap` viravam uma faixa de
+     ~800-1400px sobre um card de ~300px (issue #207). */
+  white-space: normal; width: max-content; max-width: min(260px, 70vw);
+  line-height: 1.45; text-align: left;
+  /* O `?` do KPI vive dentro de `.kpi .label`, que e uppercase + tracking:
+     sem resetar, um tip de 200+ caracteres renderiza inteiro em caixa alta
+     (observado no painel). Tooltip e prosa, nao rotulo. */
+  text-transform: none; letter-spacing: normal; font-weight: 400;
   z-index: 50; pointer-events: none; box-shadow: var(--shadow-md);
 }
+/* Dentro de um card KPI o `?` fica sempre na BORDA SUPERIOR, entao o tooltip
+   abre para BAIXO: acima dele nao ha espaco proprio do card e, na primeira
+   linha da grade, tambem nao ha folga na pagina. */
+.kpi .tooltip:hover::after { top: calc(100% + 6px); bottom: auto; }
 
 /* ---------- Legend ---------- */
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-2); }

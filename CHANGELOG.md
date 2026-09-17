@@ -5,6 +5,68 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.6.6] - 2026-09-17
+
+Dois defeitos de leitura no painel (issues #207 e #208, PR #210),
+ambos recriados do repositorio antigo do painel apos a absorcao em `panel/`
+na v10.0.0 e reverificados contra a 10.6.5: o tooltip dos cards KPI
+renderizava ilegivel e o KPI "Cota do plano" trocava de janela sem sinalizar.
+Nenhum numero estava errado nos dois casos — o que faltava era contexto.
+
+### Fixed
+
+- **Tooltip dos cards KPI legivel (issue #207).** Duas regras de
+  `apps/web/src/styles/prototype.css` se somavam: `.kpi` tinha
+  `overflow: hidden`, que recorta o `::after` do proprio card
+  independentemente de `z-index`, e `.tooltip:hover::after` tinha
+  `white-space: nowrap`, que transformava tips de 180-250 caracteres numa
+  faixa de ~800-1400px sobre um card de ~300px. O `overflow: hidden` saiu do
+  `.kpi` (nada mais ali transborda: `.kpi .spark` e um SVG de 96x28 ancorado
+  a 8px das bordas e o gradiente das variantes ja e contido pelo
+  `border-radius`); o tooltip passa a quebrar linha com teto
+  (`white-space: normal`, `width: max-content`,
+  `max-width: min(260px, 70vw)` — `max-content` preserva os tips curtos numa
+  linha so); e dentro de `.kpi` ele abre para BAIXO, porque o icone `?` fica
+  sempre na borda superior do card. Alem do relatado na issue, o `::after`
+  herdava `text-transform: uppercase` e `letter-spacing` de `.kpi .label` e
+  renderizava 200+ caracteres de prosa em CAIXA ALTA — resetado junto
+  (achado so na inspecao visual do painel rodando; nenhum teste o veria).
+- **KPI "Cota do plano" nao troca mais de janela em silencio (issue #208).**
+  O card mostra a janela mais apertada, mas a troca de lider aparecia apenas
+  na nota pequena enquanto o numero grande mudava de base — "56% -> 49%" era
+  lido como queda de consumo quando o que mudou foi a metrica. O rodape agora
+  lista as DUAS janelas (`5h 4.0% · 7d 44.0%`) com a lider destacada; nao e
+  fusao das series (proibida pela constituicao 1.3.0 §III), sao dois valores
+  rotulados, cada um da sua serie.
+- **Frescor da captura visivel no card de cota (issue #208, item 2).** O card
+  nao exibia `capturedAt`, e o throttle de dedupe do toolkit
+  (`_pu_throttle_discard` em `cli/lib/plan-usage.sh`, que descarta captura de
+  valor identico a anterior) torna captura antiga ambigua: valor estavel ou
+  captura parada. O rodape passa a mostrar a idade (`captura ha 1h`) e a
+  marcar suspeita quando ela passa de `CAPTURE_AGING_FACTOR` (3x) o intervalo
+  REALMENTE observado entre capturas daquela janela — mediana dos intervalos
+  da serie, nunca um corte arbitrado. Com menos de dois pontos nao ha base de
+  comparacao: o estado e `unknown`, a idade continua exibida e nenhuma
+  suspeita e afirmada. O tip nomeia as duas leituras possiveis e diz
+  explicitamente que o painel nao decide entre elas.
+
+### Added
+
+- **Helpers puros de frescor em `apps/web/src/lib/plan-usage-select.ts`**:
+  `shortScopeLabel` (rotulo curto para as duas janelas na mesma linha),
+  `planUsageCapture` (idade + mediana dos intervalos observados + estado
+  `unknown|fresh|aging`), `fmtCaptureAge` e a constante
+  `CAPTURE_AGING_FACTOR`. 11 cenarios novos em `plan-usage-select.test.ts`,
+  incluindo isolamento por escopo (a serie da outra janela nao entra na
+  mediana) e mediana zero rejeitada como base de comparacao. Mutation test
+  nas duas direcoes: ignorar o filtro de escopo e aceitar mediana 0 fazem a
+  suite falhar.
+
+### Changed
+
+- **`KpiCard.footnote`/`trend` aceitam `ReactNode`** (eram `string`), para o
+  rodape composto do card de cota. Uso existente com string segue intacto.
+
 ## [10.6.5] - 2026-09-17
 
 Bugfix de diagnostico cego (issue #206, PR #209): `otel-usage.sh
@@ -8191,6 +8253,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.6.6]: https://github.com/JotJunior/cstk/releases/tag/v10.6.6
 [10.6.5]: https://github.com/JotJunior/cstk/releases/tag/v10.6.5
 [10.6.4]: https://github.com/JotJunior/cstk/releases/tag/v10.6.4
 [10.6.3]: https://github.com/JotJunior/cstk/releases/tag/v10.6.3
