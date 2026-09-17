@@ -17,8 +17,9 @@ import { describe, it, expect } from 'vitest';
 import {
   selectPlanUsage, seriesForScope, fmtPlanPct, fmtResetsIn,
   planUsageBand, planUsageCoverageLabel, scopeLabel, tightestScope,
+  shortScopeLabel, planUsageCapture, fmtCaptureAge, CAPTURE_AGING_FACTOR,
 } from '@/lib/plan-usage-select.js';
-import type { PlanUsageResult } from '@cstk-panel/shared-types';
+import type { PlanUsageResult, PlanUsagePoint, PlanUsageScopeState } from '@cstk-panel/shared-types';
 
 const COVERAGE_MEASURED = {
   rowsTotal: 4, scopes: 2, sessions: 2, projects: 1,
@@ -194,5 +195,138 @@ describe('tightestScope', () => {
       { scope: 'five_hour', usedPercentage: 0, resetsAt: null, capturedAt: null, peakUsedPercentage: 0, captures: 1 },
     ]);
     expect(t?.usedPercentage).toBe(0);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// issue #208 — o KPI compacto trocava de janela sem sinalizar e nao dizia ha
+// quanto tempo a captura foi feita. Os dois pontos viram contrato aqui: os
+// rotulos curtos (as DUAS janelas na mesma linha) e o frescor derivado do
+// intervalo REALMENTE observado, nunca de um corte arbitrado.
+// ---------------------------------------------------------------------------
+
+const NOW = Date.parse('2026-08-10T13:00:00Z');
+
+/** Ponto da serie de um escopo, a N segundos antes de NOW. */
+function pointAgo(scope: string, secAgo: number, pct: number | null): PlanUsagePoint {
+  return { scope, capturedAt: new Date(NOW - secAgo * 1000).toISOString(), usedPercentage: pct };
+}
+
+/** Estado de janela cuja captura mais recente tem N segundos de idade. */
+function scopeAgo(scope: string, secAgo: number | null): PlanUsageScopeState {
+  return {
+    scope,
+    usedPercentage: 50,
+    resetsAt: null,
+    capturedAt: secAgo == null ? null : new Date(NOW - secAgo * 1000).toISOString(),
+    peakUsedPercentage: 50,
+    captures: 3,
+  };
+}
+
+describe('shortScopeLabel', () => {
+  it('encurta as janelas conhecidas para caberem lado a lado no KPI', () => {
+    expect(shortScopeLabel('five_hour')).toBe('5h');
+    expect(shortScopeLabel('seven_day')).toBe('7d');
+  });
+
+  it('escopo desconhecido cai no identificador bruto, nunca some', () => {
+    expect(shortScopeLabel('thirty_day')).toBe('thirty_day');
+  });
+});
+
+describe('planUsageCapture — frescor derivado do intervalo observado', () => {
+  it('sem captura: idade null e estado unknown (nao "agora")', () => {
+    const c = planUsageCapture(scopeAgo('five_hour', null), [], NOW);
+    expect(c.capturedAt).toBeNull();
+    expect(c.ageSec).toBeNull();
+    expect(c.state).toBe('unknown');
+    expect(fmtCaptureAge(c.ageSec)).toBe('—');
+  });
+
+  it('menos de 2 pontos: idade existe, mas nenhuma suspeita e afirmada', () => {
+    const c = planUsageCapture(scopeAgo('five_hour', 7200), [pointAgo('five_hour', 7200, 50)], NOW);
+    expect(c.ageSec).toBe(7200);
+    expect(c.typicalIntervalSec).toBeNull();
+    // Sem base de comparacao o card mostra a idade e cala sobre o resto.
+    expect(c.state).toBe('unknown');
+  });
+
+  it('captura dentro do intervalo tipico observado e fresh', () => {
+    // Intervalos observados: 600s e 600s -> mediana 600s; idade 600s < 3x600s.
+    const series = [
+      pointAgo('five_hour', 1800, 40),
+      pointAgo('five_hour', 1200, 45),
+      pointAgo('five_hour', 600, 50),
+    ];
+    const c = planUsageCapture(scopeAgo('five_hour', 600), series, NOW);
+    expect(c.typicalIntervalSec).toBe(600);
+    expect(c.state).toBe('fresh');
+  });
+
+  it(`captura mais velha que ${CAPTURE_AGING_FACTOR}x o intervalo observado vira aging`, () => {
+    // Mediana 600s; idade 5400s = 9x -> a ambiguidade throttle-vs-parada e
+    // sinalizada, sem afirmar qual das duas leituras e a verdadeira.
+    const series = [
+      pointAgo('five_hour', 6600, 40),
+      pointAgo('five_hour', 6000, 45),
+      pointAgo('five_hour', 5400, 50),
+    ];
+    const c = planUsageCapture(scopeAgo('five_hour', 5400), series, NOW);
+    expect(c.typicalIntervalSec).toBe(600);
+    expect(c.ageSec).toBe(5400);
+    expect(c.state).toBe('aging');
+  });
+
+  it('exatamente no corte ainda e fresh (o limite e "passou de", nao "chegou a")', () => {
+    const series = [pointAgo('five_hour', 1800, 40), pointAgo('five_hour', 1200, 50)];
+    // Mediana 600s, corte 1800s, idade 1800s.
+    const c = planUsageCapture(scopeAgo('five_hour', 1800), series, NOW);
+    expect(c.state).toBe('fresh');
+  });
+
+  it('so considera pontos DA janela pedida — a outra serie nao entra na mediana', () => {
+    const series = [
+      pointAgo('five_hour', 1200, 40),
+      pointAgo('five_hour', 600, 50),
+      // 7d em cadencia propria (1000s). Misturar as duas series daria
+      // intervalos [1000, 1800, 600] -> mediana 1000, nao 600: fixture
+      // escolhido para DISCRIMINAR o filtro, nao so para exercita-lo.
+      pointAgo('seven_day', 4000, 20),
+      pointAgo('seven_day', 3000, 24),
+    ];
+    const c = planUsageCapture(scopeAgo('five_hour', 600), series, NOW);
+    expect(c.typicalIntervalSec).toBe(600);
+  });
+
+  it('duas capturas no mesmo segundo nao viram base de comparacao', () => {
+    // Mediana 0 tornaria QUALQUER idade "aging" — o estado volta a unknown.
+    const series = [pointAgo('five_hour', 600, 50), pointAgo('five_hour', 600, 50)];
+    const c = planUsageCapture(scopeAgo('five_hour', 600), series, NOW);
+    expect(c.typicalIntervalSec).toBeNull();
+    expect(c.state).toBe('unknown');
+  });
+
+  it('data invalida nao vira idade zero', () => {
+    const scope = { ...scopeAgo('five_hour', 60), capturedAt: 'nao-e-data' };
+    const c = planUsageCapture(scope, [], NOW);
+    expect(c.ageSec).toBeNull();
+    expect(c.state).toBe('unknown');
+  });
+});
+
+describe('fmtCaptureAge', () => {
+  it('formata a idade em degraus legiveis', () => {
+    expect(fmtCaptureAge(0)).toBe('agora');
+    expect(fmtCaptureAge(59)).toBe('agora');
+    expect(fmtCaptureAge(240)).toBe('ha 4m');
+    expect(fmtCaptureAge(7200)).toBe('ha 2h');
+    expect(fmtCaptureAge(3 * 86400)).toBe('ha 3d');
+  });
+
+  it('ausencia e "—", nunca "agora"', () => {
+    expect(fmtCaptureAge(null)).toBe('—');
+    expect(fmtCaptureAge(undefined)).toBe('—');
   });
 });
