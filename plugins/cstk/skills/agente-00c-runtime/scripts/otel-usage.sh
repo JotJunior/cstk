@@ -525,11 +525,27 @@ _ou_cmd_preflight() {
     esac
   done
 
-  if [ "${CLAUDE_CODE_ENABLE_TELEMETRY:-}" != "1" ] || \
-     [ "${OTEL_METRICS_EXPORTER:-}" != "prometheus" ]; then
+  # Gate do opt-in. `CLAUDE_CODE_ENABLE_TELEMETRY` atravessa o filtro de
+  # ambiente do harness e vale como sinal; `OTEL_METRICS_EXPORTER` NAO
+  # chega ao subprocesso da tool Bash (medido 2026-09-16 em macOS e
+  # Linux — mesmo filtro ja documentado em docs/cstk-usage.md para o hook
+  # de loose-usage). Exigir a segunda variavel tornava a condicao sempre
+  # verdadeira DENTRO do harness, que e o unico contexto em que os
+  # commands 00c chamam este subcomando: o `return 0` acontecia antes da
+  # checagem de porta e `port-conflict`/`exporter-down` eram inalcancaveis
+  # em uso real (issue #206). Por isso `prometheus` so desqualifica quando
+  # a variavel esta VISIVEL e aponta para outro exporter — fora do harness
+  # a informacao existe e e respeitada; dentro dele, ausencia nao vira
+  # veredito.
+  if [ "${CLAUDE_CODE_ENABLE_TELEMETRY:-}" != "1" ]; then
     printf 'status=disabled endpoint=%s\n' "$_ou_ep"
     return 0
   fi
+  case "${OTEL_METRICS_EXPORTER:-}" in
+    ''|prometheus) : ;;
+    *) printf 'status=disabled endpoint=%s\n' "$_ou_ep"
+       return 0 ;;
+  esac
 
   if _ou_port=$(_ou_ep_port "$_ou_ep"); then
     if _ou_owner=$(_ou_port_owner "$_ou_port"); then
@@ -554,7 +570,7 @@ _ou_cmd_preflight() {
     fi
     rm -f -- "$_ou_tmp"
     printf 'status=exporter-down endpoint=%s\n' "$_ou_ep"
-    _ou_warn "AVISO: telemetria ligada mas nada escuta em $_ou_ep — consumo NAO sera medido nesta sessao."
+    _ou_warn "AVISO: telemetria ligada mas nada escuta em $_ou_ep — consumo NAO sera medido nesta sessao. A causa nao e verificavel daqui: dentro do harness OTEL_METRICS_EXPORTER nao chega ao subprocesso — confira que ele vale prometheus e que a porta do exporter bate com CSTK_OTEL_ENDPOINT."
     return 4
   fi
 
@@ -568,7 +584,7 @@ _ou_cmd_preflight() {
   fi
   rm -f -- "$_ou_tmp"
   printf 'status=exporter-down endpoint=%s\n' "$_ou_ep"
-  _ou_warn "AVISO: telemetria ligada mas o endpoint $_ou_ep nao responde com metricas claude_code — consumo NAO sera medido nesta sessao."
+  _ou_warn "AVISO: telemetria ligada mas o endpoint $_ou_ep nao responde com metricas claude_code — consumo NAO sera medido nesta sessao. A causa nao e verificavel daqui: dentro do harness OTEL_METRICS_EXPORTER nao chega ao subprocesso — confira que ele vale prometheus e que a porta do exporter bate com CSTK_OTEL_ENDPOINT."
   return 4
 }
 

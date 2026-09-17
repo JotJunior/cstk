@@ -13,9 +13,14 @@
 # stderr SEMPRE vazios, exit SEMPRE 0. PostToolUse dispara CONCORRENTE as
 # tool calls — nenhuma escrita compartilhada transacional acontece aqui.
 #
-# DIFERENCA de politica frente ao molde: gatilho por CSTK_OTEL_ENDPOINT
-# (nao por CLAUDE_CODE_ENABLE_TELEMETRY/OTEL_METRICS_EXPORTER — esses dois
-# NAO chegam ao subprocesso do harness, sug-001/research.md Decision 3).
+# DIFERENCA de politica frente ao molde: gatilho por CSTK_OTEL_ENDPOINT —
+# ancora de identidade do processo, unica variavel que diz A QUAL exporter
+# esta sessao pertence (docs/cstk-usage.md). `OTEL_METRICS_EXPORTER` nao
+# serviria: NAO chega ao subprocesso do harness (sug-001/research.md
+# Decision 3). CORRECAO 2026-09-16 (issue #206): `CLAUDE_CODE_ENABLE_
+# TELEMETRY` CHEGA — medido em macOS e Linux; o texto anterior dizia que
+# as duas eram filtradas e foi o que levou `otel-usage.sh preflight` a
+# gatear pela variavel errada.
 #
 # POLARIDADE INVERTIDA da deteccao de execucao ativa (dec-006): este hook
 # capura quando NAO ha execucao 00c ativa (o oposto do tick de metrica, que
