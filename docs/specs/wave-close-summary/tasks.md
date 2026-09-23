@@ -338,12 +338,12 @@ Ref: `research.md` Decision 6; `contracts/wave-summary-cli.md` §Uso pelo
 command pai; `plugins/cstk/commands/feature-00c.md` (secao com
 `reconcile-wave`, fim do §5)
 
-- [ ] 6.1.1 Inserir a chamada `wave-summary.sh emit --state-dir "$SD"`
+- [x] 6.1.1 Inserir a chamada `wave-summary.sh emit --state-dir "$SD"`
       imediatamente APOS `reconcile-wave` e ANTES da captura do `Schedule
       intent`, com `2>&1` capturado e fallback `Resumo da onda
       indisponivel: <ultima linha do stderr>` em caso de exit != 0 — nunca
       `set -e` sobre essa chamada, nunca retry
-- [ ] 6.1.2 Incluir `$WS_OUT` verbatim na mensagem final entregue ao
+- [x] 6.1.2 Incluir `$WS_OUT` verbatim na mensagem final entregue ao
       operador (fim do §5/§6), sem condicionar `ScheduleWakeup`/liberacao
       de lock/ingestao ao exit do helper
 
@@ -352,8 +352,8 @@ command pai; `plugins/cstk/commands/feature-00c.md` (secao com
 Ref: mesma Decision 6; `plugins/cstk/commands/feature-00c-resume.md` §4
 (secao com `reconcile-wave`)
 
-- [ ] 6.2.1 Mesmo padrao de 6.1.1 na secao §4 de `feature-00c-resume.md`
-- [ ] 6.2.2 Incluir `$WS_OUT` verbatim na mensagem final (fim de
+- [x] 6.2.1 Mesmo padrao de 6.1.1 na secao §4 de `feature-00c-resume.md`
+- [x] 6.2.2 Incluir `$WS_OUT` verbatim na mensagem final (fim de
       §4.ter/§5), mesma garantia de nao-condicionamento
 
 ### 6.3 `agente-00c.md` — chamada apos §5.pre, apresentada em §6 `[A]`
@@ -361,33 +361,33 @@ Ref: mesma Decision 6; `plugins/cstk/commands/feature-00c-resume.md` §4
 Ref: mesma Decision 6; `plugins/cstk/commands/agente-00c.md` §5.pre "Rede
 de seguranca de fechamento de onda" e §6 "Apresentacao do resultado"
 
-- [ ] 6.3.1 Mesmo padrao de 6.1.1 em §5.pre de `agente-00c.md`
+- [x] 6.3.1 Mesmo padrao de 6.1.1 em §5.pre de `agente-00c.md`
       (imediatamente apos a chamada a `reconcile-wave`)
-- [ ] 6.3.2 Incluir `$WS_OUT` verbatim em §6 "Apresentacao do resultado"
+- [x] 6.3.2 Incluir `$WS_OUT` verbatim em §6 "Apresentacao do resultado"
 
 ### 6.4 `agente-00c-resume.md` — chamada antes do §7, apresentada em §9 `[A]`
 
 Ref: mesma Decision 6; `plugins/cstk/commands/agente-00c-resume.md` (secao
 com `reconcile-wave`, antes do §7) e §9 "Apresentar resultado ao operador"
 
-- [ ] 6.4.1 Mesmo padrao de 6.1.1 na secao que chama `reconcile-wave` de
+- [x] 6.4.1 Mesmo padrao de 6.1.1 na secao que chama `reconcile-wave` de
       `agente-00c-resume.md` (ainda com o lock ativo, antes do §7)
-- [ ] 6.4.2 Incluir `$WS_OUT` verbatim em §9 "Apresentar resultado ao
+- [x] 6.4.2 Incluir `$WS_OUT` verbatim em §9 "Apresentar resultado ao
       operador"
 
 ### 6.5 Teste estatico interno de integracao (Scenario 9) `[A]`
 
 Ref: `quickstart.md` Scenario 9
 
-- [ ] 6.5.1 Criar `tests/test_command-wave-summary.sh`: para cada um dos 4
+- [x] 6.5.1 Criar `tests/test_command-wave-summary.sh`: para cada um dos 4
       `plugins/cstk/commands/{feature-00c,feature-00c-resume,agente-00c,
       agente-00c-resume}.md`, checar (via grep/awk posicional, sem
       dependencia de renderizacao) que `wave-summary.sh emit` aparece
       DEPOIS de `reconcile-wave` e ANTES de `ScheduleWakeup` na ordem do
       texto
-- [ ] 6.5.2 Checar presenca do fallback `Resumo da onda indisponivel` nos
+- [x] 6.5.2 Checar presenca do fallback `Resumo da onda indisponivel` nos
       4 arquivos
-- [ ] 6.5.3 Checar que nenhuma das 4 secoes condiciona `ScheduleWakeup`,
+- [x] 6.5.3 Checar que nenhuma das 4 secoes condiciona `ScheduleWakeup`,
       liberacao de lock ou ingestao ao exit do helper (grep negativo por
       padroes como `wave-summary.sh emit && ` seguido de
       `ScheduleWakeup`/`state-lock`/`recall --ingest` na mesma linha)
@@ -401,32 +401,45 @@ Ref: `quickstart.md` Scenario 9
 Ref: `plan.md` §Project Structure ("Source Code" → `tests/`); manifest
 dinamico atual de 16 leitores em `_sweep_manifest()`
 
-- [ ] 7.1.1 Adicionar entrada `wave-summary-emit|0|$R/wave-summary.sh emit
+- [x] 7.1.1 Adicionar entrada `wave-summary-emit|0|$R/wave-summary.sh emit
       --state-dir $SWEEP_SD` (ou `0 3`, se a fixture padrao do sweep nao
       garantir onda fechada — verificar contra a fixture real antes de
-      fixar os exits aceitos) em `_sweep_manifest()`
-- [ ] 7.1.2 Atualizar a asserção de contagem de `[ "$_count" = 16 ]` para
+      fixar os exits aceitos) em `_sweep_manifest()` — verificado
+      empiricamente: a fixture padrao termina com onda-002 ABERTA (ultimo
+      elemento de `.waves[]`), e `wave-summary.sh emit` sem `--wave` trata
+      onda aberta como caso normal (`termination_reason=null` -> "onda
+      ainda aberta (nao fechada)"), exit 0 — nao exit 3; exits aceitos:
+      `0` apenas
+- [x] 7.1.2 Atualizar a asserção de contagem de `[ "$_count" = 16 ]` para
       `17` em `scenario_dinamica_16_leitores_sqlite_sem_degradacao` (e
       renomear a funcao/comentarios que citam "16 leitores" para "17
       leitores", mantendo consistencia)
-- [ ] 7.1.3 Rodar `tests/test_state-parity-sweep.sh` isolado e confirmar
+- [x] 7.1.3 Rodar `tests/test_state-parity-sweep.sh` isolado e confirmar
       que `wave-summary.sh` nao degrada sob backend SQLite (mesma garantia
-      dos 16 leitores existentes)
+      dos 16 leitores existentes) — confirmado:
+      `scenario_dinamica_17_leitores_sqlite_sem_degradacao` ok, 4/4
+      scenarios verdes (`./tests/run.sh state-parity`)
 
 ### 7.2 Allowlist estatica CHK016, se inevitavel `[M]`
 
 Ref: `plan.md` §Riscos e mitigacoes ("Parity-sweep reprovar o helper —
 literal do arquivo de estado em prosa/erro")
 
-- [ ] 7.2.1 Rodar a camada estatica de `tests/test_state-parity-sweep.sh`
-      (CHK016) sobre `wave-summary.sh` apos a implementacao da FASE 1-4
-- [ ] 7.2.2 Se houver reprovacao por mencao literal a `state.json`/
+- [x] 7.2.1 Rodar a camada estatica de `tests/test_state-parity-sweep.sh`
+      (CHK016) sobre `wave-summary.sh` apos a implementacao da FASE 1-4 —
+      `scenario_estatica_sem_acesso_direto_fora_da_allowlist` ok (o glob
+      `"$R"/*.sh` ja cobre `wave-summary.sh`)
+- [x] 7.2.2 Se houver reprovacao por mencao literal a `state.json`/
       `state.db` em mensagem de erro/prosa (inevitavel, ex.: diagnostico
       de materializacao falha), adicionar entrada
       `wave-summary.sh:prosa` a `_static_allowlist()` no MESMO commit, com
       comentario de justificativa (mesmo padrao de `wave-usage-report.sh:prosa`)
-- [ ] 7.2.3 Se nao houver reprovacao, nenhuma acao adicional (nao criar
-      entrada de allowlist preventiva sem necessidade real)
+      — N/A, ver 7.2.3
+- [x] 7.2.3 Se nao houver reprovacao, nenhuma acao adicional (nao criar
+      entrada de allowlist preventiva sem necessidade real) — confirmado:
+      `wave-summary.sh` nao construiu nenhum path literal `/state\.json`
+      (usa so `_state-read.sh`/materializacao), scenario passou sem
+      entrada nova na allowlist
 
 ### 7.3 Registrar o novo teste interno em `tests/run.sh` `[A]`
 
@@ -434,23 +447,25 @@ Ref: `tests/run.sh` funcao `_is_internal_test`; convencao de FASE 9.3
 (script sob `plugins/cstk/skills/*/scripts/` exige `tests/test_<nome>.sh`
 correspondente)
 
-- [ ] 7.3.1 Confirmar que `tests/test_wave-summary.sh` (FASE 5) satisfaz a
+- [x] 7.3.1 Confirmar que `tests/test_wave-summary.sh` (FASE 5) satisfaz a
       convencao 1:1 com `wave-summary.sh` automaticamente (nao precisa de
       entrada em `_is_internal_test` — e o teste "dono" do script)
-- [ ] 7.3.2 Adicionar `test_command-wave-summary.sh` ao `case` de
+- [x] 7.3.2 Adicionar `test_command-wave-summary.sh` ao `case` de
       `_is_internal_test` em `tests/run.sh`, com comentario explicando que
       cobre os 4 `plugins/cstk/commands/*.md` (prosa, sem script `.sh`
       "dono" sob a convencao de FASE 9.3) — mesmo padrao de
-      `test_specify-reopen-shortcut.sh`
+      `test_specify-reopen-shortcut.sh` — feito na FASE 6 task 6.5
 
 ### 7.4 Validacao final de cobertura `[A]`
 
-- [ ] 7.4.1 Rodar `./tests/run.sh --check-coverage` e confirmar exit 0
-      (nenhum script orfao, nenhum teste orfao)
-- [ ] 7.4.2 Rodar `./tests/run.sh wave-summary` e confirmar todos os
+- [x] 7.4.1 Rodar `./tests/run.sh --check-coverage` e confirmar exit 0
+      (nenhum script orfao, nenhum teste orfao) — confirmado: "Cobertura
+      completa: zero orfaos."
+- [x] 7.4.2 Rodar `./tests/run.sh wave-summary` e confirmar todos os
       cenarios verdes (inclui `test_wave-summary.sh` e
       `test_command-wave-summary.sh`, ambos casados pelo substring
-      `wave-summary`)
+      `wave-summary`) — confirmado: `PASS: 46  FAIL: 0  ERROR: 0
+      ORPHANS: 0`
 
 ---
 
