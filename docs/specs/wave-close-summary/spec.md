@@ -4,6 +4,35 @@
 **Created**: 2026-09-22
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-09-22
+
+- Q: FR-006 exige indicadores de volume de trabalho (chamadas de ferramenta,
+  duracao) — a fonte deve ser os campos ja capturados por onda ou uma
+  instrumentacao nova? → A: Reusar os campos ja registrados por onda
+  (mecanismo existente de metricas por onda); nenhuma instrumentacao nova.
+- Q: FR-007 (SHOULD) exige indicador de custo/consumo quando disponivel no
+  ambiente — a fonte deve ser OTel/`wave_model_usage` existente ou um
+  mecanismo separado? → A: Reusar OTel/`wave_model_usage` existente como
+  unica fonte quando disponivel; nenhum mecanismo de medicao de custo
+  separado ou novo.
+- Q: FR-012 exige filtragem de conteudo sensivel em texto livre de decisoes/
+  bloqueios — o mecanismo deve reusar `secrets-filter.sh scrub` (ja usado no
+  projeto) ou um filtro novo dedicado? → A: Reusar `secrets-filter.sh
+  scrub` — mesmo mecanismo ja usado em `enforcement-log.jsonl` e no
+  `recall`/knowledge.db; nenhum filtro novo dedicado (decisao humana,
+  block-001/dec-014).
+- Q: O resumo deve incluir trechos de texto livre cru de decisoes/bloqueios
+  (mesmo filtrado) ou apenas contagens/metadados estruturados? → A: Apenas
+  contagens e metadados estruturados; nenhum trecho de texto livre cru (nem
+  filtrado) e incluido no resumo.
+- Q: A composicao do resumo deve viver em um helper POSIX dedicado e
+  testavel, ou em logica/prosa inline em cada comando pai? → A: Helper
+  POSIX dedicado e testavel em `agente-00c-runtime/scripts`, reusado pelos
+  dois comandos pai (`agente-00c` e `feature-00c`), com cobertura em
+  `tests/`.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Ver o que aconteceu na onda que acabou de fechar (Priority: P1)
@@ -160,10 +189,15 @@ gerado.
   de resposta humana, quando existirem.
 - **FR-006**: O resumo MUST apresentar indicadores de volume de trabalho
   realizado na onda (ao menos: numero de chamadas de ferramenta e duracao
-  decorrida da onda).
+  decorrida da onda). A fonte desses indicadores MUST ser os campos ja
+  registrados por onda pelo mecanismo existente de metricas por onda —
+  nenhuma instrumentacao de captura nova e introduzida por esta feature.
 - **FR-007**: O resumo SHOULD apresentar, quando a informacao estiver
   disponivel no ambiente da execucao, indicadores de custo/consumo
-  medido (ex.: tokens) associados a onda.
+  medido (ex.: tokens) associados a onda. A fonte desse indicador, quando
+  disponivel, MUST ser exclusivamente o mecanismo OTel/`wave_model_usage`
+  ja existente — nenhum mecanismo de medicao de custo separado ou novo e
+  introduzido por esta feature.
 - **FR-008**: O resumo MUST apresentar, quando a execucao envolveu
   execucao de tarefas de um backlog, a contagem de tarefas concluidas com
   sucesso e a contagem de tarefas que falharam durante a onda.
@@ -180,10 +214,15 @@ gerado.
   autonoma (reconciliacao de estado da onda e, quando aplicavel, o
   agendamento da proxima onda) — a falha resulta apenas em um aviso
   visivel ao operador de que o resumo nao pode ser composto.
-- **FR-012**: Qualquer texto livre proveniente de conteudo de decisoes ou
-  bloqueios da onda que seja incluido no resumo MUST passar por filtragem
-  de conteudo potencialmente sensivel antes de ser apresentado ao
-  operador.
+- **FR-012**: O resumo MUST NOT incluir trechos de texto livre cru
+  proveniente de conteudo de decisoes ou bloqueios da onda — apenas
+  contagens e metadados estruturados (ex.: identificadores, contagens,
+  status) sao apresentados. Caso uma futura extensao do resumo venha a
+  incluir texto livre de decisoes/bloqueios, esse texto MUST passar pelo
+  mesmo mecanismo de filtragem de conteudo sensivel ja usado no projeto
+  (`secrets-filter.sh scrub` — o mesmo aplicado em `enforcement-log.jsonl`
+  e no `recall`/knowledge.db) antes de ser apresentado ao operador; nenhum
+  filtro novo e dedicado e introduzido por esta feature.
 - **FR-013**: O resumo MUST ser entregue ao operador como parte da mesma
   mensagem final que o comando pai ja produz ao retomar o controle apos
   uma onda — sem exigir uma acao adicional do operador para visualiza-lo.
@@ -200,7 +239,11 @@ gerado.
   contagem de decisoes auditaveis, contagem de bloqueios pendentes,
   indicadores de volume de trabalho (chamadas de ferramenta, duracao),
   indicador de custo/consumo (quando medido), contagem de tarefas
-  concluidas/falhas (quando aplicavel), proxima instrucao planejada.
+  concluidas/falhas (quando aplicavel), proxima instrucao planejada. A
+  composicao deste resumo MUST viver em um helper POSIX dedicado e
+  testavel (`agente-00c-runtime/scripts`), reusado identicamente pelos
+  dois comandos pai (`agente-00c` e `feature-00c`) — nao replicado como
+  logica/prosa inline em cada comando (satisfaz FR-014).
 
 ## Success Criteria
 
