@@ -486,7 +486,7 @@ na entrega")
 
 ### 8.2 Validacao final completa `[A]`
 
-- [~] 8.2.1 Rodar `./tests/run.sh` completo (suite inteira) e confirmar
+- [x] 8.2.1 Rodar `./tests/run.sh` completo (suite inteira) e confirmar
       exit 0 (suite em execucao em background pelo command pai desde
       ~00:16 — `full-suite.log` ainda sem linha `exit=`; pendente-do-pai)
 - [x] 8.2.2 Validar `wave-summary.sh` com `shellcheck` (advisory, config
