@@ -568,3 +568,51 @@ flowchart TD
   subtarefa 4.1.4, mas a wording da spec em si segue aberta)
 - Nenhuma instrumentacao/medicao nova (FR-006, FR-007 proibem
   explicitamente — todo campo reusa mecanismo ja existente)
+
+## FASE 9 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 9.1 Cenario SQLite nao compara a saida com o caminho JSON `[A]`
+
+Ref: 5.2 · tipo: `partial` · severidade: `MEDIUM`
+
+A subtarefa 5.2.2 pede repetir o Scenario 1 sob `state.db` "confirmando
+saida identica ao caminho JSON". Em `tests/test_wave-summary.sh`,
+`scenario_1_sqlite_onda_normal` monta uma fixture propria (sem `otel_usage`,
+sem `tool_calls=18`, sem a decisao de `onda-001`) e so verifica duas
+substrings (`### Resumo da onda onda-002` e `Decisoes registradas na onda: 3`)
+mais o anti-mirror. Nenhuma comparacao com a saida do backend JSON e feita, entao
+uma divergencia em outro campo entre os backends (duracao, tarefas, bloqueios,
+proxima instrucao) passaria sem ser detectada. Completar e aditivo: materializar o
+mesmo `state.db` (`state-rw.sh read`) num `state.json` de um state-dir
+separado, rodar `emit` nos dois e comparar o stdout byte a byte.
+
+- [ ] 9.1.1 Estender `scenario_1_sqlite_onda_normal` em `tests/test_wave-summary.sh` para comparar o stdout do `emit` sobre o `state.db` com o stdout do `emit` sobre o mesmo estado materializado em `state.json` (outro state-dir), conforme 5.2.2
+
+<!-- converge-key: 975a0d95cd5e -->
+
+### 9.2 Cenario 8 nao verifica o hash do estado nem os layouts reais `[A]`
+
+Ref: 5.5 · tipo: `partial` · severidade: `MEDIUM`
+
+Em `tests/test_wave-summary.sh`: (a) 5.5.2 pede o hash do estado identico
+antes e depois de rodar o helper (I-4), mas `scenario_8_read_only_sem_arquivo_novo`
+so compara a lista de arquivos no nivel 1 do state-dir (`find -maxdepth 1 -type f`),
+entao uma escrita in-place no proprio arquivo de estado passaria. (b) 5.5.3 pede
+paridade entre os layouts `.claude/agente-00c-state/` e
+`.claude/feature-00c-state/<short>/`, mas `scenario_8_paridade_agente00c_vs_feature00c_layout`
+usa os diretorios arbitrarios `agente00c-layout`/`feature00c-layout`. Os dois
+pontos se completam adicionando asserts e fixtures, sem mudar o helper.
+
+- [ ] 9.2.1 Em `scenario_8_read_only_sem_arquivo_novo` (`tests/test_wave-summary.sh`), comparar o hash (`_hash.sh`/`shasum -a 256` ou `state-rw.sh sha256-verify`) do arquivo de estado antes e depois do `emit`, conforme 5.5.2
+- [ ] 9.2.2 Em `scenario_8_paridade_agente00c_vs_feature00c_layout`, usar os caminhos reais `<tmp>/.claude/agente-00c-state/` e `<tmp>/.claude/feature-00c-state/<short>/`, conforme 5.5.3
+
+<!-- converge-key: a3ca98d6544c -->
