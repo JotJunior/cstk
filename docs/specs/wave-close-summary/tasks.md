@@ -29,14 +29,14 @@ Excluido").
 Ref: `checklists/requirements.md` CHK029; `plan.md` §Technical Context
 "Performance Goals: < 2 s por invocacao"
 
-- [ ] 1.1.1 Adicionar em `spec.md` §Success Criteria um novo `SC-005`
+- [x] 1.1.1 Adicionar em `spec.md` §Success Criteria um novo `SC-005`
       formalizando o teto de latencia (`< 2 s` por invocacao de
       `wave-summary.sh emit`, hoje so em `plan.md` §Technical Context) —
       redacao mensuravel, no mesmo padrao dos SC-001..SC-004 existentes
-- [ ] 1.1.2 Atualizar `checklists/requirements.md`: marcar `CHK029` como
+- [x] 1.1.2 Atualizar `checklists/requirements.md`: marcar `CHK029` como
       `[x]`, citando `spec.md §SC-005` na coluna de referencia (mesmo
       padrao dos itens `{auto}` ja fechados)
-- [ ] 1.1.3 Revisar a nota de rodape do checklist ("CHK029 e CHK032 sao
+- [x] 1.1.3 Revisar a nota de rodape do checklist ("CHK029 e CHK032 sao
       gaps de fronteira spec-vs-design... nao bloqueiam o pipeline") para
       refletir que os dois gaps foram fechados nesta rodada
 
@@ -45,16 +45,17 @@ Ref: `checklists/requirements.md` CHK029; `plan.md` §Technical Context
 Ref: `checklists/requirements.md` CHK032; `contracts/wave-summary-cli.md`
 tabela "Rotulos de motivo (mapeamento fechado)" (linha "outro valor")
 
-- [ ] 1.2.1 Editar `FR-003` em `spec.md` para citar explicitamente o
+- [x] 1.2.1 Editar `FR-003` em `spec.md` para citar explicitamente o
       comportamento quando `termination_reason` assume um valor fora do
       enum conhecido: o sistema MUST exibir o valor cru, sem inventar
       rotulo (hoje esse comportamento so existe em
       `contracts/wave-summary-cli.md`, fora do FR)
-- [ ] 1.2.2 Atualizar `checklists/requirements.md`: marcar `CHK032` como
+- [x] 1.2.2 Atualizar `checklists/requirements.md`: marcar `CHK032` como
       `[x]`, citando `spec.md §FR-003` (revisado) na coluna de referencia
-- [ ] 1.2.3 Conferir que `requirement-coverage.sh` (gate deterministico ja
+- [x] 1.2.3 Conferir que `requirement-coverage.sh` (gate deterministico ja
       rodado sobre a spec — `requirements=14 covered=14 errors=0`) segue
-      exit 0 apos a edicao (FR-003 continua com cenario associado)
+      exit 0 apos a edicao (FR-003 continua com cenario associado) —
+      confirmado: `requirements=14 covered=14 errors=0` exit 0
 
 ### 1.3 Esqueleto do script `wave-summary.sh` `[A]`
 
@@ -62,22 +63,22 @@ Ref: `contracts/wave-summary-cli.md` §Invocacao; `plan.md` §Project
 Structure ("Source Code"); estilo de referencia:
 `plugins/cstk/skills/agente-00c-runtime/scripts/wave-usage-report.sh`
 
-- [ ] 1.3.1 Criar `plugins/cstk/skills/agente-00c-runtime/scripts/wave-summary.sh`
+- [x] 1.3.1 Criar `plugins/cstk/skills/agente-00c-runtime/scripts/wave-summary.sh`
       com `#!/bin/sh` + `set -eu`, cabecalho de comentario referenciando
       `spec.md`/`plan.md`/`data-model.md`/`contracts/wave-summary-cli.md`
       (mesmo padrao de cabecalho de `wave-usage-report.sh`)
-- [ ] 1.3.2 Implementar dispatch de subcomando `emit` (unico subcomando do
+- [x] 1.3.2 Implementar dispatch de subcomando `emit` (unico subcomando do
       contrato); `-h`/`--help`/subcomando ausente ou desconhecido → uso em
       stderr, `exit 2`
-- [ ] 1.3.3 Parse de flags de `emit`: `--state-dir DIR` (obrigatorio),
+- [x] 1.3.3 Parse de flags de `emit`: `--state-dir DIR` (obrigatorio),
       `--wave ID` (opcional, valida `^onda-[0-9]{3,}$`), `--json`
       (opcional, flag booleana) — flag desconhecida ou `--state-dir`
       ausente → uso em stderr, `exit 2`
-- [ ] 1.3.4 `chmod +x` no script; sourcing de `_state-read.sh` com
+- [x] 1.3.4 `chmod +x` no script; sourcing de `_state-read.sh` com
       `trap state_read_cleanup EXIT INT TERM` (mesmo padrao de
       `wave-usage-report.sh`) para materializar o estado do `--state-dir`
       informado
-- [ ] 1.3.5 Teste manual de fumaca: `sh -n wave-summary.sh` (checagem de
+- [x] 1.3.5 Teste manual de fumaca: `sh -n wave-summary.sh` (checagem de
       sintaxe POSIX) e `wave-summary.sh --help` imprime uso e sai 2
 
 ---
@@ -89,12 +90,12 @@ Structure ("Source Code"); estilo de referencia:
 Ref: `research.md` Decision 4; `contracts/wave-summary-cli.md` §Exit codes
 (exit 3)
 
-- [ ] 2.1.1 Sem `--wave`: onda-alvo = ultimo elemento de `.waves[]` do
+- [x] 2.1.1 Sem `--wave`: onda-alvo = ultimo elemento de `.waves[]` do
       documento materializado
-- [ ] 2.1.2 Com `--wave ID`: localizar a entrada de `.waves[]` cujo `id`
+- [x] 2.1.2 Com `--wave ID`: localizar a entrada de `.waves[]` cujo `id`
       casa; se `.waves[]` vazio OU `--wave` nao encontrada → `exit 3` com
       exatamente 1 linha em stderr (`wave-summary: <motivo>`)
-- [ ] 2.1.3 Onda-alvo ainda aberta (`termination_reason == null`): seguir a
+- [x] 2.1.3 Onda-alvo ainda aberta (`termination_reason == null`): seguir a
       composicao normalmente, com motivo "onda ainda aberta (nao fechada)"
       e duracao `nao medido` (nunca tratar como erro)
 
@@ -103,17 +104,17 @@ Ref: `research.md` Decision 4; `contracts/wave-summary-cli.md` §Exit codes
 Ref: `data-model.md` tabela de campos do `WaveSummary`; `research.md`
 Decision 1 (lista de campos consumidos via `_state-read.sh`)
 
-- [ ] 2.2.1 Extrair da onda-alvo: `id`, `termination_reason`,
+- [x] 2.2.1 Extrair da onda-alvo: `id`, `termination_reason`,
       `executed_stages`, `tool_calls`, `wallclock_seconds`, `otel_usage`
       (`total_tokens`, `total_cost_usd`)
-- [ ] 2.2.2 Extrair do documento: `.current_stage`, `.next_instruction`,
+- [x] 2.2.2 Extrair do documento: `.current_stage`, `.next_instruction`,
       `.execution.status`, `.execution.target_project_path`
-- [ ] 2.2.3 Contar `.decisions[]` cujo `wave_id` == onda-alvo
+- [x] 2.2.3 Contar `.decisions[]` cujo `wave_id` == onda-alvo
       (`decisions_count`)
-- [ ] 2.2.4 Contar `.human_blocks[]` com `status == "aguardando"` no
+- [x] 2.2.4 Contar `.human_blocks[]` com `status == "aguardando"` no
       escopo da EXECUCAO inteira (nao so da onda) e coletar so os `id`s
       (`pending_blocks.count` / `pending_blocks.ids`)
-- [ ] 2.2.5 Contar `.tasks[]` com `wave_id` == onda-alvo por `outcome`
+- [x] 2.2.5 Contar `.tasks[]` com `wave_id` == onda-alvo por `outcome`
       (`pass`/`fail`); determinar `tasks.applicable` (`execute-task` em
       `executed_stages` OU ha task com esse `wave_id`)
 
@@ -122,19 +123,19 @@ Decision 1 (lista de campos consumidos via `_state-read.sh`)
 Ref: `research.md` Decision 3 (tabela "Indicador | Medido quando | Senao");
 `data-model.md` Invariante I-1
 
-- [ ] 2.3.1 Custo/tokens: medido somente quando `otel_usage` e objeto
+- [x] 2.3.1 Custo/tokens: medido somente quando `otel_usage` e objeto
       nao-nulo E o campo numerico correspondente e nao-nulo; senao `nao
       medido` (inclui `otel_usage` ausente)
-- [ ] 2.3.2 Duracao: medido somente quando a onda esta fechada E
+- [x] 2.3.2 Duracao: medido somente quando a onda esta fechada E
       `wallclock_seconds` e numerico; senao `nao medido`
-- [ ] 2.3.3 Chamadas de ferramenta: medido quando `tool_calls > 0`, OU
+- [x] 2.3.3 Chamadas de ferramenta: medido quando `tool_calls > 0`, OU
       quando `tool_calls == 0` E `guard-hooks-status.sh tick-mode
       --projeto-alvo-path <target_project_path>` retorna `hook`; senao
       `nao medido`
-- [ ] 2.3.4 Tarefas: `tasks.applicable == false` renderiza "nao aplicavel"
+- [x] 2.3.4 Tarefas: `tasks.applicable == false` renderiza "nao aplicavel"
       (nunca "nao medido" — ausencia de backlog na onda nao e falta de
       medicao)
-- [ ] 2.3.5 Garantir por construcao que todo campo numerico `null` implica
+- [x] 2.3.5 Garantir por construcao que todo campo numerico `null` implica
       `measured=false` e vice-versa (I-1) — nenhum `0` fabricado para
       metrica nao medida
 
@@ -147,14 +148,14 @@ Ref: `research.md` Decision 3 (tabela "Indicador | Medido quando | Senao");
 Ref: `research.md` Decision 5; `data-model.md` campo `next_instruction`
 (`<= 200 chars, sem controle, scrubbed`)
 
-- [ ] 3.1.1 Remover caracteres de controle (inclusive ESC) de
+- [x] 3.1.1 Remover caracteres de controle (inclusive ESC) de
       `next_instruction`
-- [ ] 3.1.2 Colapsar quebras de linha em espaco
-- [ ] 3.1.3 Aplicar `secrets-filter.sh scrub` (stdin→stdout); se
+- [x] 3.1.2 Colapsar quebras de linha em espaco
+- [x] 3.1.3 Aplicar `secrets-filter.sh scrub` (stdin→stdout); se
       `secrets-filter.sh` falhar/indisponivel, o campo sai como
       `nao disponivel (filtro indisponivel)` — fail-closed so nesse campo,
       nunca cru
-- [ ] 3.1.4 Truncar em 200 caracteres com sufixo `...`; remover crases do
+- [x] 3.1.4 Truncar em 200 caracteres com sufixo `...`; remover crases do
       valor antes de envolver em inline code na saida Markdown (SEC-M1)
 
 ### 3.2 Validacao de tokens estruturados (SEC-L1) `[C]`
@@ -162,11 +163,11 @@ Ref: `research.md` Decision 5; `data-model.md` campo `next_instruction`
 Ref: `research.md` Decision 9 (SEC-L1); `contracts/wave-summary-cli.md`
 §Regras de seguranca da saida
 
-- [ ] 3.2.1 Validar `executed_stages`, `current_stage`, `execution_status`
+- [x] 3.2.1 Validar `executed_stages`, `current_stage`, `execution_status`
       e cada `id` de bloqueio pendente contra `^[A-Za-z0-9._-]{1,64}$`
-- [ ] 3.2.2 Valor fora do padrao renderiza `(valor invalido omitido)`,
+- [x] 3.2.2 Valor fora do padrao renderiza `(valor invalido omitido)`,
       nunca o valor cru
-- [ ] 3.2.3 Descartar stderr de sub-ferramentas internas (`jq`,
+- [x] 3.2.3 Descartar stderr de sub-ferramentas internas (`jq`,
       `state-rw.sh`, `tick-mode`, `scrub`) para `/dev/null` (SEC-L3) — a
       unica linha de stderr em falha e a mensagem propria do helper
 
@@ -174,14 +175,14 @@ Ref: `research.md` Decision 9 (SEC-L1); `contracts/wave-summary-cli.md`
 
 Ref: FR-012; `data-model.md` Invariante I-2
 
-- [ ] 3.3.1 Confirmar que nenhum campo de `context`/`rationale`/
+- [x] 3.3.1 Confirmar que nenhum campo de `context`/`rationale`/
       `evidence`/`options_considered`/`choice` (decisao) nem `question`/
       `context_for_answer`/`human_answer` (bloqueio) e lido ou impresso em
       nenhum ponto do script — apenas contagens e `id`s
       (`pending_blocks.ids`)
-- [ ] 3.3.2 `.execution.target_project_path` e repassado como argumento
+- [x] 3.3.2 `.execution.target_project_path` e repassado como argumento
       citado a `guard-hooks-status.sh tick-mode` — nunca via `eval` (SEC-I2)
-- [ ] 3.3.3 Garantir read-only total (I-4): nenhum arquivo criado dentro do
+- [x] 3.3.3 Garantir read-only total (I-4): nenhum arquivo criado dentro do
       `--state-dir`; tmp de materializacao fica em `$TMPDIR`, removido por
       `trap`; nenhum lock adquirido; nenhum acesso a rede
 
@@ -194,19 +195,19 @@ Ref: FR-012; `data-model.md` Invariante I-2
 Ref: `contracts/wave-summary-cli.md` §Saida Markdown; tabela "Rotulos de
 motivo (mapeamento fechado)"
 
-- [ ] 4.1.1 Montar o bloco `### Resumo da onda <wave_id>` com as 9 linhas
+- [x] 4.1.1 Montar o bloco `### Resumo da onda <wave_id>` com as 9 linhas
       do contrato (Termino, Etapas executadas/Etapa atual/Status,
       Decisoes, Bloqueios pendentes, Chamadas de ferramenta, Duracao,
       Consumo OTel, Tarefas, Proxima instrucao) — no maximo 14 linhas
       totais
-- [ ] 4.1.2 Aplicar o mapeamento fechado de rotulos de
+- [x] 4.1.2 Aplicar o mapeamento fechado de rotulos de
       `termination_reason` (6 valores conhecidos + fallback "outro valor"
       → valor cru, sem inventar rotulo — fecha o gap CHK032 tambem no
       codigo, nao so na spec)
-- [ ] 4.1.3 Sufixo `[ATENCAO: requer resposta do operador]` somente quando
+- [x] 4.1.3 Sufixo `[ATENCAO: requer resposta do operador]` somente quando
       `attention_required` (bloqueios pendentes > 0 OU
       `termination_reason == bloqueio_humano`)
-- [ ] 4.1.4 Linha de bloqueios pendentes sempre explicita
+- [x] 4.1.4 Linha de bloqueios pendentes sempre explicita
       (`Bloqueios pendentes: 0` quando zero — nunca omitida; fecha CHK012
       no comportamento observavel, mesmo sem alterar a wording da spec)
 
@@ -214,7 +215,7 @@ motivo (mapeamento fechado)"
 
 Ref: `data-model.md` tabela de campos (chaves em ingles, regra global)
 
-- [ ] 4.2.1 Emitir objeto JSON com as chaves exatas de `data-model.md`
+- [x] 4.2.1 Emitir objeto JSON com as chaves exatas de `data-model.md`
       (`wave_id`, `wave_closed`, `termination_reason`,
       `attention_required`, `executed_stages`, `current_stage`,
       `execution_status`, `next_instruction`, `decisions_count`,
@@ -222,8 +223,8 @@ Ref: `data-model.md` tabela de campos (chaves em ingles, regra global)
       `wallclock_seconds.value`/`.measured`, `cost.total_tokens`/
       `.total_cost_usd`/`.measured`, `tasks.applicable`/`.passed`/
       `.failed`)
-- [ ] 4.2.2 Validar com `jq -e .` que o JSON emitido e sempre parseavel
-- [ ] 4.2.3 Confirmar paridade campo-a-campo entre a saida Markdown e a
+- [x] 4.2.2 Validar com `jq -e .` que o JSON emitido e sempre parseavel
+- [x] 4.2.3 Confirmar paridade campo-a-campo entre a saida Markdown e a
       saida `--json` para a mesma fixture (mesmos valores, apenas forma
       diferente)
 
@@ -231,15 +232,15 @@ Ref: `data-model.md` tabela de campos (chaves em ingles, regra global)
 
 Ref: `contracts/wave-summary-cli.md` §Exit codes e streams
 
-- [ ] 4.3.1 Exit 0: resumo composto, stdout = bloco (Markdown ou JSON),
+- [x] 4.3.1 Exit 0: resumo composto, stdout = bloco (Markdown ou JSON),
       stderr vazio
-- [ ] 4.3.2 Exit 1: falha de leitura (estado ausente/corrompido, `jq`/
+- [x] 4.3.2 Exit 1: falha de leitura (estado ausente/corrompido, `jq`/
       `sqlite3` ausente, materializacao falhou) — stdout vazio, stderr
       exatamente 1 linha `wave-summary: <motivo>`
-- [ ] 4.3.3 Exit 2: uso incorreto — stdout vazio, uso em stderr
-- [ ] 4.3.4 Exit 3: onda inexistente — stdout vazio, stderr exatamente 1
+- [x] 4.3.3 Exit 2: uso incorreto — stdout vazio, uso em stderr
+- [x] 4.3.4 Exit 3: onda inexistente — stdout vazio, stderr exatamente 1
       linha `wave-summary: <motivo>`
-- [ ] 4.3.5 Determinismo (I-3): duas invocacoes consecutivas com a mesma
+- [x] 4.3.5 Determinismo (I-3): duas invocacoes consecutivas com a mesma
       fixture produzem stdout byte-identico (nenhuma leitura de relogio/
       ambiente alem do estado e do `tick-mode`)
 
@@ -251,25 +252,25 @@ Ref: `contracts/wave-summary-cli.md` §Exit codes e streams
 
 Ref: `quickstart.md` Scenarios 1-4, 6
 
-- [ ] 5.1.1 Scenario 1 (onda normal): fixture `onda-002` fechada com
+- [x] 5.1.1 Scenario 1 (onda normal): fixture `onda-002` fechada com
       `termination_reason=etapa_concluida_avancando`, 3 decisoes na onda +
       1 de `onda-001`, `otel_usage` preenchido, `tool_calls=18` — exit 0,
       stderr vazio, bloco cita `onda-002`, rotulo correto, `Decisoes
       registradas na onda: 3`
-- [ ] 5.1.2 Scenario 2 (limite operacional vs bloqueio humano): fixture A
+- [x] 5.1.2 Scenario 2 (limite operacional vs bloqueio humano): fixture A
       (`threshold_proxy_atingido`, 0 bloqueios) → "pausa por limite
       operacional" sem sufixo ATENCAO; fixture B (`bloqueio_humano`, 1
       bloqueio `aguardando` + 1 `respondido`) → "bloqueio humano pendente"
       + ATENCAO + `Bloqueios pendentes: 1 (block-001)`
-- [ ] 5.1.3 Scenario 3 (nao medido vs zero medido): fixture C
+- [x] 5.1.3 Scenario 3 (nao medido vs zero medido): fixture C
       (`otel_usage` ausente) → `Consumo (OTel): nao medido`,
       `cost.total_tokens=null`/`measured=false` em `--json`; fixture D
       (`total_tokens=0`, `total_cost_usd=0`) → `0 tokens`,
       `measured=true`; nenhuma saida de C contem `0 tokens`
-- [ ] 5.1.4 Scenario 4 (tool_calls=0 com/sem contador ativo): fixture com
+- [x] 5.1.4 Scenario 4 (tool_calls=0 com/sem contador ativo): fixture com
       `tool_calls=0` e `tick-mode=manual` → `nao medido`; mesmo estado com
       `tick-mode=hook` → `Chamadas de ferramenta: 0`
-- [ ] 5.1.5 Scenario 6 (primeira onda, zero decisoes, tarefas): fixture com
+- [x] 5.1.5 Scenario 6 (primeira onda, zero decisoes, tarefas): fixture com
       1 onda sem decisoes, `executed_stages=["execute-task"]`, 2 tasks
       `pass` + 1 `fail` da onda + 1 task de outra onda → `Decisoes
       registradas na onda: 0` sem erro, `Tarefas: 2 concluidas, 1
@@ -281,34 +282,34 @@ Ref: `quickstart.md` Scenarios 1-4, 6
 Ref: `quickstart.md` (marcadores "(S)"); padrao `_sqlite3_adequate` de
 `tests/test_state-parity-sweep.sh`
 
-- [ ] 5.2.1 Guard `_sqlite3_adequate` (skip com aviso quando `sqlite3`
+- [x] 5.2.1 Guard `_sqlite3_adequate` (skip com aviso quando `sqlite3`
       real >= versao minima nao disponivel) — mesmo padrao ja usado em
       `test_state-parity-sweep.sh`
-- [ ] 5.2.2 Repetir o Scenario 1 sob fixture com `state.db` (materializado
+- [x] 5.2.2 Repetir o Scenario 1 sob fixture com `state.db` (materializado
       via `_state-read.sh`) confirmando saida identica ao caminho JSON
 
 ### 5.3 Nenhum texto livre vaza (Scenario 5, FR-012, I-2) `[C]`
 
 Ref: `quickstart.md` Scenario 5
 
-- [ ] 5.3.1 Fixture com decisao cujo `context` contem o canario
+- [x] 5.3.1 Fixture com decisao cujo `context` contem o canario
       `CANARY-DEC-CTX` e um segredo sintetico em formato de token;
       bloqueio com `question` contendo `CANARY-BLK-Q`; `next_instruction`
       com o mesmo segredo sintetico + `\033[31m`
-- [ ] 5.3.2 Rodar em Markdown e `--json`; confirmar que nenhum canario nem
+- [x] 5.3.2 Rodar em Markdown e `--json`; confirmar que nenhum canario nem
       o segredo sintetico aparece em nenhuma das duas saidas
-- [ ] 5.3.3 Confirmar que `next_instruction` sai sem sequencia ESC e com o
+- [x] 5.3.3 Confirmar que `next_instruction` sai sem sequencia ESC e com o
       segredo substituido pelo marcador de `secrets-filter.sh`
 
 ### 5.4 Falhas sao best-effort (Scenario 7, US3, FR-011) `[A]`
 
 Ref: `quickstart.md` Scenario 7
 
-- [ ] 5.4.1 `--state-dir` inexistente → exit 1, stdout vazio, stderr = 1
+- [x] 5.4.1 `--state-dir` inexistente → exit 1, stdout vazio, stderr = 1
       linha
-- [ ] 5.4.2 Estado JSON corrompido → exit 1, mesmo formato de stderr
-- [ ] 5.4.3 `.waves` vazio / `--wave onda-999` → exit 3, 1 linha em stderr
-- [ ] 5.4.4 `jq` fora do PATH via shim de PATH com allowlist explicita de
+- [x] 5.4.2 Estado JSON corrompido → exit 1, mesmo formato de stderr
+- [x] 5.4.3 `.waves` vazio / `--wave onda-999` → exit 3, 1 linha em stderr
+- [x] 5.4.4 `jq` fora do PATH via shim de PATH com allowlist explicita de
       utilitarios (sem `jq`; NUNCA so prefixar PATH, senao falso-verde por
       `jq` do sistema — mesmo gotcha documentado no plan.md Riscos) → exit
       1, 1 linha
@@ -317,12 +318,12 @@ Ref: `quickstart.md` Scenario 7
 
 Ref: `quickstart.md` Scenario 8
 
-- [ ] 5.5.1 Duas execucoes consecutivas com a mesma fixture → stdout
+- [x] 5.5.1 Duas execucoes consecutivas com a mesma fixture → stdout
       byte-identico
-- [ ] 5.5.2 Hash do estado (`state-rw.sh sha256-verify` ou equivalente)
+- [x] 5.5.2 Hash do estado (`state-rw.sh sha256-verify` ou equivalente)
       identico antes/depois da execucao; nenhum arquivo novo dentro do
       `--state-dir`
-- [ ] 5.5.3 Mesmo documento de estado materializado sob layout
+- [x] 5.5.3 Mesmo documento de estado materializado sob layout
       `.claude/agente-00c-state/` e sob
       `.claude/feature-00c-state/<short>/` produz saida identica
       (paridade FR-014 entre os dois modos de execucao)

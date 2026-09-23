@@ -110,11 +110,10 @@ ambiguidades residuais.
 - [x] CHK028 - Ha requisito de protecao de dados sensiveis (nao vazar
   segredo/config embutido em texto livre)? [NFR, Spec §FR-012, §Edge Cases
   item 3] {auto}
-- [ ] CHK029 - Ha requisito explicito de orcamento de latencia da composicao
-  do resumo na spec (nao so no plan)? A spec nao enumera um teto de tempo;
-  o teto de performance (< 2s) e definido apenas em plan.md §Technical
-  Context, fora do escopo formal de FRs/SC. [NFR, Gap, Spec §Requirements
-  vs Plan §Technical Context] {auto}
+- [x] CHK029 - Ha requisito explicito de orcamento de latencia da composicao
+  do resumo na spec (nao so no plan)? Formalizado em spec.md §SC-005
+  (< 2s por invocacao), com a mesma redacao mensuravel dos demais SC.
+  [NFR, Spec §SC-005] {auto}
 
 ## Dependencias e Premissas
 
@@ -127,14 +126,13 @@ ambiguidades residuais.
 
 ## Ambiguidades e Conflitos
 
-- [ ] CHK032 - O comportamento esperado quando `termination_reason` assume
+- [x] CHK032 - O comportamento esperado quando `termination_reason` assume
   um valor fora do enum conhecido (nem `etapa_concluida_avancando`, nem
   `threshold_proxy_atingido`, nem `bloqueio_humano`, nem `aborto`, nem
-  `concluido`) esta definido na spec, ou so no contrato de design? A spec
-  usa "por exemplo" (lista aberta) em FR-003; o comportamento para enum
-  desconhecido (exibir valor cru, sem inventar rotulo) so aparece em
-  contracts/wave-summary-cli.md, nao no proprio FR. [Ambiguity, Spec §FR-003
-  vs Contract §Rotulos de motivo] {auto}
+  `concluido`) esta definido na spec, ou so no contrato de design?
+  Explicitado em spec.md §FR-003 (revisado): enum desconhecido MUST
+  exibir o valor cru, sem inventar rotulo, em paridade com
+  contracts/wave-summary-cli.md §Rotulos de motivo. [Spec §FR-003] {auto}
 
 ## Notes
 
@@ -145,7 +143,7 @@ ambiguidades residuais.
   `requirements=14 covered=14 errors=0` (exit 0) — nenhum FR sem cenario
   associado; nenhum item `[Gap]` adicional exigido pela secao 4.2.1 da
   skill.
-- CHK029 e CHK032 sao gaps de fronteira spec-vs-design (Principio I SDD
-  recursivo: spec define O QUE, plan/contract define COMO) — nao bloqueiam
-  o pipeline, mas ficam registrados para quem revisar a rastreabilidade
-  formal FR→SC.
+- CHK029 e CHK032 eram gaps de fronteira spec-vs-design (Principio I SDD
+  recursivo: spec define O QUE, plan/contract define COMO) — nunca
+  bloquearam o pipeline, e foram fechados nesta rodada (spec.md §SC-005 e
+  §FR-003 revisado) para fechar a rastreabilidade formal FR→SC.

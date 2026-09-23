@@ -182,7 +182,9 @@ gerado.
   (por exemplo: etapa concluida e avancando, limite operacional atingido,
   bloqueio humano pendente, ou execucao concluida), de forma que o
   operador consiga distinguir um termino normal de um termino que exige
-  sua atencao.
+  sua atencao. Quando `termination_reason` assumir um valor fora do
+  conjunto conhecido acima (enum desconhecido), o sistema MUST exibir o
+  valor cru como recebido, sem inventar rotulo equivalente.
 - **FR-004**: O resumo MUST apresentar uma contagem de decisoes
   auditaveis registradas durante a onda.
 - **FR-005**: O resumo MUST apresentar a contagem de bloqueios pendentes
@@ -264,6 +266,10 @@ gerado.
 - **SC-004**: Um operador consegue identificar, apenas lendo a mensagem
   final da onda (sem abrir nenhum outro arquivo ou rodar nenhum outro
   comando), se ha algo pendente que exige sua resposta.
+- **SC-005**: A composicao do resumo (helper `wave-summary.sh emit`) leva
+  menos de 2 segundos por invocacao, medido do inicio da materializacao
+  do estado ate a emissao do resumo formatado, em 100% das invocacoes
+  observadas.
 
 ## Delta Requirements
 
