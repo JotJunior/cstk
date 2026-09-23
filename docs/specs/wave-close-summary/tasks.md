@@ -476,21 +476,22 @@ correspondente)
 Ref: `plan.md` §Constitution Check (Principio I: "bump MINOR no CHANGELOG
 na entrega")
 
-- [ ] 8.1.1 Adicionar entrada de versao MINOR nova em `CHANGELOG.md`
+- [x] 8.1.1 Adicionar entrada de versao MINOR nova em `CHANGELOG.md`
       descrevendo o resumo de fechamento de onda (helper `wave-summary.sh`
       + integracao nos 4 commands pai)
-- [ ] 8.1.2 Adicionar o link-reference correspondente no bloco de rodape
+- [x] 8.1.2 Adicionar o link-reference correspondente no bloco de rodape
       do `CHANGELOG.md` (mesma disciplina de "CHANGELOG: link de
       referencia por versao" do `CLAUDE.md` do repo — conferir com o
       comando `comm -23` documentado la antes de finalizar)
 
 ### 8.2 Validacao final completa `[A]`
 
-- [ ] 8.2.1 Rodar `./tests/run.sh` completo (suite inteira) e confirmar
-      exit 0
-- [ ] 8.2.2 Validar `wave-summary.sh` com `shellcheck` (advisory, config
+- [~] 8.2.1 Rodar `./tests/run.sh` completo (suite inteira) e confirmar
+      exit 0 (suite em execucao em background pelo command pai desde
+      ~00:16 — `full-suite.log` ainda sem linha `exit=`; pendente-do-pai)
+- [x] 8.2.2 Validar `wave-summary.sh` com `shellcheck` (advisory, config
       `.shellcheckrc` do repo) sem findings novos
-- [ ] 8.2.3 Conferir que nenhum arquivo fora do escopo desta feature foi
+- [x] 8.2.3 Conferir que nenhum arquivo fora do escopo desta feature foi
       tocado (painel, statusline, MCP resources — ver "Escopo Excluido")
 
 ---

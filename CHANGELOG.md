@@ -5,6 +5,35 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.7.0] - 2026-09-23
+
+Ate agora, saber "o que aconteceu na onda que acabou de fechar" exigia ler
+`state.json`/`state.db` na mao. Este release fecha esse gap com um resumo
+deterministico entregue direto na conversa do operador, sem tocar o painel.
+
+### Added
+
+- **Helper `wave-summary.sh emit`** (`plugins/cstk/skills/agente-00c-runtime/
+  scripts/`): resumo Markdown (ou `--json`) da onda que acabou de fechar —
+  etapa, decisoes/bloqueios (contagens e metadados estruturados, nunca texto
+  livre cru), indicadores de volume de trabalho (chamadas de ferramenta,
+  duracao) reusando os campos ja capturados por onda, e custo/consumo via
+  OTel/`wave_model_usage` quando disponivel. Campo sem medicao imprime
+  `nao medido`, nunca `0` fabricado. Read-only sobre `_state-read.sh`
+  (backend-agnostico state.json/state.db), sem instrumentacao ou
+  persistencia nova. Texto livre (ex.: `next_instruction`) passa por
+  `secrets-filter.sh scrub` antes de ser exibido.
+- **Integracao nos 4 comandos pai** (`agente-00c.md`, `agente-00c-resume.md`,
+  `feature-00c.md`, `feature-00c-resume.md`): o resumo e emitido sempre
+  apos `reconcile-wave` e antes do `Schedule intent`/`ScheduleWakeup`,
+  mesma posicao nos 4 pontos de entrada.
+- Testes: `tests/test_wave-summary.sh` (10 cenarios do quickstart, JSON e
+  SQLite quando aplicavel), `tests/test_command-wave-summary.sh`
+  (integracao estatica nos 4 commands). Extensao de
+  `tests/test_state-parity-sweep.sh` (17o leitor backend-agnostico).
+
+Spec: `docs/specs/wave-close-summary/`.
+
 ## [10.6.6] - 2026-09-17
 
 Dois defeitos de leitura no painel (issues #207 e #208, PR #210),
@@ -8253,6 +8282,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.7.0]: https://github.com/JotJunior/cstk/releases/tag/v10.7.0
 [10.6.6]: https://github.com/JotJunior/cstk/releases/tag/v10.6.6
 [10.6.5]: https://github.com/JotJunior/cstk/releases/tag/v10.6.5
 [10.6.4]: https://github.com/JotJunior/cstk/releases/tag/v10.6.4
