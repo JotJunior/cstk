@@ -256,6 +256,14 @@ _is_internal_test() {
       # wave-select. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
       return 1 ;;
+    test_command-wave-summary.sh)
+      # Smoke textual sobre os 4 commands de spawn/resume (integracao do
+      # resumo deterministico de fechamento de onda, FASE 6 de
+      # wave-close-summary). Assert no .md, nao em um unico script —
+      # existence-guarded ao command portador da instrucao `wave-summary.sh
+      # emit`. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
+      return 1 ;;
     test_command-spawn-mcp-lifecycle.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (ciclo de vida do
       # servidor MCP: status/start/stop, FASE 6 task 6.2 de

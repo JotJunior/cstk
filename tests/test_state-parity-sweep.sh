@@ -161,10 +161,11 @@ issue-create-dry-run|0|$R/issue.sh create --state-dir $SWEEP_SD --suggestion-id 
 pipeline-require-blockade-resolved|0|$R/pipeline.sh require-blockade-resolved --state-dir $SWEEP_SD --etapa specify
 state-lock-check-execution-busy|3|$R/state-lock.sh check-execution-busy --state-dir $SWEEP_SD
 state-rw-infer-aspectos|0|$R/state-rw.sh infer-aspectos --state-dir $SWEEP_SD --projeto-alvo-path $SWEEP_SD
+wave-summary-emit|0|$R/wave-summary.sh emit --state-dir $SWEEP_SD
 EOF
 }
 
-scenario_dinamica_16_leitores_sqlite_sem_degradacao() {
+scenario_dinamica_17_leitores_sqlite_sem_degradacao() {
   _sqlite3_adequate || { printf '# skip: sqlite3 real >= %s indisponivel\n' "$MIN_SQLITE_VER"; return 0; }
   _mk_populated_sqlite_sd || { _error "fixture" "construcao da fixture CHK032 falhou"; return 2; }
 
@@ -190,7 +191,7 @@ scenario_dinamica_16_leitores_sqlite_sem_degradacao() {
     [ "$_ok" = 0 ] || _fails="$_fails $_label(exit=$_rc,esperado:$_exits)"
   done < "$TMPDIR_TEST/sweep-manifest.txt"
 
-  [ "$_count" = 16 ] || { _fail "manifest" "esperado 16 leitores, obtido $_count"; return 1; }
+  [ "$_count" = 17 ] || { _fail "manifest" "esperado 17 leitores, obtido $_count"; return 1; }
   [ -z "$_fails" ] || { _fail "leitores degradados/divergentes" "$_fails"; return 1; }
 
   # SC-004 anti-mirror: nenhum state.json materializado DENTRO do state-dir
