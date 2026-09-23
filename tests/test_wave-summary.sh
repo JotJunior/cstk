@@ -33,6 +33,11 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/wave-summary.sh"
 RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+HASH_LIB="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_hash.sh"
+
+# Sourceado para 9.2.1 (hash do estado antes/depois do emit — nao executavel).
+# shellcheck disable=SC1090
+. "$HASH_LIB"
 
 # ---------- helpers locais ----------
 
@@ -238,6 +243,23 @@ scenario_1_sqlite_onda_normal() {
     _fail "anti-mirror" "emit criou state.json dentro do state-dir sqlite"
     return 1
   fi
+
+  # 9.1.1 (converge FASE 9, ref 5.2.2): a saida do emit sobre state.db deve
+  # ser IDENTICA a saida do emit sobre o MESMO estado materializado em
+  # state.json (outro state-dir) — paridade real entre backends, nao so
+  # fixtures equivalentes escritas a mao duas vezes.
+  _sql_out="$_CAPTURED_STDOUT"
+  _sd_json="$TMPDIR_TEST/state-sqlite-materialized"
+  mkdir -p "$_sd_json" || { _fail "9.1.1 setup" "mkdir materializado falhou"; return 1; }
+  "$RW" read --state-dir "$_sd" > "$_sd_json/state.json" 2>/dev/null \
+    || { _fail "9.1.1 setup" "state-rw.sh read --state-dir $_sd falhou"; return 1; }
+  [ -s "$_sd_json/state.json" ] \
+    || { _fail "9.1.1 setup" "state.json materializado vazio"; return 1; }
+  capture sh "$SCRIPT" emit --state-dir "$_sd_json"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "9.1.1 emit json materializado" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  [ "$_sql_out" = "$_CAPTURED_STDOUT" ] \
+    || { _fail "9.1.1 paridade sqlite-vs-json" "saida do backend sqlite diverge da saida do backend json materializado"; return 1; }
 }
 
 # ==== Scenario 2: limite operacional vs bloqueio humano ====
@@ -534,20 +556,35 @@ scenario_8_read_only_sem_arquivo_novo() {
   mktemp_test || return 2
   _wsm_write_fixture_scenario1
   _before=$(find "$TMPDIR_TEST" -maxdepth 1 -type f | sort)
+  # 9.2.1 (converge FASE 9, ref 5.5.2, I-4): hash do proprio arquivo de estado
+  # antes do emit — uma escrita in-place preservaria o nome/lista de arquivos
+  # do state-dir (find acima nao detectaria), mas mudaria o conteudo/hash.
+  _hash_before=$(_hash_sha256_file "$TMPDIR_TEST/state.json") \
+    || { _fail "9.2.1 setup" "hash antes falhou"; return 1; }
   sh "$SCRIPT" emit --state-dir "$TMPDIR_TEST" >/dev/null
   _after=$(find "$TMPDIR_TEST" -maxdepth 1 -type f | sort)
   [ "$_before" = "$_after" ] || { _fail "read-only" "arquivo novo criado no state-dir"; return 1; }
+  _hash_after=$(_hash_sha256_file "$TMPDIR_TEST/state.json") \
+    || { _fail "9.2.1 setup" "hash depois falhou"; return 1; }
+  [ "$_hash_before" = "$_hash_after" ] \
+    || { _fail "9.2.1 read-only hash" "hash de state.json mudou apos emit (before=$_hash_before after=$_hash_after)"; return 1; }
 }
 
 scenario_8_paridade_agente00c_vs_feature00c_layout() {
   _wsm_have_jq || { _error "jq ausente"; return 2; }
   mktemp_test || return 2
-  mkdir -p "$TMPDIR_TEST/agente00c-layout" "$TMPDIR_TEST/feature00c-layout"
+  # 9.2.2 (converge FASE 9, ref 5.5.3): caminhos REAIS de layout, nao nomes
+  # arbitrarios — <projeto>/.claude/agente-00c-state/ (sem short-name, 1 por
+  # projeto) vs <projeto>/.claude/feature-00c-state/<short-name>/.
+  _short="demo-feature"
+  _agente00c_dir="$TMPDIR_TEST/.claude/agente-00c-state"
+  _feature00c_dir="$TMPDIR_TEST/.claude/feature-00c-state/$_short"
+  mkdir -p "$_agente00c_dir" "$_feature00c_dir"
   _wsm_write_fixture_scenario1
-  cp "$TMPDIR_TEST/state.json" "$TMPDIR_TEST/agente00c-layout/state.json"
-  cp "$TMPDIR_TEST/state.json" "$TMPDIR_TEST/feature00c-layout/state.json"
-  _a=$(sh "$SCRIPT" emit --state-dir "$TMPDIR_TEST/agente00c-layout")
-  _b=$(sh "$SCRIPT" emit --state-dir "$TMPDIR_TEST/feature00c-layout")
+  cp "$TMPDIR_TEST/state.json" "$_agente00c_dir/state.json"
+  cp "$TMPDIR_TEST/state.json" "$_feature00c_dir/state.json"
+  _a=$(sh "$SCRIPT" emit --state-dir "$_agente00c_dir")
+  _b=$(sh "$SCRIPT" emit --state-dir "$_feature00c_dir")
   [ "$_a" = "$_b" ] || { _fail "paridade" "layouts produzem saida divergente"; return 1; }
 }
 

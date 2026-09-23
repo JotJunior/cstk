@@ -595,7 +595,7 @@ proxima instrucao) passaria sem ser detectada. Completar e aditivo: materializar
 mesmo `state.db` (`state-rw.sh read`) num `state.json` de um state-dir
 separado, rodar `emit` nos dois e comparar o stdout byte a byte.
 
-- [ ] 9.1.1 Estender `scenario_1_sqlite_onda_normal` em `tests/test_wave-summary.sh` para comparar o stdout do `emit` sobre o `state.db` com o stdout do `emit` sobre o mesmo estado materializado em `state.json` (outro state-dir), conforme 5.2.2
+- [x] 9.1.1 Estender `scenario_1_sqlite_onda_normal` em `tests/test_wave-summary.sh` para comparar o stdout do `emit` sobre o `state.db` com o stdout do `emit` sobre o mesmo estado materializado em `state.json` (outro state-dir), conforme 5.2.2
 
 <!-- converge-key: 975a0d95cd5e -->
 
@@ -612,7 +612,7 @@ paridade entre os layouts `.claude/agente-00c-state/` e
 usa os diretorios arbitrarios `agente00c-layout`/`feature00c-layout`. Os dois
 pontos se completam adicionando asserts e fixtures, sem mudar o helper.
 
-- [ ] 9.2.1 Em `scenario_8_read_only_sem_arquivo_novo` (`tests/test_wave-summary.sh`), comparar o hash (`_hash.sh`/`shasum -a 256` ou `state-rw.sh sha256-verify`) do arquivo de estado antes e depois do `emit`, conforme 5.5.2
-- [ ] 9.2.2 Em `scenario_8_paridade_agente00c_vs_feature00c_layout`, usar os caminhos reais `<tmp>/.claude/agente-00c-state/` e `<tmp>/.claude/feature-00c-state/<short>/`, conforme 5.5.3
+- [x] 9.2.1 Em `scenario_8_read_only_sem_arquivo_novo` (`tests/test_wave-summary.sh`), comparar o hash (`_hash.sh`/`shasum -a 256` ou `state-rw.sh sha256-verify`) do arquivo de estado antes e depois do `emit`, conforme 5.5.2
+- [x] 9.2.2 Em `scenario_8_paridade_agente00c_vs_feature00c_layout`, usar os caminhos reais `<tmp>/.claude/agente-00c-state/` e `<tmp>/.claude/feature-00c-state/<short>/`, conforme 5.5.3
 
 <!-- converge-key: a3ca98d6544c -->
