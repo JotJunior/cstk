@@ -4,6 +4,31 @@
 **Created**: 2026-09-24
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-09-24
+
+- Q: FR-002 — o board dedicado do Jira e um unico board compartilhado por
+  todos os projetos-alvo que instalarem o plugin, ou cada projeto-alvo
+  recebe seu proprio board/projeto Jira na propria instancia do usuario?
+  → A: cada projeto-alvo que instala o plugin recebe seu proprio
+  board/projeto Jira dedicado, configurado durante a instalacao/
+  configuracao guiada (FR-007), na instancia Jira que o mantenedor
+  daquele projeto configurar. Nao existe um board unico compartilhado
+  entre diferentes projetos-alvo/usuarios do plugin.
+- Q: FR-006 — MCP e API REST do Jira sao mecanismos alternativos
+  equivalentes configuraveis pelo usuario, ou um e o caminho principal
+  e o outro e fallback? → A: MCP e o caminho preferencial quando um MCP
+  de Jira (generico ou dedicado) estiver disponivel e cobrir as
+  operacoes necessarias (ver FR-010); a API REST do Jira e o fallback
+  universal, usado quando nenhum MCP de Jira estiver disponivel ou
+  suficiente no ambiente do usuario. O mecanismo tecnico concreto (qual
+  MCP Jira existe, quais operacoes cobre, detalhes de autenticacao) fica
+  adiado para a fase de pesquisa do `/plan` (research.md), no mesmo
+  padrao ja usado em FR-019-INFRA-REFRESH desta spec — por exigencia do
+  Principio VI da constitution (Zero Fabricacao: sem fonte oficial do
+  Jira, nao supor mecanismo/capacidades).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Converter feature em Epic/Tasks/Subtasks no Jira (Priority: P1)
@@ -178,10 +203,11 @@ nenhum passo de configuracao adicional nao coberto pelo fluxo guiado.
   dependencias e criticidade quando existirem).
 - **FR-002**: O sistema MUST disponibilizar um board dedicado no Jira
   representando o pipeline de features do projeto que usa o plugin.
-  [NEEDS CLARIFICATION: o board e um unico board compartilhado por
-  todos os projetos-alvo que instalarem o plugin (ex.: um board "do
-  toolkit"), ou cada projeto-alvo recebe seu proprio board/projeto Jira
-  na propria instancia do usuario ao instalar o plugin?]
+  Cada projeto-alvo que instala o plugin MUST ter seu proprio board/
+  projeto Jira dedicado, configurado durante a instalacao/configuracao
+  guiada (FR-007) na instancia Jira daquele projeto — nao existe um
+  board unico compartilhado entre diferentes projetos-alvo/usuarios do
+  plugin (ver Clarifications, sessao 2026-09-24).
 - **FR-003**: O sistema MUST atualizar os issues Jira (Epic/Task/
   Subtask) ja existentes quando o artefato local correspondente mudar,
   em vez de criar issues duplicados para a mesma feature/tarefa.
@@ -194,10 +220,14 @@ nenhum passo de configuracao adicional nao coberto pelo fluxo guiado.
   a cada sincronizacao individual.
 - **FR-006**: O sistema MUST suportar a conexao com o Jira por pelo
   menos um dos dois mecanismos citados pelo pedido original — uma
-  conexao MCP com o Jira ou a API REST do Jira. [NEEDS CLARIFICATION:
-  os dois mecanismos sao alternativas equivalentes configuraveis pelo
-  usuario, ou um e o caminho principal e o outro e fallback quando o
-  primeiro nao esta disponivel no ambiente?]
+  conexao MCP com o Jira ou a API REST do Jira. MCP e o caminho
+  preferencial quando um MCP de Jira (generico ou dedicado) estiver
+  disponivel e cobrir as operacoes necessarias (ver FR-010); a API REST
+  do Jira e o fallback universal quando nenhum MCP de Jira estiver
+  disponivel/suficiente no ambiente do usuario. O mecanismo tecnico
+  concreto (qual MCP existe, quais operacoes cobre, autenticacao) fica
+  adiado para a pesquisa do `/plan`, no mesmo padrao de
+  FR-019-INFRA-REFRESH (ver Clarifications, sessao 2026-09-24).
 - **FR-007**: O sistema MUST guiar o usuario por uma configuracao
   inicial (autenticacao e identificacao do projeto/board Jira alvo)
   antes da primeira sincronizacao, e MUST falhar com diagnostico claro
