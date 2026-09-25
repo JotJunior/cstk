@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="cstk presentation">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta name="color-scheme" content="dark light">
+<title>{{TITLE}}</title>
+<style>
+{{CSS}}
+</style>
+</head>
+<body>
+<div class="progress" aria-hidden="true"><span class="progress__bar"></span></div>
+<nav class="toc" id="toc" aria-label="{{UI_CONTENTS}}">
+<p class="toc__title">{{UI_CONTENTS}}</p>
+<ol class="toc__list"></ol>
+</nav>
+<main class="deck" id="deck" aria-label="{{TITLE}}">
+{{SLIDES}}
+</main>
+<footer class="colophon">
+<p><strong>{{PROJECT}}</strong> &middot; {{TITLE}} &middot; {{GENERATED}}</p>
+</footer>
+<div class="hud" role="toolbar" aria-label="{{TITLE}}">
+<span class="hud__counter" aria-live="polite"><span class="hud__current">1</span> / <span class="hud__total">1</span></span>
+<button type="button" class="hud__btn" data-action="prev" aria-label="&larr;">&larr;</button>
+<button type="button" class="hud__btn" data-action="next" aria-label="&rarr;">&rarr;</button>
+<button type="button" class="hud__btn hud__btn--text" data-action="mode" data-label-slides="{{UI_SLIDES}}" data-label-report="{{UI_REPORT}}">{{UI_REPORT}}</button>
+<button type="button" class="hud__btn hud__btn--text" data-action="theme">{{UI_THEME}}</button>
+<button type="button" class="hud__btn hud__btn--text" data-action="print">{{UI_PRINT}}</button>
+<span class="hud__help">{{UI_HELP}}</span>
+</div>
+<script>
+{{JS}}
+</script>
+</body>
+</html>

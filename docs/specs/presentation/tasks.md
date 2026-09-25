@@ -24,21 +24,21 @@ release 10.8.0, com dogfooding sobre o proprio repositorio.
 
 Ref: quickstart.md cenarios 1-10
 
-- [ ] 1.1.1 Criar `tests/fixtures/presentation/docs/` com briefing,
+- [x] 1.1.1 Criar `tests/fixtures/presentation/docs/` com briefing,
       constitution (3 principios, um NON-NEGOTIABLE), spec ativa com tasks
       parciais, spec arquivada datada com tasks completas e converge, spec
       viva em `specs/current/`
-- [ ] 1.1.2 Criar `tests/fixtures/presentation/story.md` valida cobrindo
+- [x] 1.1.2 Criar `tests/fixtures/presentation/story.md` valida cobrindo
       todos os tipos de slide
 
 ### 1.2 `scan-project-docs.sh` `[A]`
 
 Ref: data-model.md §Inventario; contracts/cli-invocation.md
 
-- [ ] 1.2.1 Subcomando `inventory` com registros `project`, `briefing`,
+- [x] 1.2.1 Subcomando `inventory` com registros `project`, `briefing`,
       `constitution`, `principle`, `spec`, `totals` na ordem narrativa
-- [ ] 1.2.2 Subcomando `diff` classificando added/changed/removed/unchanged
-- [ ] 1.2.3 `tests/test_scan-project-docs.sh` (cenarios 1-4, uso invalido)
+- [x] 1.2.2 Subcomando `diff` classificando added/changed/removed/unchanged
+- [x] 1.2.3 `tests/test_scan-project-docs.sh` (cenarios 1-4, uso invalido)
 
 ## FASE 2 - Validador e Render
 
@@ -46,18 +46,18 @@ Ref: data-model.md §Inventario; contracts/cli-invocation.md
 
 Ref: contracts/slide-grammar.md G-01..G-10
 
-- [ ] 2.1.1 Implementar as regras G-01 a G-10 com `FILE:LINHA: mensagem`
-- [ ] 2.1.2 `tests/test_validate-presentation.sh` (cenarios 5-7 e um
+- [x] 2.1.1 Implementar as regras G-01 a G-10 com `FILE:LINHA: mensagem`
+- [x] 2.1.2 `tests/test_validate-presentation.sh` (cenarios 5-7 e um
       cenario por regra)
 
 ### 2.2 `render-presentation.sh` `[A]`
 
 Ref: contracts/slide-grammar.md R-01..R-05
 
-- [ ] 2.2.1 Conversao awk story → sections (layout por tipo, metricas,
+- [x] 2.2.1 Conversao awk story → sections (layout por tipo, metricas,
       `@timeline`, `@sources`, rotulos pt-BR/en)
-- [ ] 2.2.2 Montagem do template com CSS/JS inline e escrita atomica
-- [ ] 2.2.3 `tests/test_render-presentation.sh` (cenarios 8-10, R-05)
+- [x] 2.2.2 Montagem do template com CSS/JS inline e escrita atomica
+- [x] 2.2.3 `tests/test_render-presentation.sh` (cenarios 8-10, R-05)
 
 ## FASE 3 - Template Visual e Skill
 
