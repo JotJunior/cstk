@@ -73,15 +73,6 @@ _sp_digest_dir() {
   done | cksum | awk '{print $1}'
 }
 
-_sp_count() {
-  # _sp_count REGEX FILE -> numero de linhas que casam (0 se nenhuma)
-  if [ -f "$2" ]; then
-    grep -c -- "$1" "$2" 2>/dev/null || true
-  else
-    printf '0\n'
-  fi
-}
-
 # _sp_spec_dir KEY STATUS DATE DIR -> linha "sortkey<TAB>spec<TAB>..." em stdout
 _sp_spec_dir() {
   _key=$1 _status=$2 _date=$3 _dir=${4%/}
@@ -96,8 +87,21 @@ _sp_spec_dir() {
   _arts=${_arts#,}
   [ -n "$_arts" ] || _arts="-"
 
-  _sessions=$(_sp_count '^### Session' "$_dir/spec.md")
-  _questions=$(_sp_count '^- Q:' "$_dir/spec.md")
+  # Clarify: sessoes = headings "### Session"; perguntas = itens de pergunta
+  # dentro da secao "## Clarifications" nos formatos usados pelo pipeline
+  # ("- Q:", "- **Q1", "### CQ1"). Secao com perguntas mas sem heading de
+  # sessao conta como 1 sessao.
+  _sessions=0
+  _questions=0
+  if [ -f "$_dir/spec.md" ]; then
+    _cq=$(awk '
+      /^### Session/ { s++ }
+      /^## / { inclar = ($0 ~ /^## Clarifications/) ; next }
+      inclar && (/^- Q:/ || /^- \*\*Q[0-9]/ || /^### CQ[0-9]/) { q++ }
+      END { if (s == 0 && q > 0) s = 1; printf "%d %d\n", s, q }' "$_dir/spec.md")
+    _sessions=${_cq% *}
+    _questions=${_cq#* }
+  fi
 
   if [ -f "$_dir/tasks.md" ]; then
     _tc=$(awk '

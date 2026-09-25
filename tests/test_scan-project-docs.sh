@@ -110,6 +110,31 @@ scenario_inventory_sem_briefing_constitution_e_specs() {
   assert_stdout_match '^totals	0	0	0	0	0	0	0	0$' || return 1
 }
 
+scenario_inventory_formatos_alternativos_de_clarify() {
+  fixture presentation || return 2
+  mkdir -p "$TMPDIR_TEST/docs/specs/alt"
+  cat > "$TMPDIR_TEST/docs/specs/alt/spec.md" <<'SPEC'
+# Feature Specification: Alternativa
+
+## Clarifications
+
+### CQ1 — Primeira pergunta
+Resposta.
+
+### CQ2 — Segunda pergunta
+Resposta.
+
+- **Q3 — Terceira pergunta?**
+
+## Requirements
+
+- Q: fora da secao nao conta
+SPEC
+  _sp_run "$TMPDIR_TEST" inventory --docs docs
+  _sp_expect alt 7 1 || return 1
+  _sp_expect alt 8 3 || return 1
+}
+
 scenario_inventory_deterministico() {
   fixture presentation || return 2
   _sp_run "$TMPDIR_TEST" inventory --docs docs

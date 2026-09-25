@@ -444,5 +444,6 @@ $0 == "{{SLIDES}}" { cat_file(SLIDES); next }
 }
 ' "$TEMPLATES/presentation.html" > "$_html"
 
+chmod 644 "$_html"
 mv "$_html" "$OUT"
 printf 'RENDERED|%s|slides=%s\n' "$OUT" "$_nslides"

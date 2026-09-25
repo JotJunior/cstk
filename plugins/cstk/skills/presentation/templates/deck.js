@@ -87,6 +87,7 @@
     }
     if (mode === 'slides') {
       fit();
+      if (!fitted) { fitSlides(); }
       show(current, false);
     } else {
       for (var k = 0; k < total; k++) { slides[k].removeAttribute('aria-hidden'); }
@@ -94,6 +95,28 @@
       onScroll();
     }
     if (persist) { writeStore('mode', mode); }
+  }
+
+  /* Reduz a tipografia de cada slide (--fit) ate o conteudo caber no
+     canvas 1600x900. Mede no layout de slides; o valor fica inline e vale
+     tambem para a impressao. */
+  var fitted = false;
+  function fitSlides() {
+    var wasSlides = root.classList.contains('is-slides');
+    if (!wasSlides) { root.classList.add('is-slides'); }
+    for (var i = 0; i < total; i++) {
+      var s = slides[i];
+      var body = s.querySelector('.slide__body');
+      if (!body) { continue; }
+      var fit = 1;
+      s.style.setProperty('--fit', '1');
+      while (body.scrollHeight > body.clientHeight + 1 && fit > 0.62) {
+        fit = Math.round((fit - 0.04) * 100) / 100;
+        s.style.setProperty('--fit', String(fit));
+      }
+    }
+    if (!wasSlides) { root.classList.remove('is-slides'); }
+    fitted = true;
   }
 
   function effectiveTheme() {
@@ -213,6 +236,7 @@
   setMode(initial, false);
 
   window.addEventListener('resize', function () { if (mode === 'slides') { fit(); } });
+  window.addEventListener('beforeprint', function () { if (!fitted) { fitSlides(); } });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('hashchange', function () {
     var i = indexFromHash();

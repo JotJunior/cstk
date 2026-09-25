@@ -35,8 +35,9 @@ humanizado.
 - **`render-presentation.sh`** + template (`presentation.html`,
   `theme.css`, `deck.js`): render determinístico em awk, texto sempre
   escapado, CSP `default-src 'none'`, fontes do sistema, tema claro e
-  escuro, modo slides (teclado, progresso, deep link), modo relatório
-  com sumário e impressão com um slide por página.
+  escuro, modo slides (teclado, progresso, deep link) com auto-ajuste
+  tipográfico por slide para caber no canvas 16:9, modo relatório com
+  sumário e impressão com um slide por página.
 - Referências da skill: `slide-grammar.md`, `narrative-guide.md`,
   `source-mapping.md` e o esqueleto `templates/story.md`.
 - Testes: `tests/test_scan-project-docs.sh`,

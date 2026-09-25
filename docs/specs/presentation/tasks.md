@@ -65,19 +65,19 @@ Ref: contracts/slide-grammar.md R-01..R-05
 
 Ref: spec.md §FR-010, §FR-011; research.md Decisions 4-5
 
-- [ ] 3.1.1 `templates/theme.css`: tokens claro/escuro, layouts por tipo,
+- [x] 3.1.1 `templates/theme.css`: tokens claro/escuro, layouts por tipo,
       modo relatorio, `@media print`, responsivo, reduced-motion
-- [ ] 3.1.2 `templates/deck.js`: modo slides (escala 16:9, teclado,
+- [x] 3.1.2 `templates/deck.js`: modo slides (escala 16:9, teclado,
       progresso, deep link), R/T/P, indice do relatorio
-- [ ] 3.1.3 `templates/presentation.html` e `templates/story.md`
+- [x] 3.1.3 `templates/presentation.html` e `templates/story.md`
 
 ### 3.2 Skill `[A]`
 
 Ref: constitution Principio III
 
-- [ ] 3.2.1 `references/narrative-guide.md` e `references/source-mapping.md`
-- [ ] 3.2.2 `SKILL.md` com fluxo, argumentos, regras e `## Gotchas`
-- [ ] 3.2.3 `evals/triggers.jsonl` + negativos + casos gerados
+- [x] 3.2.1 `references/narrative-guide.md` e `references/source-mapping.md`
+- [x] 3.2.2 `SKILL.md` com fluxo, argumentos, regras e `## Gotchas`
+- [x] 3.2.3 `evals/triggers.jsonl` + negativos + casos gerados
 
 ## FASE 4 - Registro e Release
 
@@ -85,14 +85,14 @@ Ref: constitution Principio III
 
 Ref: spec.md §FR-017; CONTRIBUTING.md
 
-- [ ] 4.1.1 `scripts/profiles.txt.in`: `complementary:presentation`
-- [ ] 4.1.2 README.md e README.pt-BR.md (contagens, arvore, tabela)
-- [ ] 4.1.3 Help de `cli/lib/install.sh` e `docs-site/manual/profiles.md`
+- [x] 4.1.1 `scripts/profiles.txt.in`: `complementary:presentation`
+- [x] 4.1.2 README.md e README.pt-BR.md (contagens, arvore, tabela)
+- [x] 4.1.3 Help de `cli/lib/install.sh` e `docs-site/manual/profiles.md`
 
 ### 4.2 Release 10.8.0 `[M]`
 
-- [ ] 4.2.1 CHANGELOG.md
-- [ ] 4.2.2 Bump lockstep dos manifests e workspaces do panel
+- [x] 4.2.1 CHANGELOG.md
+- [x] 4.2.2 Bump lockstep dos manifests e workspaces do panel
 
 ## FASE 5 - Dogfooding e Verificacao
 
@@ -100,10 +100,10 @@ Ref: spec.md §FR-017; CONTRIBUTING.md
 
 Ref: quickstart.md cenarios 11-12; spec.md §SC-001..SC-005
 
-- [ ] 5.1.1 Gerar story completa do cstk (fora do repo) e validar com exit 0
-- [ ] 5.1.2 Render + Chromium offline: slides, relatorio, temas, 390px,
+- [x] 5.1.1 Gerar story completa do cstk (fora do repo) e validar com exit 0
+- [x] 5.1.2 Render + Chromium offline: slides, relatorio, temas, 390px,
       console limpo, prints para o dono do produto
-- [ ] 5.1.3 Suite completa, `--check-coverage`, gates de manifest
+- [~] 5.1.3 Suite completa, `--check-coverage`, gates de manifest
 
 ---
 

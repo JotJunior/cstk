@@ -74,6 +74,13 @@ scenario_sem_recurso_de_rede() {
   _rp_hasnt "<a href=\"https" || return 1
 }
 
+scenario_arquivo_legivel_por_todos() {
+  _rp_setup || return 2
+  _rp_run
+  _perm=$(ls -l "$TMPDIR_TEST/index.html" | cut -c1-10)
+  [ "$_perm" = "-rw-r--r--" ] || { _fail "mode" "permissao inesperada: $_perm"; return 1; }
+}
+
 scenario_deterministico() {
   _rp_setup || return 2
   _rp_run a.html

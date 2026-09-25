@@ -25,8 +25,8 @@ que o scan rodou (ex.: `docs/specs/foo/spec.md`).
 | `status` | `active` (`specs/*/`), `archived` (`specs/_archived/*/`), `living` (`specs/current/*.md`) |
 | `date` | prefixo `AAAA-MM-DD-` do diretorio arquivado; `-` caso contrario |
 | `artifacts` | lista separada por virgula dentre `spec,plan,research,data-model,quickstart,tasks,checklists,contracts,converge-report`; `-` se vazia |
-| `clarify_sessions` | linhas `### Session` em `spec.md` |
-| `clarify_questions` | linhas `- Q:` em `spec.md` |
+| `clarify_sessions` | linhas `### Session` em `spec.md`; secao `## Clarifications` com perguntas e sem heading de sessao conta 1 |
+| `clarify_questions` | itens `- Q:`, `- **Q<n>` ou `### CQ<n>` dentro de `## Clarifications` em `spec.md` |
 | `tasks_done` / `tasks_total` | itens `- [x]` / itens `- [ ]`, `[x]`, `[~]`, `[!]` em `tasks.md`; `-` sem `tasks.md` |
 | `converge` | ultimo `outcome=` de `converge-report.md`; `-` sem marcador |
 | `stage` | `living` se viva; `implemented` se `tasks_total>0` e `done=total`; `in-progress` se `tasks_total>0` e `done<total`; `archived` se arquivada sem tasks; `specified` caso contrario |
