@@ -40,12 +40,17 @@ plugin ativos; nenhuma mudanca no comportamento de outras skills.
    eco desligado.
 3. A skill valida a credencial remotamente, descobre tipos de issue e
    status/transicoes e pede o mapeamento `pending/in_progress/pass/fail`.
-4. A skill cria (ou reusa) filtro + board kanban do projeto.
+4. A skill lista os tipos de issue descobertos (`id`, `name`,
+   `hierarchyLevel`, `subtask`) e pede ao operador que confirme qual e Epic,
+   qual e Task e qual e Sub-task (o valor de `hierarchyLevel` de Epic e `NAO
+   ENCONTRADO` nas fontes oficiais — o sistema nunca infere sozinho).
+5. A skill cria (ou reusa) filtro + board kanban do projeto.
 
 **Expected**: `.claude/cstk-jira/config` valido (`jira-config.sh validate` exit
-0); arquivo de credencial com modo `0600` fora do repo; `board_id` gravado;
-nenhum segredo em arquivo versionado (`git grep` pelo email/token nao acha
-nada).
+0); arquivo de credencial com modo `0600` fora do repo; `issue_type_epic`/
+`issue_type_task`/`issue_type_subtask` gravados SOMENTE apos confirmacao
+explicita do operador (passo 4); `board_id` gravado; nenhum segredo em
+arquivo versionado (`git grep` pelo email/token nao acha nada).
 
 **Error case 3a**: mapear `fail` para o mesmo status de `pass` => setup recusa
 com diagnostico pedindo um status distinto no workflow.

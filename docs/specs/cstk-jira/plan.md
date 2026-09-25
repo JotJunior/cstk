@@ -102,7 +102,13 @@ Fluxos:
    operador a gravar a credencial num terminal proprio (nunca no chat);
    valida credencial remota; descobre tipos de issue (createmeta) e
    transicoes/status do workflow e pede ao operador o mapeamento
-   `pending/in_progress/pass/fail` (recusa `fail == pass`); cria ou reusa o
+   `pending/in_progress/pass/fail` (recusa `fail == pass`); lista os tipos de
+   issue retornados (`id`, `name`, `hierarchyLevel`, `subtask`) e pede ao
+   operador que CONFIRME explicitamente qual e Epic, qual e Task e qual e
+   Sub-task antes de gravar `issue_type_*` — o valor de `hierarchyLevel` que
+   corresponde a Epic e `NAO ENCONTRADO` nas fontes oficiais
+   (`contracts/jira-rest.md` R8), entao o sistema NUNCA infere esse
+   mapeamento sozinho (checklist CHK006 do gate `api`); cria ou reusa o
    filtro + board kanban do projeto (US2 cenario 2: reuso, sem duplicar).
    Projeto Jira: reusa um existente; criacao so via tool `createJiraProject`
    do Rovo MCP ou pela UI do Jira (path REST v3 de criacao de projeto =
@@ -178,7 +184,7 @@ matriz de teste sem ganho, e hooks de plugin so existem no canal plugin.
 | 2 | Deny-list de `deleteJiraIssue` (FR-012) | hook `PreToolUse` com matcher regex `mcp__.*__(deleteJiraIssue\|executeDestructive)` e exit 2 (`contracts/hooks.md`); `jira-io.sh` nao tem metodo `DELETE`; skills citam a proibicao em Gotchas |
 | 3 | Dominio Jira no allowlist de URLs da execucao | NAO necessario e deliberadamente NAO feito: o `bash-guard` e hook `PreToolUse` com matcher `Bash` (`plugins/cstk/hooks/hooks.json`) e so inspeciona comandos da tool Bash; o sync autonomo roda como subprocesso de hook do plugin e nenhum script recebe URL em argv. A garantia de FR-015 fica no proprio `jira-io.sh` (host unico por igualdade exata, sem seguir redirect para outro host) — mesmo desenho do `cli/lib/http.sh` pos-issue #178. Registrado como Decisao desta onda |
 | 4 | Descritor local do Rovo MCP em `/v1/mcp` vs recomendado `/v2/mcp` | o plugin NAO empacota `.mcp.json` (evita segunda conexao ao mesmo servidor e acoplamento a um endpoint); `jira-setup` detecta tools visiveis por sufixo de nome e o quickstart recomenda `https://mcp.atlassian.com/v2/mcp` (README oficial). Os nomes de tool usados existem so no MCP v2 (research Decision 1) — com descritor v1 as tools v2 passam a ser expostas conforme o README; divergencia de data da migracao fica registrada como ressalva |
-| 5 | API token expira em ate 1 ano sem renovacao automatica | FR-019-INFRA-REFRESH pelo ramo "nao e possivel": 401/403 => `auth_failed`, suspende o drain, diagnostico de reconfiguracao (FR-016); `jira-setup` exibe a data de validade informada pelo operador como lembrete (nao ha API citada para ler a expiracao) |
+| 5 | API token expira em ate 1 ano sem renovacao automatica | FR-019-INFRA-REFRESH pelo ramo "nao e possivel": `401` => `auth_failed`, suspende o drain, diagnostico de reconfiguracao (FR-016) — expiracao de token se manifesta como `401`, nao `403` (403 em R1/R2 e permissao insuficiente, distinto — ver Test Strategy "Falha"); `jira-setup` exibe a data de validade informada pelo operador como lembrete (nao ha API citada para ler a expiracao) |
 
 ## Convencoes de Borda
 
@@ -199,7 +205,7 @@ matriz de teste sem ganho, e hooks de plugin so existem no canal plugin.
 | Unit (POSIX) | parse de tasks.md, derivacao de `local_state`, mapeamento atomico, deteccao de orfao, validacao de config/host | fixtures de tasks.md em `tests/cstk/fixtures/` |
 | Contrato | corpo/metodo/path gerados pelo motor batem com `contracts/jira-rest.md` | stub do cliente HTTP grava a requisicao; assert sobre metodo, path e chaves |
 | Idempotencia (SC-002) | 10 execucoes de `convert` seguidas => 0 criacoes apos a 1a | stub com estado |
-| Falha | 401/403 => `auth_failed` sem retry; 429 => `deferred`; host divergente/redirect => recusa sem requisicao; deps ausentes => exit 5 | stub + PATH controlado |
+| Falha | 401 (qualquer operacao) => `auth_failed` sem retry; 403 em R1/R2 (criar/editar issue) => `permission_denied` (diagnostico "credencial valida, permissao insuficiente no projeto/tipo", NUNCA reconfiguracao de credencial — `contracts/jira-rest.md` "Validacao de credencial": 403 em R1/R2 e permissao, nao credencial); 403 nas demais operacoes (sem fonte que os distinga) segue tratado como `auth_failed` ate nova fonte; 429 => `deferred`; host divergente/redirect => recusa sem requisicao; deps ausentes => exit 5 | stub + PATH controlado |
 | Hooks | no-op sem config (SC-006); fail-open; nunca imprime/grava `session_id`; guarda exit 2 | stdin sintetico |
 | Mutation | cada guarda (host, DELETE, deny, no-op) e quebrada de proposito para provar que o teste pega | pratica ja adotada no repo |
 | E2E manual | roundtrip REAL contra um site Jira Cloud de teste | `quickstart.md` cenario 6 (captura do payload real e comparacao com o contrato) |
@@ -231,6 +237,7 @@ Controles ja presentes no desenho e confirmados pelo gate: host unico por
 `site_host` validado como hostname puro, credencial resolvida POR `site_host`
 (alterar o host no config versionado nao desvia o token para outro host),
 credencial `0600`/`0700` fora do repo e fora de argv/log, metodos fechados em
-`GET`/`POST`/`PUT` (sem `DELETE`), `401`/`403` => `auth_failed` sem retry,
+`GET`/`POST`/`PUT` (sem `DELETE`), `401` => `auth_failed` sem retry (403 em
+R1/R2 => `permission_denied`, distinto — ver Test Strategy "Falha"),
 `429` => `deferred` com `Retry-After`, hooks no-op sem config e sem
 imprimir `session_id`.
