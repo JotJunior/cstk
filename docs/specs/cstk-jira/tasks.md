@@ -85,16 +85,18 @@ onda-003" #1/#2.
 
 Ref: plan.md Project Structure (Source Code).
 
-- [ ] 1.1.1 Criar arvore de diretorios: `plugins/cstk-jira/{.claude-plugin,
+- [x] 1.1.1 Criar arvore de diretorios: `plugins/cstk-jira/{.claude-plugin,
       hooks,scripts,skills/jira-setup/references,
       skills/jira-convert/references,skills/jira-sync/references}`
-- [ ] 1.1.2 Criar `plugins/cstk-jira/.claude-plugin/plugin.json` (nome
+- [x] 1.1.2 Criar `plugins/cstk-jira/.claude-plugin/plugin.json` (nome
       `cstk-jira`, descricao, `version` inicial, `author`, `repository`,
       `license`, `keywords` — mesmo formato de
       `plugins/cstk-language-go/.claude-plugin/plugin.json`)
-- [ ] 1.1.3 Teste: `tests/cstk/test_manifest.sh`/`test_manifest-coverage.sh`
+- [x] 1.1.3 Teste: `tests/cstk/test_manifest.sh`/`test_manifest-coverage.sh`
       (ou fixture equivalente) reconhece o novo plugin.json como valido
-      (schema minimo: `name`, `version`, `description`)
+      (schema minimo: `name`, `version`, `description`) — implementado como
+      `tests/cstk/test_cstk-jira-plugin-manifest.sh` (fixture equivalente,
+      allowlisted em `tests/run.sh::_is_internal_test`; PASS 3/3)
 
 ### 1.2 Registrar no marketplace e ajustar o gate MP-2 `[A]`
 

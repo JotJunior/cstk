@@ -213,6 +213,12 @@ _is_internal_test() {
       # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de
       # claude-plugin-packaging.
       return 0 ;;
+    test_cstk-jira-plugin-manifest.sh)
+      # Cobre plugins/cstk-jira/.claude-plugin/plugin.json — manifesto de
+      # dados estatico, sem script .sh "dono" sob a convencao de FASE 9.3
+      # (mesmo tratamento de test_plugin-hooks-manifest.sh). tasks.md
+      # cstk-jira FASE 1.1.3.
+      return 0 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.
