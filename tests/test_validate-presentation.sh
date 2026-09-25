@@ -156,6 +156,21 @@ scenario_mensagem_com_numero_de_linha() {
     || { _fail "format" "mensagem sem FILE:LINHA: $_CAPTURED_STDERR"; return 1; }
 }
 
+scenario_comentario_antes_do_primeiro_slide_ok() {
+  _vp_setup || return 2
+  _vp_edit 's/^<!-- slide: cover -->$/<!-- gerado pela skill presentation -->\
+<!-- slide: cover -->/'
+  _vp_run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "comentario nao deveria reprovar; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_texto_fora_de_slide() {
+  _vp_setup || return 2
+  _vp_edit 's/^<!-- slide: cover -->$/Texto solto\
+<!-- slide: cover -->/'
+  _vp_expect_fail "conteudo fora de slide" || return 1
+}
+
 scenario_sem_argumentos_exit2() {
   assert_exit 2 sh "$SCRIPT" || return 1
   assert_stderr_contains "Uso:" || return 1

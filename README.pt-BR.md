@@ -137,7 +137,7 @@ descartados antes de tocar o disco.
 │   │   ├── .mcp.json            # registra o servidor MCP cstk-state (sobe sozinho no caminho plugin)
 │   │   ├── mcp/state-server/    # fonte do servidor MCP (Node/TS, stdio) — viaja DENTRO do plugin
 │   │   ├── evals/               # suite do `claude plugin eval` (gerada dos triggers.jsonl das skills)
-│   │   └── skills/               # 21 skills globais (cada skill é uma pasta)
+│   │   └── skills/               # 22 skills globais (cada skill é uma pasta)
 │   │       ├── advisor/
 │   │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │   │       ├── analyze/
@@ -154,6 +154,7 @@ descartados antes de tocar o disco.
 │   │       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
 │   │       ├── owasp-security/
 │   │       ├── plan/
+│   │       ├── presentation/       # deck narrativo do projeto (HTML offline) a partir das docs SDD
 │   │       ├── review-features/
 │   │       ├── review-task/
 │   │       ├── specify/
@@ -227,6 +228,7 @@ Detalhes, diagrama do fluxo e atalhos em
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Testes E2E de integração full-stack (UI → API → banco → fila → efeitos colaterais) |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows — ver [Insights de uso](#insights-de-uso) |
+| **presentation** | "apresentação do projeto", "deck executivo", "relatório humanizado" | Escreve a história do projeto como deck HTML offline (slides, relatório, PDF) a partir do briefing, da constituição e de todas as specs, um slide por spec; fatos e métricas só de um inventário determinístico |
 | **owasp-security** | Ao revisar segurança | Revisão guiada por checklist (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Não substitui auditoria/pentest |
 | **review-features** | "status global", "comparar features" | Relatório cross-feature com sugestão de arquivar/abandonar/priorizar; a ação de archive aplica os deltas ao corpus de specs vivas |
 | **validate-documentation** | "validar documentação", "verificar UC" | Valida documentos individuais contra padrões estruturais |
@@ -291,7 +293,7 @@ Depois disso, comandos típicos:
 ```bash
 cstk --version                       # confirma instalação
 cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 28 skills (inclui language-go)
+cstk install --profile all           # instala TODAS as 29 skills (inclui language-go)
 cstk install advisor bugfix          # cherry-pick por nome
 cstk update                          # aplica novas releases preservando edits locais
 cstk update --force                  # sobrescreve skills com edição local
@@ -309,8 +311,8 @@ cstk self-update                     # atualiza o próprio binário cstk + cli/l
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 10 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 28 skills (sdd + complementary + language-go) | Instalação completa |
+| `complementary` | 11 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`.
@@ -614,8 +616,8 @@ isso via manifest + hash_dir.
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 10 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 28 skills (sdd + complementary + language-go) | Instalação completa |
+| `complementary` | 11 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.

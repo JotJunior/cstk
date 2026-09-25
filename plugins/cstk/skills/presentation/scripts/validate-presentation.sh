@@ -135,6 +135,7 @@ fm == 1 {
   }
   next
 }
+/^[ \t]*<!--.*-->[ \t]*$/ { next }
 {
   if (nslides == 0) {
     if (trim(line) != "") err(FNR, "conteudo fora de slide")

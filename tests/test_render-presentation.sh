@@ -170,6 +170,14 @@ scenario_sem_frontmatter_exit1() {
   [ ! -f "$TMPDIR_TEST/index.html" ] || { _fail "atomic" "HTML parcial gravado"; return 1; }
 }
 
+scenario_comentario_html_ignorado() {
+  _rp_setup || return 2
+  _rp_edit 's/^## No que acreditamos$/## No que acreditamos\
+<!-- nota do redator: revisar com o time -->/'
+  _rp_run
+  _rp_hasnt "nota do redator" || return 1
+}
+
 scenario_sem_argumentos_exit2() {
   assert_exit 2 sh "$SCRIPT" || return 1
   assert_stderr_contains "Uso:" || return 1

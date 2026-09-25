@@ -323,6 +323,7 @@ fm == 1 {
 
 /^<!-- slide:/ { end_slide(); start_slide($0); next }
 !in_slide { next }
+/^[ \t]*<!--.*-->[ \t]*$/ { next }
 
 {
   line = $0

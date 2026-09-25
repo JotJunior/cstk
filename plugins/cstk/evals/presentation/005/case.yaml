@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "presentation-005"
+description: "trigger eval: a query deve disparar a skill presentation"
+tags: ["trigger", "presentation", "gen"]
+execution:
+  prompt: "preciso de um relatorio humanizado do projeto, algo que eu possa mostrar pro cliente contando como cada feature foi pensada e implementada"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-presentation"
+    tool: "Skill"
+    input_match: "presentation"
+    min: 1
