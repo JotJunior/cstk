@@ -103,7 +103,7 @@ Ref: quickstart.md cenarios 11-12; spec.md §SC-001..SC-005
 - [x] 5.1.1 Gerar story completa do cstk (fora do repo) e validar com exit 0
 - [x] 5.1.2 Render + Chromium offline: slides, relatorio, temas, 390px,
       console limpo, prints para o dono do produto
-- [~] 5.1.3 Suite completa, `--check-coverage`, gates de manifest
+- [x] 5.1.3 Suite completa, `--check-coverage`, gates de manifest
 
 ---
 
