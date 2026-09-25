@@ -38,3 +38,8 @@ fluxograma-decisoes*.html
 # Documentos binarios de escritorio, em qualquer diretorio
 *.docx
 *.pptx
+
+# Credenciais locais (cstk-jira): nunca versionar
+.env
+.env.*
+!.env.example

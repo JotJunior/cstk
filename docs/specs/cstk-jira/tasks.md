@@ -103,19 +103,24 @@ Ref: plan.md Project Structure (Source Code).
 Ref: plan.md "Pontos explicitos exigidos pela onda-003" #1;
 `scripts/validate-plugin-manifests.sh` L11/L95-98.
 
-- [ ] 1.2.1 Adicionar 3a entrada em `.claude-plugin/marketplace.json`:
+- [x] 1.2.1 Adicionar 3a entrada em `.claude-plugin/marketplace.json`:
       `name: cstk-jira`, `description`, `source: ./plugins/cstk-jira`,
       `version` (lockstep com `plugin.json` de 1.1.2), `category`
-- [ ] 1.2.2 Editar `scripts/validate-plugin-manifests.sh`: MP-2 de
+- [x] 1.2.2 Editar `scripts/validate-plugin-manifests.sh`: MP-2 de
       "`.plugins | length == 2`" para "`== 3`" (mensagem de erro atualizada
       de "exatamente 2" para "exatamente 3")
-- [ ] 1.2.3 Atualizar a fixture de `tests/cstk/test_validate-plugin-manifests.sh`
+- [x] 1.2.3 Atualizar a fixture de `tests/cstk/test_validate-plugin-manifests.sh`
       para incluir o 3o plugin (cstk-jira) no `marketplace.json` de teste,
-      mantendo os casos negativos (2 e 4 plugins continuam falhando MP-2)
-- [ ] 1.2.4 Teste: `bash scripts/validate-plugin-manifests.sh` roda limpo
-      contra o `marketplace.json` real do repo apos 1.2.1
-- [ ] 1.2.5 Teste: `tests/cstk/test_validate-plugin-manifests.sh` verde,
-      incluindo os 2 casos negativos de 1.2.3
+      mantendo os casos negativos (2 e 4 plugins continuam falhando MP-2) —
+      implementado como `scenario_mp2_duas_entradas` +
+      `scenario_mp2_quatro_entradas`
+- [x] 1.2.4 Teste: `bash scripts/validate-plugin-manifests.sh` roda limpo
+      contra o `marketplace.json` real do repo apos 1.2.1 — `sh
+      scripts/validate-plugin-manifests.sh --repo-root . --version 10.7.0
+      --strict` => `validate-plugin-manifests: OK (0 aviso(s))`, exit 0
+- [x] 1.2.5 Teste: `tests/cstk/test_validate-plugin-manifests.sh` verde,
+      incluindo os 2 casos negativos de 1.2.3 — 12/12 cenarios PASS
+      (`sh tests/cstk/test_validate-plugin-manifests.sh`)
 
 ---
 
