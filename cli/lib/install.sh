@@ -91,7 +91,7 @@ PROFILES DISPONIVEIS:
                  briefing, constitution, specify, clarify, plan, checklist,
                  create-tasks, analyze, execute-task, review-task.
   complementary  Skills de uso pontual (sem sequencia): advisor, bugfix,
-                 apply-insights, owasp-security,
+                 apply-insights, owasp-security, presentation,
                  validate-documentation, validate-docs-rendered.
   all            Todas as skills do catalog (uniao de sdd + complementary
                  + qualquer skill nova em plugins/cstk/skills/).

@@ -57,6 +57,7 @@ complementary:bugfix
 complementary:apply-insights
 complementary:owasp-security
 complementary:e2e-integration-flow
+complementary:presentation
 complementary:validate-documentation
 complementary:validate-docs-rendered
 # Uso standalone (nao so gate) — mesma razao das duas linhas acima.
