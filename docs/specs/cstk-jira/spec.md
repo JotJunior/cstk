@@ -286,10 +286,11 @@ execucoes autonomas potencialmente longas.
   credenciais automaticamente quando possivel e, quando isso nao for
   possivel, MUST tratar a falha como credencial invalida (FR-016) em
   vez de deixar a sincronizacao falhando silenciosamente de forma
-  repetida. [NEEDS CLARIFICATION adiado para `/plan`: o mecanismo real
-  de autenticacao suportado pelo Jira (API token, OAuth, etc.) precisa
-  vir de fonte oficial (documentacao/API do Jira) antes de detalhar o
-  fluxo de renovacao — nao deve ser suposto aqui.]
+  repetida. [Resolvido no `/plan` (research.md Decision 2, fontes
+  oficiais Atlassian): API token do Atlassian account, que expira em ate
+  1 ano e nao tem renovacao automatica — portanto aplica-se o ramo "quando
+  nao for possivel": rejeicao de autenticacao = credencial invalida
+  (FR-016), com suspensao explicita da sincronizacao.]
 
 ### Key Entities
 

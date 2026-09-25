@@ -1,0 +1,76 @@
+# Contract: hooks do plugin cstk-jira (`plugins/cstk-jira/hooks/hooks.json`)
+
+Implementa o gatilho do sync autonomo (arquitetura A1 / dec-020; FR-005,
+FR-018-INFRA-SCHED) e a guarda de exclusao (FR-012).
+
+## Fontes
+
+| Fato usado | Fonte |
+|------------|-------|
+| Plugin declara hooks em `hooks/hooks.json`, ativos quando o plugin esta habilitado | https://code.claude.com/docs/en/hooks-guide.md — "Plugin `hooks/hooks.json` \| When plugin is enabled" |
+| `matcher` e regex JavaScript nao-ancorada; casa tools MCP por padrao `mcp__.*__<tool>` | mesma pagina — "Other characters trigger JavaScript regex evaluation (unanchored)"; "match across servers with a pattern like `mcp__.*__write.*`" |
+| stdin do hook traz `session_id`, `cwd`, `hook_event_name`, `tool_name`, `tool_input` | mesma pagina — "`hook_event_name`, `tool_name`, `tool_input`: the arguments Claude passed to the tool" |
+| `tool_input.command` para a tool Bash | uso local observado: `plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh` L371 |
+| `timeout` em segundos; hooks casados rodam em paralelo; `exit 2` bloqueia a acao | hooks-guide — "runs all matching hooks in parallel"; "`exit 2` is the only code that blocks on its own" |
+| `"async": true` roda o hook em background sem bloquear; timeout nao e aplicado a async | hooks-guide — "`async: true` to run in background without blocking"; "Not enforced for async" |
+| `${CLAUDE_PLUGIN_ROOT}` no comando do hook | uso local observado: `plugins/cstk/hooks/hooks.json` |
+| Argumentos do `record_task` MCP: `task_id`, `outcome` (`pass`/`fail`) | `plugins/cstk/mcp/state-server/src/tools/record_task.ts` L59-62 |
+| Flags do caminho Bash: `state-ondas.sh record-task ... --task-id ID --outcome pass\|fail` e `state-ondas.sh end` | `plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh` L111, L1184-1187 (record-task); L23 (end) |
+| Execucao ativa marcada pelo diretorio `<state-dir>/.lock/` (dono grava `owner`) | `plugins/cstk/skills/agente-00c-runtime/scripts/state-lock.sh` L10-11, L170 |
+
+`NAO ENCONTRADO` na doc oficial: schema completo de `tool_response` do
+PostToolUse e se um processo filho de hook async sobrevive ao hook. Por isso o
+contrato abaixo NAO depende de `tool_response` nem de processo orfao.
+
+## Entradas do `hooks.json` [DESIGN deste plano]
+
+| Evento | matcher (regex) | Script | async | Papel |
+|--------|-----------------|--------|-------|-------|
+| `PreToolUse` | `mcp__.*__(deleteJiraIssue\|executeDestructive)` | `hooks/pretooluse-jira-deny-destructive.sh` | nao | FR-012: bloqueia (exit 2) exclusao via Rovo MCP, qualquer prefixo de instalacao |
+| `PostToolUse` | `mcp__.*__record_task` | `hooks/posttooluse-jira-sync.sh task` | sim | enfileira outcome da task e drena |
+| `PostToolUse` | `mcp__.*__close_wave` | `hooks/posttooluse-jira-sync.sh wave` | sim | reconcilia a feature e drena (garante SC-003 "ate o fim da onda") |
+| `PostToolUse` | `Bash` | `hooks/posttooluse-jira-sync.sh bash` | sim | caminho Bash dos orquestradores: so age se `tool_input.command` contem `state-ondas.sh record-task` ou `state-ondas.sh end` |
+
+A guarda `PreToolUse` tambem nega por prefixo qualquer nome terminado em
+`deleteJiraIssue`, porque o prefixo da tool depende de como o usuario
+instalou o Rovo MCP (research Decision 1).
+
+## Comportamento de `posttooluse-jira-sync.sh`
+
+POSIX sh, sem `jq`/cliente HTTP no proprio arquivo (carve-out 1.1.0,
+condicao b: so `scripts/jira-io.sh` referencia essas ferramentas).
+
+1. **No-op de inatividade (FR-017, SC-006)** — primeira instrucao: se
+   `<cwd>/.claude/cstk-jira/config` nao existe OU `sync_autonomous=off`, exit 0
+   silencioso, stdout vazio, sem ler stdin alem do necessario, sem checar deps.
+2. **Resolucao da execucao ativa**: exatamente um diretorio
+   `<cwd>/.claude/feature-00c-state/<short>/.lock/` => feature = `<short>`;
+   `<cwd>/.claude/agente-00c-state/.lock/` => feature = nome canonico do
+   projeto (mesma derivacao usada pelo orquestrador: `.execution.canonical_project`
+   com fallback `basename(target_project_path)` —
+   `plugins/cstk/agents/agente-00c-orchestrator.md` L690-702, lido
+   READ-ONLY). Zero ou mais de um candidato => no-op + linha em
+   `runtime/hook.log`.
+3. **Filtro de feature convertida**: sem `docs/specs/<feature>/jira-map.tsv` =>
+   no-op (feature nunca convertida — US1 e pre-requisito do US3).
+4. **Enfileirar** OutboxEvent (`data-model.md`) com `task_id`/`outcome`
+   extraidos do `tool_input` (modo `task`/`bash`) ou `reconcile` (modo `wave`).
+5. **Drenar** via `scripts/jira-sync.sh drain --feature <f>` com lock proprio
+   (`runtime/.drain.lock/`, `mkdir` atomico): escritas serializadas por
+   projeto (research Decision 3: transicoes simultaneas na mesma issue
+   falham). Lock ocupado => sai; o proximo gatilho drena.
+6. **Fail-open absoluto**: qualquer falha => exit 0. O hook NUNCA bloqueia,
+   atrasa ou falha a tool do orquestrador e NUNCA escreve no state da execucao
+   (mesma politica de `posttooluse-tool-call-tick.sh`, que documenta a corrida
+   com writes transacionais).
+7. **Nao-exfiltracao**: `tool_input` do `record_task`/`close_wave` carrega
+   `session_id` (token de capacidade do servidor de estado). O hook le SO
+   `task_id`/`outcome`; nunca grava, loga ou repassa `session_id`.
+
+## Comportamento de `pretooluse-jira-deny-destructive.sh`
+
+Politica INVERSA (guarda, nao metrica): casou => mensagem em stderr citando
+FR-012 e `exit 2`. Sem `<cwd>/.claude/cstk-jira/config` a guarda e no-op
+(exit 0): quem instalou o plugin mas nunca o configurou pode estar usando o
+Rovo MCP para outros fins, e bloquear exclusao ali seria mudanca de
+comportamento vedada por FR-017/SC-006.

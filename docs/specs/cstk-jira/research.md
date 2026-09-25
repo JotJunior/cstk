@@ -4,7 +4,7 @@ Documento do Phase 0 do `/plan` (execucao autonoma feature-00c, onda-003).
 Resolve os unknowns tecnicos de FR-006 e FR-019-INFRA-REFRESH com **fontes
 oficiais citaveis** (Principio VI) e isola as decisoes de **classe
 estrutural** que NAO sao resolvidas por inferencia (ver secao 3) — elas
-seguem como `NEEDS CLARIFICATION` ate o consentimento do operador.
+ficaram como `NEEDS CLARIFICATION` ate o consentimento do operador (resolvidas na onda-004, secao 3).
 
 **Metodo e ressalvas de fonte**
 
@@ -97,7 +97,7 @@ capacidades).
 
 ## Decision 2: Autenticacao e renovacao (FR-016, FR-019-INFRA-REFRESH)
 
-**Decision (PROPOSTA — a confirmar junto de D-A)**: API token do Atlassian
+**Decision (CONFIRMADA com A1 na onda-004 — dec-020)**: API token do Atlassian
 account (Basic auth `email:api_token`) como mecanismo padrao para os dois
 caminhos, porque e o unico com fonte que funciona **sem tela de
 consentimento** (requisito de execucao autonoma). Renovacao automatica NAO e
@@ -199,7 +199,7 @@ permission").
 
 ## Decision 4: Data Center / Server
 
-**Decision**: NAO resolvida aqui — e o eixo estrutural `ambiente-alvo`
+**Decision**: somente Jira Cloud (D1, dec-023 / block-004) — eixo estrutural `ambiente-alvo`
 (D-D, secao 3).
 
 **Evidencias**: Rovo MCP e oferecido a clientes Cloud
@@ -211,7 +211,16 @@ https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032
 endpoints DC divergem do Cloud (ex.: criacao de projeto por template "Data
 Center Only").
 
-## 3. Decisoes de classe estrutural pendentes (NEEDS CLARIFICATION — bloqueio humano)
+## 3. Decisoes de classe estrutural (RESOLVIDAS pelo operador na onda-004)
+
+> **Resolucao (onda-004)**: o operador respondeu os 4 bloqueios; as Decisoes
+> foram reapresentadas com consentimento vinculado ao eixo:
+> D-A = **A1** (dec-020 / block-001), D-B = **B1** (dec-021 / block-002),
+> D-C = **C1** (dec-022 / block-003), D-D = **D1** (dec-023 / block-004).
+> Nenhum `NEEDS CLARIFICATION` estrutural permanece. O texto abaixo e o
+> registro historico das opcoes apresentadas.
+
+### Registro original (onda-003)
 
 Por FR-009 (skill plan, modo autonomo) e pela trava de classe estrutural do
 runtime, os itens abaixo NAO sao resolvidos por inferencia. Cada um virou
