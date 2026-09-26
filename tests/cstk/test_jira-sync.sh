@@ -81,7 +81,16 @@
 #         JI-36/JI-37), EXATAMENTE 1 chamada
 #   SY-34 drain: 429 com header `Retry-After` em R3 -> evento vira
 #         `deferred` (nunca `auth_failed`/`conflict`/`done`), EXATAMENTE 1
-#         chamada (sem retry — 429 nao entra no loop de backoff de 5xx/rede)
+#         chamada (sem retry — 429 nao entra no loop de backoff de 5xx/rede);
+#         retry_after=30 persistido no sidecar deferred-retry.tsv (12.2.1)
+#   SY-51 drain (FASE 12 tarefa 12.2.1, achado 12.2): evento `deferred` cujo
+#         retry_after AINDA nao decorreu (sidecar available_at_epoch no
+#         futuro) -> NAO e selecionado (ZERO chamadas novas)
+#   SY-52 drain (12.2.1): evento `deferred` cujo retry_after JA decorreu
+#         (available_at_epoch no passado) -> RETENTADO e transiciona
+#         normalmente; sidecar limpo apos a transicao
+#   SY-53 drain (12.2.1): evento `deferred` SEM linha no sidecar (rede/
+#         timeout generico, sem Retry-After) -> elegivel IMEDIATAMENTE
 #   SY-35 convert: dependencias ausentes (jq E cliente HTTP) -> exit 5,
 #         PATH minimo explicito controlado NA CHAMADA INTEIRA do script sob
 #         teste (substituicao total contendo so `dirname`, o UNICO binario
@@ -115,6 +124,11 @@
 #   SY-21 drain (4.4.1): `jira-map.sh mark-orphans` roda como parte do
 #         drain (pura leitura local, sem rede) — local_key ausente de
 #         tasks.md vira `orphan`; NENHUMA linha e removida (4.4.2)
+#   SY-54 drain (FASE 12 tarefa 12.3.1, achado 12.3, contracts/
+#         plugin-scripts.md exit 5 carve-out 1.1.0 (a)): PATH sem `jq` com
+#         evento `queued` presente -> exit 5 (diagnostico cita jq/curl),
+#         ZERO chamadas de rede, evento permanece EXATAMENTE `queued`
+#         (nunca degrada para `deferred`)
 #   SY-28 drain (7.2.3, mapeamento coluna<->status, ux CHK008): desired_state
 #         `in_progress` -> R5/R4 resolvem e executam SOMENTE a transicao cujo
 #         `to.name` bate `status_in_progress` do ProjectConfig, mesmo com
@@ -125,8 +139,9 @@
 #         pelo cstk-jira; a issue so muda de STATUS (a coluna e resultado da
 #         configuracao NATIVA do board no Jira, fora do escopo do plugin)
 #
-# status/resolve (FASE 4.3, resolucao SEMPRE humana, nenhum cenario toca
-# rede — status/resolve nunca invocam jira-io.sh):
+# status/resolve (FASE 4.3, resolucao SEMPRE humana; `status` nunca toca
+# rede; `resolve` toca rede SOMENTE em `keep_jira`/`overwrite`, desde FASE
+# 12 tarefa 12.1.1 — rebaseline do SyncMarker, ver SY-25/27/47-50):
 #   SY-22 status: outbox+conflicts+jira-map.tsv populados -> contagem
 #         correta por status do outbox (queued/deferred/conflict/
 #         auth_failed), linha auth_failed detalhada, conflitos pendentes
@@ -134,14 +149,31 @@
 #         `jira-map.sh relink`
 #   SY-23 status --feature: filtra por feature (outra feature nao aparece)
 #   SY-24 resolve: nenhum ConflictRecord pendente para (F, K) -> exit 1,
-#         conflicts.tsv/outbox.tsv NUNCA tocados
+#         conflicts.tsv/outbox.tsv NUNCA tocados (ZERO chamadas de rede —
+#         a checagem de pendencia acontece ANTES de qualquer rebaseline)
 #   SY-25 resolve --choice keep_jira: fecha o registro (resolution=
-#         keep_jira), outbox.tsv INALTERADO (nenhum evento novo)
+#         keep_jira), outbox.tsv INALTERADO (nenhum evento novo), MAS
+#         rebaselineia o SyncMarker (R3 GET + R6 PUT, 2 chamadas) para o
+#         titulo+status ATUAIS da issue — efeito DURAVEL (12.1.1)
 #   SY-26 resolve --choice ignored: fecha o registro (resolution=ignored),
-#         outbox.tsv INALTERADO
+#         outbox.tsv INALTERADO, ZERO chamadas de rede (unico choice que
+#         permanece network-free)
 #   SY-27 resolve --choice overwrite: fecha o registro (resolution=
-#         overwrite) E reenfileira (novo OutboxEvent status=queued) com o
-#         MESMO desired_state do evento `conflict` original
+#         overwrite), rebaselineia o SyncMarker (R3+R6 PUT, 2 chamadas)
+#         E reenfileira (novo OutboxEvent status=queued) com o MESMO
+#         desired_state do evento `conflict` original
+#   SY-47 resolve --choice keep_jira -> drain (end-to-end, 12.1.1): apos o
+#         rebaseline, um evento SUBSEQUENTE contra a MESMA issue (ainda com
+#         a edicao manual) NAO reabre o conflito (fecha `done` direto)
+#   SY-48 resolve --choice overwrite -> drain (end-to-end, 12.1.1): o
+#         evento reenfileirado TRANSICIONA de fato no drain seguinte, sem
+#         reabrir conflito, mesmo com a edicao manual ainda "presente"
+#   SY-49 resolve --choice overwrite: conflito SEM evento outbox 'conflict'
+#         (origem reconcile/convert, achado 12.1) -> fallback de
+#         desired_state via `local_state` ATUAL de `jira-tasks.sh items`
+#   SY-50 resolve --choice overwrite: nem evento outbox 'conflict' nem
+#         local_state resolvivel -> exit 1, ConflictRecord PERMANECE
+#         pending (Principio VI — nunca fabrica um desired_state)
 #
 # drain (FASE 10 tarefa 10.3, FR-004 — reconciliacao local_key=*):
 #   SY-42 drain: evento `reconcile`/local_key=* expandido via
@@ -296,6 +328,26 @@ exit 0
 STUB
   chmod +x "$_stub_dir/curl"
   printf '%s' "$_stub_dir"
+}
+
+# _make_path_sans_jq -> instala em $TMPDIR_TEST/bin-nojq um symlink para
+# cada coreutil REAL exercitado pelo caminho pre-deps-check de `jira-sync.sh
+# drain` (compactacao/mark-orphans/selecao de elegiveis, tudo POSIX puro,
+# NUNCA jq/curl) mais `curl` (presente — so `jq` falta, FASE 12 tarefa
+# 12.3.1/achado 12.3, "PATH sem jq"), e OMITE `jq` de proposito. `PATH`
+# passa a ser SO este diretorio (substituicao total, mesmo padrao de
+# `_init_queue_stub`/JI-2 em test_jira-io.sh) — garante que `jq` nao seja
+# encontrado por NENHUM outro dir do PATH real.
+_make_path_sans_jq() {
+  _bin="$TMPDIR_TEST/bin-nojq"
+  mkdir -p "$_bin"
+  for _tool in sh awk sed grep cut tr wc date mkdir mv cp rm cat dirname \
+               basename mktemp sort head tail chmod ln touch printf curl \
+               env expr true false stat; do
+    _path=$(command -v "$_tool" 2>/dev/null) || continue
+    ln -sf "$_path" "$_bin/$_tool"
+  done
+  printf '%s' "$_bin"
 }
 
 # _queue_set_headers N CONTENT -> grava CONTENT (ex.: 'Retry-After: 30') no
@@ -605,6 +657,12 @@ _conflicts_file() {
   printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv"
 }
 
+# _deferred_file: sidecar de retry_after (FASE 12 tarefa 12.2.1) —
+# `event_id\tavailable_at_epoch`, NUNCA um campo novo de OutboxEvent.
+_deferred_file() {
+  printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/deferred-retry.tsv"
+}
+
 _drain_lock_dir() {
   printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/.drain.lock"
 }
@@ -889,6 +947,34 @@ scenario_drain_marca_orfaos_como_parte_do_processo() {
   return 0
 }
 
+# SY-54 drain (FASE 12 tarefa 12.3.1, achado 12.3): PATH SEM `jq` (curl
+# presente) com 1 evento `queued` -> exit 5 com diagnostico citando jq/curl
+# (contracts/plugin-scripts.md exit 5 carve-out 1.1.0 (a) — "o que degrada
+# e o sync AUTONOMO"), ZERO chamadas de rede, evento permanece EXATAMENTE
+# `queued` (NUNCA degrada para `deferred`, achado 12.3: antes desta tarefa
+# o exit 5 de `jira-io.sh request` caia no ramo generico e o evento virava
+# `deferred` com drain saindo exit 0). deps-check roda ANTES de qualquer
+# config/credencial — fixture nao precisa de ProjectConfig/jira-map.tsv.
+scenario_drain_sem_jq_exit5_sem_tocar_eventos() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _before=$(cat "$(_outbox_file)")
+  _bin="$(_make_path_sans_jq)"
+  assert_exit 5 env PATH="$_bin" "$SCRIPT" drain --feature demo || return 1
+  assert_stderr_contains "jq" || return 1
+  assert_stderr_contains "curl" || return 1
+  _after=$(cat "$(_outbox_file)")
+  [ "$_before" = "$_after" ] \
+    || { _fail "sy54_outbox_untouched" "outbox.tsv foi alterado apesar do exit 5: antes=[$_before] depois=[$_after]"; return 1; }
+  [ -f "$(_deferred_file)" ] \
+    && { _fail "sy54_no_deferred_sidecar" "sidecar deferred-retry.tsv nao deveria existir (evento nunca virou deferred)"; return 1; }
+  return 0
+}
+
 # =========================== status/resolve (FASE 4.3) ======================
 
 # SY-22 status: agrega outbox (contagem por status + detalhe auth_failed),
@@ -967,9 +1053,16 @@ EOF
   return 0
 }
 
-# SY-25 resolve --choice keep_jira: fecha o registro sem tocar o outbox.
+# SY-25 resolve --choice keep_jira (FASE 12 tarefa 12.1.1 — efeito
+# DURAVEL): fecha o registro, NUNCA toca o outbox, mas AGORA rebaselineia
+# o SyncMarker (R3 GET + R6 PUT) para o titulo+status ATUAIS da issue —
+# antes desta tarefa nenhuma chamada de rede era feita e o marker antigo
+# permanecia, reabrindo o MESMO conflito no proximo drain (achado 12.1).
 scenario_resolve_keep_jira_fecha_registro_sem_tocar_outbox() {
+  _write_full_config
+  _write_credential
   cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
   mkdir -p "$(dirname "$(_outbox_file)")"
   cat > "$(_outbox_file)" <<'EOF'
 event_id	created_at	feature	local_key	desired_state	source	attempts	status
@@ -980,13 +1073,25 @@ detected_at	feature	local_key	jira_key	reason	resolution
 2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
 EOF
   _before_outbox=$(cat "$(_outbox_file)")
-  assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao no Jira","status":{"name":"In Progress"}}}'
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
   assert_stdout_contains "escolha=keep_jira" || return 1
   grep -q 'demo	1\.1	DEMO-2	manual_edit	keep_jira$' "$(_conflicts_file)" \
     || { _fail "resolve_keep_jira_resolution" "resolution nao virou keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
   _after_outbox=$(cat "$(_outbox_file)")
   [ "$_before_outbox" = "$_after_outbox" ] \
     || { _fail "resolve_keep_jira_outbox_untouched" "outbox.tsv foi alterado por keep_jira"; return 1; }
+  [ "$(_queue_calls_count)" = "2" ] \
+    || { _fail "resolve_keep_jira_calls" "esperado 2 chamadas (R3+R6 PUT), obtido $(_queue_calls_count)"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-2.json")
+  [ "$_marker_status" = "In Progress" ] \
+    || { _fail "resolve_keep_jira_marker_status" "SyncMarker nao rebaselinado para o status atual: $_marker_status"; return 1; }
+  _expect_sha=$(printf '%s' "Titulo editado a mao no Jira" | "$IO_SCRIPT" sha256-stdin)
+  _marker_sha=$("$IO_SCRIPT" json-get '.written_summary_sha256' < "$TMPDIR_TEST/queue-curl-body-2.json")
+  [ "$_marker_sha" = "$_expect_sha" ] \
+    || { _fail "resolve_keep_jira_marker_sha" "SyncMarker nao rebaselinado para o titulo atual"; return 1; }
   return 0
 }
 
@@ -1013,11 +1118,17 @@ EOF
   return 0
 }
 
-# SY-27 resolve --choice overwrite: fecha o registro E reenfileira um NOVO
-# OutboxEvent (status=queued) com o MESMO desired_state do evento `conflict`
-# original — para o proximo drain sobrescrever o Jira.
+# SY-27 resolve --choice overwrite (FASE 12 tarefa 12.1.1 — efeito
+# DURAVEL): fecha o registro E reenfileira um NOVO OutboxEvent (status=
+# queued) com o MESMO desired_state do evento `conflict` original — mas
+# AGORA rebaselineia o SyncMarker (R3+R6 PUT) ANTES de reenfileirar, senao
+# o proximo drain repetiria a MESMA comparacao contra o marker antigo e
+# reabriria o conflito em vez de transicionar (achado 12.1).
 scenario_resolve_overwrite_fecha_registro_e_reenfileira() {
+  _write_full_config
+  _write_credential
   cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
   mkdir -p "$(dirname "$(_outbox_file)")"
   cat > "$(_outbox_file)" <<'EOF'
 event_id	created_at	feature	local_key	desired_state	source	attempts	status
@@ -1027,15 +1138,164 @@ EOF
 detected_at	feature	local_key	jira_key	reason	resolution
 2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
 EOF
-  assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao","status":{"name":"To Do"}}}'
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
   assert_stdout_contains "escolha=overwrite" || return 1
   grep -q 'demo	1\.1	DEMO-2	manual_edit	overwrite$' "$(_conflicts_file)" \
     || { _fail "resolve_overwrite_resolution" "resolution nao virou overwrite: $(cat "$(_conflicts_file)")"; return 1; }
+  [ "$(_queue_calls_count)" = "2" ] \
+    || { _fail "resolve_overwrite_calls" "esperado 2 chamadas (R3+R6 PUT de rebaseline), obtido $(_queue_calls_count)"; return 1; }
   _novo=$(awk -F '\t' '$1 != "e1" && NR > 1 { print }' "$(_outbox_file)")
   [ -n "$_novo" ] \
     || { _fail "resolve_overwrite_new_event" "nenhum evento novo foi enfileirado: $(cat "$(_outbox_file)")"; return 1; }
   printf '%s\n' "$_novo" | grep -q '	demo	1\.1	fail	manual	0	queued$' \
     || { _fail "resolve_overwrite_new_event_fields" "evento novo com campos inesperados: $_novo"; return 1; }
+  return 0
+}
+
+# SY-47 resolve --choice keep_jira -> drain (end-to-end, 12.1.1): apos o
+# rebaseline, um evento SUBSEQUENTE contra a MESMA issue (titulo/status
+# ainda "editados a mao") NAO reabre o conflito — a proxima comparacao bate
+# exatamente o que keep_jira acabou de gravar no SyncMarker.
+scenario_resolve_keep_jira_drain_seguinte_nao_reabre_conflito() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao no Jira","status":{"name":"In Progress"}}}'
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+
+  # Novo evento (ex.: outra mudanca local que gera enqueue de novo) contra
+  # a MESMA issue, ainda sem tocar o Jira de fato — R3/R6-GET devem bater
+  # exatamente o marker que keep_jira acabou de gravar.
+  cat >> "$(_outbox_file)" <<'EOF'
+e2	2026-01-01T00:01:00Z	demo	1.1	in_progress	manual	0	queued
+EOF
+  _sha47=$(printf '%s' "Titulo editado a mao no Jira" | "$IO_SCRIPT" sha256-stdin)
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao no Jira","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha47\",\"written_status\":\"In Progress\"}}"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  awk -F '\t' '$1=="e2"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy47_e2_done" "e2 deveria fechar done (ja no status alvo, sem novo conflito): $(awk -F '\t' '$1==\"e2\"' "$(_outbox_file)")"; return 1; }
+  _pending_count=$(awk -F '\t' 'NR>1 && $2=="demo" && $3=="1.1" && $6=="pending"' "$(_conflicts_file)" | wc -l | tr -d ' ')
+  [ "$_pending_count" = "0" ] \
+    || { _fail "sy47_no_new_conflict" "um NOVO ConflictRecord pending foi criado apos keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
+  return 0
+}
+
+# SY-48 resolve --choice overwrite -> drain (end-to-end, 12.1.1): o evento
+# REENFILEIRADO transiciona de fato no drain seguinte (sem novo conflito),
+# mesmo com a edicao manual ainda presente no titulo/status "atuais".
+scenario_resolve_overwrite_drain_seguinte_transiciona() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao","status":{"name":"To Do"}}}'
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+
+  # drain do evento reenfileirado: R3 (mesmo titulo/status "atuais", agora
+  # identicos ao marker rebaselinado) + R6-GET (marker) + R5 + R4 + R6-PUT.
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao","status":{"name":"To Do"}}}'
+  _sha=$(printf '%s' "Titulo editado a mao" | "$IO_SCRIPT" sha256-stdin)
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"41","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  _novo_eid=$(awk -F '\t' '$1 != "e1" && NR > 1 { print $1; exit }' "$(_outbox_file)")
+  awk -F '\t' -v id="$_novo_eid" '$1==id' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy48_new_event_done" "evento reenfileirado nao transicionou (done): $(cat "$(_outbox_file)")"; return 1; }
+  _pending_count=$(awk -F '\t' 'NR>1 && $2=="demo" && $3=="1.1" && $6=="pending"' "$(_conflicts_file)" | wc -l | tr -d ' ')
+  [ "$_pending_count" = "0" ] \
+    || { _fail "sy48_no_new_conflict" "overwrite deveria transicionar sem reabrir conflito: $(cat "$(_conflicts_file)")"; return 1; }
+  return 0
+}
+
+# SY-49 resolve --choice overwrite: conflito SEM evento outbox 'conflict'
+# correspondente (originado de reconcile/`_js_maybe_update_mapped_issue`,
+# achado 12.1 "overwrite nunca funciona para conflitos vindos de reconcile/
+# convert") -> usa o FALLBACK de local_state ATUAL (jira-tasks.sh items)
+# como desired_state, nunca fabricando um valor.
+scenario_resolve_overwrite_fallback_local_state_sem_evento_outbox() {
+  _write_full_config
+  _write_credential
+  _write_tasks_1task_1sub
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  # ConflictRecord sem NENHUM evento outbox 'conflict' associado (simula
+  # origem reconcile/convert — _js_append_conflict direto, sem outbox).
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	marker_missing	pending
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo atual no Jira","status":{"name":"To Do"}}}'
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+  grep -q 'demo	1\.1	DEMO-2	marker_missing	overwrite$' "$(_conflicts_file)" \
+    || { _fail "sy49_resolution" "resolution nao virou overwrite: $(cat "$(_conflicts_file)")"; return 1; }
+  # tasks.md (_write_tasks_1task_1sub) so tem checkboxes '[ ]' -> local_state
+  # da task 1.1 e 'pending' (fonte real via jira-tasks.sh items).
+  _novo=$(awk -F '\t' 'NR > 1 { print }' "$(_outbox_file)")
+  printf '%s\n' "$_novo" | grep -q '	demo	1\.1	pending	manual	0	queued$' \
+    || { _fail "sy49_new_event" "evento reenfileirado com desired_state incorreto (esperado pending via fallback): $_novo"; return 1; }
+  return 0
+}
+
+# SY-50 resolve --choice overwrite: sem evento outbox 'conflict' E sem
+# local_key resolvivel via jira-tasks.sh items (ex.: item renumerado/
+# removido de tasks.md) -> exit 1, ConflictRecord PERMANECE pending (nunca
+# fabrica um desired_state, Principio VI).
+scenario_resolve_overwrite_sem_fonte_desired_state_exit1() {
+  _write_full_config
+  _write_credential
+  # tasks.md SEM a task 1.1 (fonte de local_state indisponivel).
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+EOF
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	marker_missing	pending
+EOF
+  assert_exit 1 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+  grep -q 'demo	1\.1	DEMO-2	marker_missing	pending$' "$(_conflicts_file)" \
+    || { _fail "sy50_conflict_untouched" "ConflictRecord nao deveria ter sido fechado sem fonte de desired_state: $(cat "$(_conflicts_file)")"; return 1; }
+  [ -f "$(_outbox_file)" ] \
+    && { _fail "sy50_no_outbox" "outbox.tsv foi criado mesmo sem desired_state resolvivel"; return 1; }
   return 0
 }
 
@@ -1271,6 +1531,106 @@ EOF
     || { _fail "drain_429_calls" "esperado exatamente 1 chamada (sem retry), obtido $(_queue_calls_count)"; return 1; }
   awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'deferred$' \
     || { _fail "drain_429_deferred" "evento e1 nao virou deferred: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  # 12.2.1: retry_after=30 (do header Retry-After) persistido no sidecar —
+  # available_at_epoch DEVE ser estritamente maior que "agora" (nao 0/vazio).
+  _avail=$(awk -F '\t' '$1=="e1"{print $2}' "$(_deferred_file)")
+  [ -n "$_avail" ] \
+    || { _fail "drain_429_retry_after_persisted" "sidecar deferred-retry.tsv sem linha para e1: $(cat "$(_deferred_file)" 2>/dev/null)"; return 1; }
+  _now=$(date -u +%s)
+  [ "$_avail" -gt "$_now" ] \
+    || { _fail "drain_429_retry_after_future" "available_at_epoch ($_avail) deveria ser futuro (now=$_now)"; return 1; }
+  return 0
+}
+
+# SY-51 drain (12.2.1): evento `deferred` com retry_after AINDA nao
+# decorrido (sidecar available_at_epoch no futuro) -> NAO e selecionado
+# pelo drain seguinte (ZERO chamadas novas, status permanece deferred).
+scenario_drain_deferred_ainda_nao_elegivel_nao_e_retentado() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	1	deferred
+EOF
+  _future=$(( $(date -u +%s) + 3600 ))
+  printf 'event_id\tavailable_at_epoch\ne1\t%s\n' "$_future" > "$(_deferred_file)"
+  _bin="$(_init_queue_stub)"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "0" ] \
+    || { _fail "sy51_no_calls" "esperado ZERO chamadas (retry_after nao decorrido), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'deferred$' \
+    || { _fail "sy51_still_deferred" "evento e1 nao deveria ter mudado de status: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# SY-52 drain (12.2.1): evento `deferred` cujo retry_after JA decorreu
+# (available_at_epoch no passado) -> drain o RETENTA e, sem novo conflito,
+# transiciona normalmente (mesmo fluxo de 5 chamadas de SY-18).
+scenario_drain_deferred_elegivel_e_retentado_ate_done() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	1	deferred
+EOF
+  _past=$(( $(date -u +%s) - 60 ))
+  printf 'event_id\tavailable_at_epoch\ne1\t%s\n' "$_past" > "$(_deferred_file)"
+  _sha=$(printf '%s' "Titulo Atual" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo Atual","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha\",\"written_status\":\"In Progress\"}}"
+  _queue_push 200 '{"transitions":[{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy52_calls" "esperado 5 chamadas (retomou a transicao inteira), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy52_done" "evento e1 nao fechou done apos retry elegivel: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  # 12.2.1: transicao bem-sucedida (done) DEVE limpar a linha do sidecar
+  # (_js_set_event_status limpa retry_after em toda transicao de status).
+  grep -q '^e1	' "$(_deferred_file)" \
+    && { _fail "sy52_sidecar_cleared" "sidecar deferred-retry.tsv ainda tem linha para e1 apos done: $(cat "$(_deferred_file)")"; return 1; }
+  return 0
+}
+
+# SY-53 drain (12.2.1): evento `deferred` SEM linha no sidecar (rede/timeout
+# generico, sem header Retry-After) -> elegivel IMEDIATAMENTE no proximo
+# drain (nunca inventa um retry_after quando o Jira nao informou um).
+scenario_drain_deferred_sem_retry_after_elegivel_de_imediato() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	1	deferred
+EOF
+  # Sidecar AUSENTE (nunca escrito — rede/timeout generico, sem Retry-After).
+  # R3 + R6-GET (SyncMarker, SEMPRE consultado antes do check "ja no alvo")
+  # com titulo/status batendo -> sem conflito -> done direto, sem R5/R4/R6-PUT.
+  _sha=$(printf '%s' "Titulo Atual" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo Atual","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha\",\"written_status\":\"To Do\"}}"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "2" ] \
+    || { _fail "sy53_calls" "esperado 2 chamadas (R3+R6-GET, ja no status alvo -> done sem R5/R4/R6-PUT): $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy53_done" "evento e1 deveria ter sido retentado e fechado done: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
   return 0
 }
 

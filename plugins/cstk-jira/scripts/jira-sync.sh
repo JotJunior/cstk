@@ -28,14 +28,22 @@
 # aqui, so as skills que efetivamente leem/exibem texto do Jira).
 #
 # `resolve --feature F --local-key K --choice keep_jira|overwrite|ignored`
-# (4.3.2): fecha o `ConflictRecord` PENDENTE de (F, K) — resolucao e SEMPRE
-# decisao humana, nunca automatica (data-model.md). `keep_jira`/`ignored` so
-# atualizam a coluna `resolution` (nenhuma escrita no Jira, nenhum evento
-# novo). `overwrite` reenfileira (via `enqueue`, mesma funcao interna) um
-# NOVO `OutboxEvent` com o `desired_state` do ultimo evento `conflict`
-# daquele par — o proximo `drain` tenta de novo e, sem novo conflito,
-# sobrescreve o Jira com o estado local. Erro (exit 1) se nao existir
-# ConflictRecord `pending` para o par informado — nunca inventa um.
+# (4.3.2, efeito DURAVEL desde FASE 12 tarefa 12.1.1): fecha o
+# `ConflictRecord` PENDENTE de (F, K) — resolucao e SEMPRE decisao humana,
+# nunca automatica (data-model.md). `keep_jira` rebaseline o SyncMarker
+# (R3+R6 PUT) para o titulo+status ATUAIS da issue, para que o
+# drain/reconcile seguinte NAO reabra o MESMO conflito contra o marker
+# antigo; `ignored` so atualiza a coluna `resolution` (nenhuma escrita no
+# Jira). `overwrite` rebaseline o marker (mesmo mecanismo) e reenfileira
+# (via `enqueue`, mesma funcao interna) um NOVO `OutboxEvent` — o
+# `desired_state` vem do ultimo evento outbox `conflict` do par, ou, na
+# ausencia dele (conflitos vindos de reconciliacao `local_key=*` ou de
+# `convert`), do `local_state` ATUAL via `jira-tasks.sh items` — o proximo
+# `drain` transiciona de fato, sobrescrevendo o Jira com o estado local.
+# Erro (exit 1) se nao existir ConflictRecord `pending` para o par, se
+# nenhuma fonte resolver um `desired_state`, ou se o rebaseline (R3/R6)
+# falhar — nunca inventa um fechamento nem um `desired_state` (Principio
+# VI); nesses casos o conflito permanece pendente.
 #
 # `drain` implementa deteccao de conflito (4.2.3/4.2.4, SyncMarker via R6) e
 # transicao de status (4.2.5, R4) desde a onda-022 (dec-081 fechou o gap de
@@ -255,6 +263,19 @@ _JS_DRAIN_LOCK_DIR="./.claude/cstk-jira/runtime/.drain.lock"
 _JS_CONFLICTS_FILE="./.claude/cstk-jira/runtime/conflicts.tsv"
 _JS_CONFLICTS_HEADER='detected_at	feature	local_key	jira_key	reason	resolution'
 
+# Sidecar de retry_after (FASE 12 tarefa 12.2.1, achado 12.2): NAO e um
+# campo novo de OutboxEvent (data-model.md nao ganha coluna — escopo
+# minimo, nenhum `cut -f`/header existente muda). So guarda, por
+# event_id, o epoch (segundos, `date -u +%s`) a partir do qual o evento
+# `deferred` volta a ser elegivel para o drain — populado SOMENTE quando
+# `jira-io.sh` emitiu `retry_after=<n>` em stderr (429 com header
+# `Retry-After`); evento sem linha aqui e elegivel IMEDIATAMENTE no
+# proximo drain (mesmo efeito de antes desta tarefa para deferred sem
+# Retry-After — rede/timeout genericos). Nunca versionado
+# (`runtime/.gitignore` = `*`, mesma regra do outbox/conflicts).
+_JS_DEFERRED_FILE="./.claude/cstk-jira/runtime/deferred-retry.tsv"
+_JS_DEFERRED_HEADER='event_id	available_at_epoch'
+
 # Chave da entity property do SyncMarker (data-model.md) — DESIGN do
 # plugin, nao dado externo.
 _JS_MARKER_PROPERTY_KEY="cstk-jira.sync"
@@ -285,6 +306,70 @@ _js_set_event_status() {
     { print }
   ' "$_JS_OUTBOX_FILE" > "$_jses_tmp"
   mv -- "$_jses_tmp" "$_JS_OUTBOX_FILE"
+  # FASE 12 tarefa 12.2.1: qualquer transicao de status LIMPA o sidecar de
+  # retry_after — se o chamador quer persistir um novo retry_after (evento
+  # continua/volta a `deferred`), ele chama `_js_set_retry_after` DEPOIS
+  # desta funcao (ordem ja seguida em todos os call-sites). Sem isso, um
+  # evento que sai de `deferred` para `done`/`conflict`/`auth_failed`
+  # deixaria uma linha orfa no sidecar (cresce sem necessidade, e um evento
+  # de outbox REUTILIZAR o mesmo event_id — nunca acontece hoje, mas nao ha
+  # motivo para depender disso).
+  _js_clear_retry_after "$_jses_id"
+}
+
+# _js_clear_retry_after EVENT_ID — remove a linha (se existir) do sidecar
+# de retry_after (12.2.1). No-op silencioso se o sidecar nao existir ou o
+# event_id nao tiver linha.
+_js_clear_retry_after() {
+  [ -f "$_JS_DEFERRED_FILE" ] || return 0
+  _jcra_tmp="$_JS_DEFERRED_FILE.tmp.$$"
+  awk -F '\t' -v OFS='\t' -v id="$1" '
+    NR == 1 { print; next }
+    $1 != id { print }
+  ' "$_JS_DEFERRED_FILE" > "$_jcra_tmp"
+  mv -- "$_jcra_tmp" "$_JS_DEFERRED_FILE"
+}
+
+# _js_set_retry_after EVENT_ID RETRY_AFTER_SECONDS — 12.2.1 (data-model.md
+# OutboxEvent "deferred -> queued: proximo gatilho de drain (respeita
+# Retry-After)"): upsert (append-only por reescrita completa, mesmo padrao
+# tmp+mv de `_js_set_event_status`) da linha `event_id\tavailable_at_epoch`
+# no sidecar, com `available_at_epoch = agora + RETRY_AFTER_SECONDS`.
+# RETRY_AFTER_SECONDS vazio/nao-numerico -> no-op (evento fica elegivel
+# IMEDIATAMENTE no proximo drain — nenhum Retry-After foi informado pelo
+# Jira, nunca inventa um valor default). Chamado SEMPRE apos
+# `_js_set_event_status EVENT_ID deferred ...` (que acabou de limpar
+# qualquer linha antiga do mesmo event_id).
+_js_set_retry_after() {
+  _jsra_id="$1"
+  _jsra_secs="${2:-}"
+  case "$_jsra_secs" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  _jsra_now=$(date -u +%s)
+  _jsra_avail=$((_jsra_now + _jsra_secs))
+  _jsra_dir=$(dirname -- "$_JS_DEFERRED_FILE")
+  mkdir -p "$_jsra_dir" || _js_die "falha ao criar diretorio runtime: $_jsra_dir" 1
+  _jsra_tmp="$_JS_DEFERRED_FILE.tmp.$$"
+  {
+    if [ -f "$_JS_DEFERRED_FILE" ]; then
+      awk -F '\t' -v id="$_jsra_id" 'NR == 1 || $1 != id { print }' "$_JS_DEFERRED_FILE"
+    else
+      printf '%s\n' "$_JS_DEFERRED_HEADER"
+    fi
+    printf '%s\t%s\n' "$_jsra_id" "$_jsra_avail"
+  } > "$_jsra_tmp"
+  mv -- "$_jsra_tmp" "$_JS_DEFERRED_FILE"
+}
+
+# _js_extract_retry_after ERR_FILE — le a linha `retry_after=<n>` (se
+# houver) de um arquivo de stderr capturado de `jira-io.sh request`
+# (mesmo contrato ja usado para `http_status=`/`classification=`,
+# `contracts/plugin-scripts.md`). Imprime vazio se ausente — nunca
+# inventa um valor (Principio VI).
+_js_extract_retry_after() {
+  [ -f "$1" ] || { printf ''; return 0; }
+  grep '^retry_after=' "$1" 2>/dev/null | tail -n 1 | cut -d= -f2
 }
 
 # _js_conflict_pending_exists FEATURE LOCAL_KEY -> exit 0 se ja existe um
@@ -360,6 +445,53 @@ _js_last_conflict_desired_state() {
     NR > 1 && $3 == f && $4 == k && $8 == "conflict" { ds = $5 }
     END { if (ds != "") { print ds; exit 0 } exit 1 }
   ' "$_JS_OUTBOX_FILE"
+}
+
+# _js_rebaseline_marker IO FEATURE LOCAL_KEY JIRA_KEY — feature cstk-jira
+# FASE 12 tarefa 12.1.1 (FR-011 / task 4.3.2 / task 4.3.4 `resolve`): le o
+# titulo+status ATUAIS da issue (R3, mesma leitura que `drain`/`convert` ja
+# fazem) e regrava o SyncMarker (R6 PUT) com ESSES valores — nunca inventa
+# um estado, so espelha o que a issue tem agora. Efeito: a proxima
+# deteccao de conflito (drain/reconcile/`_js_maybe_update_mapped_issue`)
+# compara contra um marker que bate o estado atual, logo NAO reabre o
+# MESMO conflito (`resolve --choice keep_jira`/`overwrite`, FASE 12.1).
+# Imprime o status atual (stdout) em sucesso — reuso pelo chamador sem 2a
+# leitura R3. Falha (R3 ou R6 PUT) -> diagnostico em stderr, marker
+# intocado, retorna 1 — chamador NUNCA deve fechar o ConflictRecord como
+# se o rebaseline tivesse funcionado (senao o proximo drain reabriria o
+# conflito ja fechado, silenciosamente).
+_js_rebaseline_marker() {
+  _jrm_io="$1"
+  _jrm_feature="$2"
+  _jrm_lkey="$3"
+  _jrm_jkey="$4"
+
+  if _jrm_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey?fields=summary,status" --op R3 2>/dev/null); then
+    :
+  else
+    printf '%s: falha ao ler estado atual de %s (R3) para rebaselinear o SyncMarker\n' \
+      "$_JS_NAME" "$_jrm_jkey" >&2
+    return 1
+  fi
+  _jrm_summary=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.summary')
+  _jrm_status=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.status.name')
+  _jrm_sha=$(printf '%s' "$_jrm_summary" | "$_jrm_io" sha256-stdin)
+  _jrm_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  _jrm_body=$("$_jrm_io" json-build marker --local-key "$_jrm_lkey" --feature "$_jrm_feature" \
+    --written-summary-sha256 "$_jrm_sha" --written-status "$_jrm_status" --written-at "$_jrm_now")
+  _jrm_bf=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jrm_body" > "$_jrm_bf"
+  if "$_jrm_io" request PUT "/rest/api/3/issue/$_jrm_jkey/properties/$_JS_MARKER_PROPERTY_KEY" \
+      --body-file "$_jrm_bf" --op R6 >/dev/null 2>/dev/null; then
+    rm -f "$_jrm_bf"
+    printf '%s' "$_jrm_status"
+    return 0
+  fi
+  rm -f "$_jrm_bf"
+  printf '%s: falha ao gravar SyncMarker rebaselinado para %s (R6 PUT)\n' \
+    "$_JS_NAME" "$_jrm_jkey" >&2
+  return 1
 }
 
 # _js_orphan_rows [FEATURE] — imprime `feature\tlocal_key\tjira_key` para
@@ -695,7 +827,7 @@ _js_write_initial_marker() {
   else
     _jwim_ec=$?
     rm -f "$_jwim_marker_body_file"
-    printf '%s: issue %s criada mas falha ao gravar o SyncMarker inicial (R6 PUT, exit %s) — a proxima drain vai reportar marker_missing ate a proxima convert\n' \
+    printf '%s: issue %s criada mas falha ao gravar o SyncMarker inicial (R6 PUT, exit %s) — a proxima drain/reconcile vai reportar marker_missing (conflito); destravar com resolve --choice keep_jira\n' \
       "$_JS_NAME" "$_jwim_jkey" "$_jwim_ec" >&2
   fi
   return 0
@@ -1204,16 +1336,25 @@ _js_process_one_event() {
   # detectado aqui, degradando sempre para `deferred` (achado 8.3.1/8.3.2,
   # onda-032). `if CMD; then ok; else _ec=$?; ...` (sem negacao) preserva o
   # exit code genuino no primeiro comando do 'else'.
-  if _jspe_issue_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey?fields=summary,status" --op R3 2>/dev/null); then
-    :
+  _jspe_r3_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r3err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  if _jspe_issue_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey?fields=summary,status" --op R3 2>"$_jspe_r3_err"); then
+    rm -f "$_jspe_r3_err"
   else
     _jspe_ec=$?
     if [ "$_jspe_ec" -eq 4 ]; then
+      rm -f "$_jspe_r3_err"
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
       _JSPE_BREAK="yes"
       return 0
     fi
+    # 12.2.1: 429 com Retry-After -> persiste no sidecar (nunca inventa um
+    # valor quando ausente — evento fica elegivel no PROXIMO drain, mesmo
+    # efeito de antes desta tarefa para deferred sem Retry-After).
+    _jspe_retry_after=$(_js_extract_retry_after "$_jspe_r3_err")
+    rm -f "$_jspe_r3_err"
     _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    _js_set_retry_after "$_jspe_eid" "$_jspe_retry_after"
     return 0
   fi
   _jspe_cur_summary=$(printf '%s' "$_jspe_issue_resp" | "$_jsd_io" json-get '.fields.summary')
@@ -1233,17 +1374,21 @@ _js_process_one_event() {
     _jspe_prop_ec=$?
   fi
   _jspe_prop_status=$(grep '^http_status=' "$_jspe_err_file" | tail -n 1 | cut -d= -f2)
-  rm -f "$_jspe_err_file"
 
   if [ "$_jspe_prop_ec" -ne 0 ]; then
     if [ "$_jspe_prop_ec" -eq 4 ]; then
+      rm -f "$_jspe_err_file"
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
       _JSPE_BREAK="yes"
       return 0
     fi
+    _jspe_retry_after=$(_js_extract_retry_after "$_jspe_err_file")
+    rm -f "$_jspe_err_file"
     _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    _js_set_retry_after "$_jspe_eid" "$_jspe_retry_after"
     return 0
   fi
+  rm -f "$_jspe_err_file"
 
   _jspe_conflict="no"
   _jspe_conflict_reason=""
@@ -1279,16 +1424,22 @@ _js_process_one_event() {
   # (mesmo bug/fix de R3 acima — onda-032, 8.3.1/8.3.2): a condicao de um
   # 'if' e isenta de 'set -eu' com ou sem '!', mas so a forma sem negacao
   # preserva o exit code genuino no 'else'.
-  if _jspe_trans_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey/transitions" --op R5 2>/dev/null); then
-    :
+  _jspe_r5_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r5err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  if _jspe_trans_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey/transitions" --op R5 2>"$_jspe_r5_err"); then
+    rm -f "$_jspe_r5_err"
   else
     _jspe_ec=$?
     if [ "$_jspe_ec" -eq 4 ]; then
+      rm -f "$_jspe_r5_err"
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
       _JSPE_BREAK="yes"
       return 0
     fi
+    _jspe_retry_after=$(_js_extract_retry_after "$_jspe_r5_err")
+    rm -f "$_jspe_r5_err"
     _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    _js_set_retry_after "$_jspe_eid" "$_jspe_retry_after"
     return 0
   fi
   _jspe_trans_tsv=$(printf '%s' "$_jspe_trans_resp" | "$_jsd_io" json-get '.transitions[] | [.id, .to.name] | @tsv')
@@ -1304,18 +1455,24 @@ _js_process_one_event() {
   _jspe_trans_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r4body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jspe_trans_body" > "$_jspe_trans_body_file"
+  _jspe_r4_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r4err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
   if "$_jsd_io" request POST "/rest/api/3/issue/$_jspe_jkey/transitions" \
-      --body-file "$_jspe_trans_body_file" --op R4 >/dev/null 2>/dev/null; then
-    rm -f "$_jspe_trans_body_file"
+      --body-file "$_jspe_trans_body_file" --op R4 >/dev/null 2>"$_jspe_r4_err"; then
+    rm -f "$_jspe_trans_body_file" "$_jspe_r4_err"
   else
     _jspe_ec=$?
     rm -f "$_jspe_trans_body_file"
     if [ "$_jspe_ec" -eq 4 ]; then
+      rm -f "$_jspe_r4_err"
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
       _JSPE_BREAK="yes"
       return 0
     fi
+    _jspe_retry_after=$(_js_extract_retry_after "$_jspe_r4_err")
+    rm -f "$_jspe_r4_err"
     _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    _js_set_retry_after "$_jspe_eid" "$_jspe_retry_after"
     return 0
   fi
 
@@ -1337,19 +1494,25 @@ _js_process_one_event() {
   _jspe_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jspe_marker_body" > "$_jspe_marker_body_file"
+  _jspe_r6put_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6puterr.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
   if "$_jsd_io" request PUT "/rest/api/3/issue/$_jspe_jkey/properties/$_JS_MARKER_PROPERTY_KEY" \
-      --body-file "$_jspe_marker_body_file" --op R6 >/dev/null 2>/dev/null; then
-    rm -f "$_jspe_marker_body_file"
+      --body-file "$_jspe_marker_body_file" --op R6 >/dev/null 2>"$_jspe_r6put_err"; then
+    rm -f "$_jspe_marker_body_file" "$_jspe_r6put_err"
     _js_set_event_status "$_jspe_eid" "done" "$((_jspe_attempts + 1))"
   else
     _jspe_ec=$?
     rm -f "$_jspe_marker_body_file"
     if [ "$_jspe_ec" -eq 4 ]; then
+      rm -f "$_jspe_r6put_err"
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
       _JSPE_BREAK="yes"
       return 0
     fi
+    _jspe_retry_after=$(_js_extract_retry_after "$_jspe_r6put_err")
+    rm -f "$_jspe_r6put_err"
     _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    _js_set_retry_after "$_jspe_eid" "$_jspe_retry_after"
   fi
   return 0
 }
@@ -1363,10 +1526,17 @@ _js_process_one_event() {
 # leitura local de tasks.md + rewrite de estado, NUNCA rede, por isso roda
 # mesmo quando o gate auth_failed abaixo bloquearia chamadas novas); (3)
 # gate FR-016 — QUALQUER evento `auth_failed` da feature bloqueia toda
-# chamada de rede nova ate reconfiguracao; (4) para cada evento `queued` da
-# feature, `_js_process_one_event` (4.2.3-4.2.5 acima) — para na primeira
-# ocorrencia de `auth_failed` (credencial invalida para TODAS as chamadas
-# subsequentes, nao so para o evento corrente).
+# chamada de rede nova ate reconfiguracao; (4) seleciona os elegiveis —
+# `queued` SEMPRE, `deferred` cujo retry_after (sidecar, 12.2.1) ja
+# decorreu (data-model.md "deferred --> queued: proximo gatilho de
+# drain") — nada elegivel encerra aqui (exit 0); (5) `jira-io.sh
+# deps-check` (12.3.1/achado 12.3 — ANTES de tocar qualquer evento
+# elegivel: sem jq/cliente HTTP, exit 5 com diagnostico, ZERO eventos
+# tocados, contracts/plugin-scripts.md exit 5 carve-out 1.1.0 (a)); (6)
+# ProjectConfig valido; (7) para cada evento elegivel, `_js_process_one_event`
+# (4.2.3-4.2.5 acima) — para na primeira ocorrencia de `auth_failed`
+# (credencial invalida para TODAS as chamadas subsequentes, nao so para o
+# evento corrente).
 _js_cmd_drain() {
   _jsd_feature=$(_js_parse_feature_arg "$@")
 
@@ -1419,9 +1589,46 @@ _js_cmd_drain() {
     exit 0
   fi
 
-  _jsd_queued_ids=$(awk -F '\t' -v f="$_jsd_feature" \
-    'NR > 1 && $3 == f && $8 == "queued" { print $1 }' "$_JS_OUTBOX_FILE")
+  # 12.2.1 (achado 12.2): elegivel = `queued` SEMPRE, OU `deferred` cujo
+  # `available_at_epoch` (sidecar `_JS_DEFERRED_FILE`) ja passou (ou nao
+  # tem linha no sidecar — deferred sem Retry-After, elegivel de imediato).
+  # Antes desta tarefa so `queued` era selecionado: um unico 429/5xx/timeout
+  # deixava o evento `deferred` PARA SEMPRE (nenhum codigo o promovia de
+  # volta), contrariando data-model.md "deferred --> queued: proximo
+  # gatilho de drain".
+  _jsd_now_epoch=$(date -u +%s)
+  _jsd_queued_ids=$(awk -F '\t' -v f="$_jsd_feature" -v now="$_jsd_now_epoch" -v deferf="$_JS_DEFERRED_FILE" '
+    BEGIN {
+      _n = 0
+      while ((getline dline < deferf) > 0) {
+        _n++
+        if (_n == 1) { continue }
+        split(dline, da, "\t")
+        avail[da[1]] = da[2] + 0
+      }
+      close(deferf)
+    }
+    NR > 1 && $3 == f && $8 == "queued" { print $1; next }
+    NR > 1 && $3 == f && $8 == "deferred" {
+      if (!($1 in avail) || avail[$1] <= now) { print $1 }
+    }
+  ' "$_JS_OUTBOX_FILE")
   [ -n "$_jsd_queued_ids" ] || exit 0
+
+  # FASE 12 tarefa 12.3.1 (achado 12.3, contracts/plugin-scripts.md exit 5
+  # carve-out 1.1.0 (a)): deps-check ANTES de tocar o 1o evento elegivel.
+  # Sem isto, `jira-io.sh request` (que ja chama deps-check internamente,
+  # `_ji_cmd_request` linha inicial) so falhava na 1a chamada de rede REAL
+  # (dentro de `_js_process_one_event`) — e o exit 5 caia no ramo generico
+  # dessa funcao (so trata exit=4 como auth_failed), degradando o evento
+  # para `deferred` silenciosamente (drain terminava exit 0), quando o
+  # contrato exige "o que degrada e o sync AUTONOMO, que sai com exit 5 +
+  # diagnostico e mantem os eventos no outbox para o proximo jira-sync
+  # interativo" — SEM mudar o status de nenhum evento. Sem wrapper: sob
+  # `set -eu`, falha aqui propaga o exit 5 + mensagem GENUINA de
+  # jira-io.sh (mesma convencao de `_jsd_config validate`/`_js_cmd_plan`);
+  # o trap EXIT ja instalado no topo desta funcao libera o lock igual.
+  "$_jsd_io" deps-check
 
   # 4.2.3-4.2.5: ProjectConfig valido e um pre-requisito de TODO o lote (o
   # site/credencial/mapeamento de status sao os mesmos para todos os
@@ -1542,14 +1749,31 @@ _js_cmd_status() {
 
 # _js_cmd_resolve --feature F --local-key K --choice keep_jira|overwrite|
 # ignored — 4.3.2 (data-model.md ConflictRecord, resolucao SEMPRE humana):
-# fecha o ConflictRecord PENDENTE de (F, K). keep_jira/ignored so atualizam
-# `resolution` (nenhuma escrita/enqueue); overwrite reenfileira (via
-# `_js_cmd_enqueue`, mesma funcao interna usada pelo subcomando `enqueue`)
-# um NOVO OutboxEvent com o desired_state do ultimo evento `conflict`
-# daquele par — o proximo `drain` tenta de novo e, sem novo conflito,
-# sobrescreve o Jira (contracts/plugin-scripts.md `resolve`). Erro (exit 1)
-# se nao existir ConflictRecord pendente para o par — nunca fabrica um
-# fechamento nem um desired_state (Principio VI).
+# fecha o ConflictRecord PENDENTE de (F, K) com efeito DURAVEL (FASE 12
+# tarefa 12.1.1 — achado 12.1: antes desta tarefa, `keep_jira`/`overwrite`
+# so mexiam na coluna `resolution`, deixando o SyncMarker intocado; o
+# PROXIMO drain/reconcile repetia a MESMA comparacao contra o marker
+# antigo e reabria o conflito). Agora:
+#   - `keep_jira`: rebaselineia o SyncMarker (`_js_rebaseline_marker`, R3+
+#     R6 PUT) para o titulo+status ATUAIS da issue — "aceitar o Jira como
+#     esta" passa a significar que a proxima deteccao NAO reabre o mesmo
+#     conflito (nenhuma escrita de conteudo, so o marker de controle).
+#   - `overwrite`: rebaselineia o marker (mesmo mecanismo — necessario
+#     para que o EVENTO REENFILEIRADO abaixo nao seja detectado como o
+#     MESMO manual_edit no proximo drain) e reenfileira (via
+#     `_js_cmd_enqueue`) um NOVO OutboxEvent com o desired_state a
+#     aplicar. Fonte do desired_state, em ordem: (1) ultimo evento outbox
+#     `conflict` do par (conflitos originados de `drain`/reconcile diretos
+#     via evento); (2) fallback — `local_state` ATUAL de
+#     `jira-tasks.sh items` (conflitos originados de `_js_process_reconcile_event`
+#     ou de `_js_maybe_update_mapped_issue`/convert NUNCA geram esse
+#     evento outbox — achado 12.1 "overwrite nunca funciona para
+#     conflitos vindos de reconcile/convert"). Ambas as fontes sao dados
+#     REAIS ja lidos pelo proprio plugin — nunca um valor fabricado
+#     (Principio VI). Erro (exit 1) se nenhuma das duas fontes resolver um
+#     desired_state, ou se o rebaseline (R3/R6) falhar — o conflito
+#     PERMANECE pendente nesses casos, nunca fechado as cegas.
+#   - `ignored`: inalterado — so fecha o registro, nenhuma rede.
 _js_cmd_resolve() {
   _jsr_feature=""
   _jsr_key=""
@@ -1587,12 +1811,43 @@ _js_cmd_resolve() {
   _jsr_jkey=$(printf '%s' "$_jsr_row" | cut -f4)
   _jsr_reason=$(printf '%s' "$_jsr_row" | cut -f5)
 
+  if [ "$_jsr_choice" = "keep_jira" ] || [ "$_jsr_choice" = "overwrite" ]; then
+    _jsr_dir="$(_js_script_dir)"
+    _jsr_io="$_jsr_dir/jira-io.sh"
+    _jsr_tasks="$_jsr_dir/jira-tasks.sh"
+    _jsr_config="$_jsr_dir/jira-config.sh"
+    # Sem wrapper: sob `set -eu`, falha aqui propaga o exit code + mensagem
+    # GENUINOS de jira-config.sh (3 ausente / 1 invalido) — mesma convencao
+    # de `_js_cmd_plan`/`_js_cmd_convert` (nunca mascarar com exit 1 fixo).
+    "$_jsr_config" validate
+  fi
+
   if [ "$_jsr_choice" = "overwrite" ]; then
-    if ! _jsr_ds=$(_js_last_conflict_desired_state "$_jsr_feature" "$_jsr_key"); then
-      _js_die "nao foi possivel determinar desired_state original para reenfileirar (nenhum evento outbox 'conflict' encontrado para feature=$_jsr_feature local_key=$_jsr_key)" 1
+    if _jsr_ds=$(_js_last_conflict_desired_state "$_jsr_feature" "$_jsr_key"); then
+      :
+    else
+      # Fallback (achado 12.1): conflitos originados de reconcile
+      # (`_js_process_reconcile_event`) ou de convert
+      # (`_js_maybe_update_mapped_issue`) nunca gravam evento outbox
+      # 'conflict' com este local_key. Deriva o desired_state do
+      # local_state ATUAL — mesma fonte que `plan`/reconcile ja usam,
+      # nunca um valor inventado.
+      _jsr_ds=$("$_jsr_tasks" items --feature "$_jsr_feature" 2>/dev/null \
+        | awk -F '\t' -v k="$_jsr_key" '$1 == k { print $5; exit }')
+      [ -n "$_jsr_ds" ] \
+        || _js_die "nao foi possivel determinar desired_state (nem evento outbox 'conflict', nem local_state atual via jira-tasks.sh items) para feature=$_jsr_feature local_key=$_jsr_key" 1
     fi
+
+    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" >/dev/null \
+      || _js_die "falha ao rebaselinear o SyncMarker antes do overwrite — conflito NAO fechado, tente novamente" 1
+
     _jsr_new_eid=$(_js_cmd_enqueue --feature "$_jsr_feature" --local-key "$_jsr_key" \
       --state "$_jsr_ds" --source manual)
+  fi
+
+  if [ "$_jsr_choice" = "keep_jira" ]; then
+    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" >/dev/null \
+      || _js_die "falha ao rebaselinear o SyncMarker — conflito NAO fechado, tente novamente" 1
   fi
 
   _js_close_conflict "$_jsr_feature" "$_jsr_key" "$_jsr_choice" \

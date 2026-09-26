@@ -218,6 +218,15 @@ Regra dura: com qualquer evento `auth_failed` presente, o drain NAO faz novas
 chamadas (evita "repetir silenciosamente tentativas que falham", FR-016) ate
 reconfiguracao.
 
+Implementacao de `deferred --> queued` (FASE 12 tarefa 12.2.1, achado 12.2):
+o `Retry-After` (quando o Jira o informa num 429) e persistido num SIDECAR —
+`<projeto>/.claude/cstk-jira/runtime/deferred-retry.tsv`
+(`event_id\tavailable_at_epoch`, mesma nao-versionada de outbox/conflicts) —
+em vez de uma coluna nova no OutboxEvent (schema acima inalterado). O drain
+seleciona `queued` SEMPRE e `deferred` cujo `available_at_epoch` ja passou
+(ou sem linha no sidecar — retry imediato, caso de rede/timeout genericos
+sem Retry-After). Qualquer transicao de status limpa a linha do sidecar.
+
 ## Entity: ConflictRecord
 
 `<projeto>/.claude/cstk-jira/runtime/conflicts.tsv`.

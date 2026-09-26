@@ -1326,7 +1326,7 @@ override aceita pelo drain), com fonte de `desired_state` para conflitos de
 reconciliacao/convert — sem inventar campo REST (so R3/R6 de
 `contracts/jira-rest.md`).
 
-- [ ] 12.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / task 4.3.2 / task 4.3.4 resolve`: `resolve --choice keep_jira` e `--choice overwrite` passam a ter efeito duravel (drain seguinte nao re-abre o mesmo conflito; overwrite de fato transiciona), `overwrite` funciona para conflitos vindos de reconcile/convert, mensagens das linhas 647/698 corrigidas, com teste end-to-end resolve -> drain em `tests/cstk/test_jira-sync.sh`
+- [x] 12.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / task 4.3.2 / task 4.3.4 resolve`: `resolve --choice keep_jira` e `--choice overwrite` passam a ter efeito duravel (drain seguinte nao re-abre o mesmo conflito; overwrite de fato transiciona), `overwrite` funciona para conflitos vindos de reconcile/convert, mensagens das linhas 647/698 corrigidas, com teste end-to-end resolve -> drain em `tests/cstk/test_jira-sync.sh`
 
 <!-- converge-key: bd4a7d7b55f4 -->
 
@@ -1349,7 +1349,7 @@ o `retry_after` registrado quando houver) — decidir onde persistir o
 `retry_after` sem inventar coluna fora do data-model (ou atualizar o
 data-model junto).
 
-- [ ] 12.2.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model OutboxEvent deferred->queued / task 3.4.4`: `drain` reprocessa eventos `deferred` (respeitando Retry-After), com teste em `tests/cstk/test_jira-sync.sh` (429 -> deferred -> drain seguinte transiciona)
+- [x] 12.2.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model OutboxEvent deferred->queued / task 3.4.4`: `drain` reprocessa eventos `deferred` (respeitando Retry-After), com teste em `tests/cstk/test_jira-sync.sh` (429 -> deferred -> drain seguinte transiciona)
 
 <!-- converge-key: 600a43fbdf2a -->
 
@@ -1370,7 +1370,7 @@ fallback. O `_js_cmd_drain` nunca roda `jira-io.sh deps-check`: o exit 5 de
 fluxo do drain: `deps-check` antes do 1o evento `queued`, saindo exit 5 com
 os eventos intocados em `queued`.
 
-- [ ] 12.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `contracts/plugin-scripts.md exit 5 carve-out 1.1.0 (a)`: `drain` com eventos `queued` e dependencia ausente sai exit 5 com diagnostico e SEM mudar o status dos eventos, com teste em `tests/cstk/test_jira-sync.sh` (PATH sem `jq`)
+- [x] 12.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `contracts/plugin-scripts.md exit 5 carve-out 1.1.0 (a)`: `drain` com eventos `queued` e dependencia ausente sai exit 5 com diagnostico e SEM mudar o status dos eventos, com teste em `tests/cstk/test_jira-sync.sh` (PATH sem `jq`)
 
 <!-- converge-key: 5cc05d2d87e6 -->
 
