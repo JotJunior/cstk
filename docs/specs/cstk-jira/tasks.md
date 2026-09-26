@@ -242,24 +242,30 @@ UNICO arquivo do plugin que referencia `jq` + cliente HTTP.
 
 Ref: plan.md SEC-5; contracts/plugin-scripts.md `jira-io.sh request`.
 
-- [ ] 3.1.1 `deps-check`: exit 5 + instrucao de instalacao se `jq` ou o
+- [x] 3.1.1 `deps-check`: exit 5 + instrucao de instalacao se `jq` ou o
       cliente HTTP estiverem ausentes do PATH (carve-out 1.1.0 condicao a)
-- [ ] 3.1.2 `request METHOD PATH [--body-file F]`: `METHOD` restrito a
+- [x] 3.1.2 `request METHOD PATH [--body-file F]`: `METHOD` restrito a
       allowlist fechada `GET`/`POST`/`PUT` (sem `DELETE` — FR-012); `PATH`
       relativo iniciado em `/rest/`
-- [ ] 3.1.3 Monta `https://<site_host><PATH>` com `site_host` de
+- [x] 3.1.3 Monta `https://<site_host><PATH>` com `site_host` de
       `ProjectConfig`; valida host por IGUALDADE EXATA (sem userinfo, sem
       porta) antes de CADA requisicao
-- [ ] 3.1.4 Cliente HTTP configurado para NUNCA seguir redirect e SEMPRE
+- [x] 3.1.4 Cliente HTTP configurado para NUNCA seguir redirect e SEMPRE
       verificar TLS (SEC-5); resposta `3xx` => erro sem nova requisicao
       (nao existe flag de configuracao para desligar a verificacao TLS)
-- [ ] 3.1.5 Teste: dependencia ausente => exit 5, com PATH MINIMO explicito
+- [x] 3.1.5 Teste: dependencia ausente => exit 5, com PATH MINIMO explicito
       controlado no teste inteiro (nao so prefixar um diretorio — licao ja
       registrada no repo: stub no PATH nao esconde binario de `/usr/bin`)
-- [ ] 3.1.6 Teste: host divergente (resposta simulada com redirect para
+- [x] 3.1.6 Teste: host divergente (resposta simulada com redirect para
       outro dominio) => recusa SEM nova requisicao
-- [ ] 3.1.7 Teste: chamada de `request` com `METHOD=DELETE` falha por uso
+- [x] 3.1.7 Teste: chamada de `request` com `METHOD=DELETE` falha por uso
       incorreto (exit 2) — `DELETE` nunca existe como opcao valida
+
+      Implementado em `plugins/cstk-jira/scripts/jira-io.sh` (subcomandos
+      `deps-check` + `request`); testes em `tests/cstk/test_jira-io.sh` (12
+      cenarios JI-1..JI-12, PASS). Nesta versao `request` NAO envia header
+      `Authorization` (credencial entra na tarefa 3.3) e nao classifica
+      status HTTP alem de "3xx recusado" (mapeamento fino fica para 3.4).
 
 ### 3.2 Allowlist de charset em path/JQL (SEC-1) `[C]`
 
