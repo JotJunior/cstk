@@ -10,12 +10,32 @@
 #      issue) + nota "Resolucao do project.id"; data-model.md Entity
 #      LocalWorkItem/SyncMapping; tasks.md 4.1.1-4.1.7.
 #
-# ESCOPO ATE AGORA (tarefas 4.1 + 4.2 completa): `plan`/`convert` (US1, FASE
-# 4.1 completa) e `enqueue`/`drain` (US3, FASE 4.2 completa —
-# 4.2.1-4.2.8/4.2.10/4.2.11; 4.2.9 ja coberta desde a onda anterior).
-# `status`/`resolve`/`relink` (FASE 4.3) e a integracao completa de
-# mark-orphans/relink na UX (FASE 4.4 alem do wiring ja feito em `drain`)
-# seguem fora do escopo desta tarefa.
+# ESCOPO ATE AGORA (FASE 4 completa): `plan`/`convert` (US1, 4.1), `enqueue`/
+# `drain` (US3, 4.2) e `status`/`resolve` (4.3 — resolucao humana de
+# ConflictRecord). `jira-map.sh mark-orphans`/`relink` (4.4) seguem sendo
+# scripts irmaos invocados por `drain` (mark-orphans) e documentados aqui
+# como caminho de UX para orfaos (`status` cita `relink`; `resolve` NUNCA
+# religa — isso e exclusivo de `jira-map.sh relink`).
+#
+# `status [--feature F]` (4.3.1): resumo LOCAL (sem rede) do outbox
+# (contagem por status + detalhe de `auth_failed`), dos `ConflictRecord`
+# pendentes (`runtime/conflicts.tsv`) e dos cards `orphan` de cada
+# `jira-map.tsv` (todas as features sob `docs/specs/*/` quando `--feature`
+# e omitido). Nenhum campo exibido vem de uma chamada ao Jira — so TSVs
+# locais ja escritos por `enqueue`/`drain`/`convert` — por isso nao ha
+# conteudo a rotular como UNTRUSTED (nenhum titulo/texto do Jira e lido ou
+# exibido por este subcomando; checklists/security.md CHK005 nao se aplica
+# aqui, so as skills que efetivamente leem/exibem texto do Jira).
+#
+# `resolve --feature F --local-key K --choice keep_jira|overwrite|ignored`
+# (4.3.2): fecha o `ConflictRecord` PENDENTE de (F, K) — resolucao e SEMPRE
+# decisao humana, nunca automatica (data-model.md). `keep_jira`/`ignored` so
+# atualizam a coluna `resolution` (nenhuma escrita no Jira, nenhum evento
+# novo). `overwrite` reenfileira (via `enqueue`, mesma funcao interna) um
+# NOVO `OutboxEvent` com o `desired_state` do ultimo evento `conflict`
+# daquele par — o proximo `drain` tenta de novo e, sem novo conflito,
+# sobrescreve o Jira com o estado local. Erro (exit 1) se nao existir
+# ConflictRecord `pending` para o par informado — nunca inventa um.
 #
 # `drain` implementa deteccao de conflito (4.2.3/4.2.4, SyncMarker via R6) e
 # transicao de status (4.2.5, R4) desde a onda-022 (dec-081 fechou o gap de
@@ -140,10 +160,31 @@ USO:
       auth_failed em qualquer chamada real interrompe o processamento do
       restante do lote nesta chamada (credencial invalida vale para todas).
 
+  jira-sync.sh status [--feature F]
+      Resumo LOCAL (sem rede), legivel pelo operador: contagem do outbox
+      por status (queued/deferred/conflict/auth_failed) + detalhe dos
+      eventos auth_failed; ConflictRecord pendentes (runtime/conflicts.tsv);
+      cards orphan de cada jira-map.tsv. Sem --feature, agrega TODAS as
+      features sob docs/specs/*/.
+
+  jira-sync.sh resolve --feature F --local-key K \
+                        --choice keep_jira|overwrite|ignored
+      Fecha um ConflictRecord PENDENTE por decisao SEMPRE humana (nunca
+      automatica): keep_jira/ignored so fecham o registro (nenhuma escrita);
+      overwrite reenfileira (enqueue) um novo evento com o desired_state do
+      ultimo evento `conflict` daquele par, para o proximo drain sobrescrever
+      o Jira. Exit 1 se nao existir ConflictRecord pendente para (F, K).
+
+  Card orfao (task local removida/renumerada)? `resolve` NUNCA religa — use:
+      jira-map.sh relink --feature F --local-key K --jira-key KEY
+  para reativar o mapeamento por decisao humana explicita (CHK012).
+
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
-  0 sucesso   1 erro geral   2 uso incorreto   3 ProjectConfig ausente
+  0 sucesso   1 erro geral (inclui: resolve sem ConflictRecord pendente para
+                             o par informado)
+  2 uso incorreto   3 ProjectConfig ausente
   4 credencial ausente/incompleta/auth_failed   5 dependencia ausente
                                                  (convert; drain com eventos
                                                  queued exige jq/cliente
@@ -259,6 +300,70 @@ _js_append_conflict() {
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$3" "$4"
   } > "$_jsac_tmp"
   mv -- "$_jsac_tmp" "$_JS_CONFLICTS_FILE"
+}
+
+# _js_conflict_row FEATURE LOCAL_KEY — imprime a linha TSV COMPLETA (6
+# colunas) do ConflictRecord com resolution=pending para o par (F, K), ou
+# nada se ausente (FASE 4.3 `resolve`/`status`). No maximo 1 linha esperada
+# — `_js_conflict_pending_exists` impede um 2o `pending` para o mesmo par.
+_js_conflict_row() {
+  [ -f "$_JS_CONFLICTS_FILE" ] || return 0
+  awk -F '\t' -v f="$1" -v k="$2" \
+    'NR > 1 && $2 == f && $3 == k && $6 == "pending" { print; exit }' \
+    "$_JS_CONFLICTS_FILE"
+}
+
+# _js_close_conflict FEATURE LOCAL_KEY RESOLUTION — reescreve a coluna
+# `resolution` (6) da linha `pending` de (F, K) para RESOLUTION, atomico
+# (tmp + mv, mesmo padrao de `_js_set_event_status`). Retorna 1 (sem
+# escrever nada) se nenhuma linha `pending` casar — chamador MUST tratar
+# como erro, nunca inventar um fechamento (FASE 4.3 `resolve`).
+_js_close_conflict() {
+  _jscc_tmp="$_JS_CONFLICTS_FILE.tmp.$$"
+  if awk -F '\t' -v OFS='\t' -v f="$1" -v k="$2" -v res="$3" '
+       NR == 1 { print; next }
+       $2 == f && $3 == k && $6 == "pending" { $6 = res; matched = 1 }
+       { print }
+       END { exit (matched ? 0 : 1) }
+     ' "$_JS_CONFLICTS_FILE" > "$_jscc_tmp"; then
+    mv -- "$_jscc_tmp" "$_JS_CONFLICTS_FILE"
+    return 0
+  fi
+  rm -f "$_jscc_tmp"
+  return 1
+}
+
+# _js_last_conflict_desired_state FEATURE LOCAL_KEY — imprime o
+# `desired_state` do evento outbox `conflict` MAIS RECENTE (ultima ocorrencia
+# na ordem do arquivo) para (F, K); retorna 1 se nenhum existir. Usado por
+# `resolve --choice overwrite` (FASE 4.3.2) para reenfileirar o MESMO estado
+# desejado que originou o conflito — nunca inventa um valor novo (Principio
+# VI: sem fonte, sem escrita).
+_js_last_conflict_desired_state() {
+  [ -f "$_JS_OUTBOX_FILE" ] || return 1
+  awk -F '\t' -v f="$1" -v k="$2" '
+    NR > 1 && $3 == f && $4 == k && $8 == "conflict" { ds = $5 }
+    END { if (ds != "") { print ds; exit 0 } exit 1 }
+  ' "$_JS_OUTBOX_FILE"
+}
+
+# _js_orphan_rows [FEATURE] — imprime `feature\tlocal_key\tjira_key` para
+# toda linha state=orphan de docs/specs/<feature>/jira-map.tsv; sem FEATURE,
+# varre TODAS as features sob docs/specs/*/ (FASE 4.3.1 `status`). Leitura
+# pura (nunca reescreve jira-map.tsv — isso e exclusivo de `jira-map.sh
+# mark-orphans`/`relink`).
+_js_orphan_rows() {
+  _jso_filter="${1:-}"
+  for _jso_mf in ./docs/specs/*/jira-map.tsv; do
+    [ -f "$_jso_mf" ] || continue
+    _jso_feat=$(basename "$(dirname -- "$_jso_mf")")
+    if [ -n "$_jso_filter" ] && [ "$_jso_feat" != "$_jso_filter" ]; then
+      continue
+    fi
+    awk -F '\t' -v feat="$_jso_feat" \
+      'NR > 1 && $5 == "orphan" { print feat "\t" $1 "\t" $4 }' \
+      "$_jso_mf"
+  done
 }
 
 _js_parse_feature_arg() {
@@ -862,6 +967,160 @@ _js_cmd_drain() {
   exit 0
 }
 
+# --- status --------------------------------------------------------------
+
+# _js_cmd_status [--feature F] — 4.3.1 (checklists/ux.md CHK011): resumo
+# LOCAL (sem rede, sem jq/cliente HTTP) legivel pelo operador, agregando 3
+# fontes: outbox (contagem por status + detalhe de auth_failed), conflitos
+# PENDENTES (ConflictRecord) e cards orphan de cada jira-map.tsv. Sem
+# --feature, agrega TODAS as features (outbox/conflicts filtram pela coluna
+# `feature`; orfaos varrem docs/specs/*/). Nenhum texto lido do Jira e
+# exibido aqui (so chaves/enums/timestamps ja gravados localmente) — por
+# isso nao ha rotulo UNTRUSTED a aplicar (checklists/security.md CHK005 e
+# escopo das skills que efetivamente leem/exibem titulo/descricao do Jira).
+_js_cmd_status() {
+  _jss_feature=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _js_die_usage "--feature requer valor"
+        _jss_feature="$2"; shift 2 ;;
+      *)
+        _js_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  if [ -n "$_jss_feature" ]; then
+    _js_is_safe_feature "$_jss_feature" \
+      || _js_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jss_feature"
+  fi
+
+  if [ -n "$_jss_feature" ]; then
+    printf '=== jira-sync status (feature=%s) ===\n' "$_jss_feature"
+  else
+    printf '=== jira-sync status (todas as features) ===\n'
+  fi
+
+  printf '\n-- Outbox (fila de eventos, runtime/outbox.tsv) --\n'
+  if [ -f "$_JS_OUTBOX_FILE" ]; then
+    _jss_q=$(awk -F '\t' -v f="$_jss_feature" 'NR>1 && (f=="" || $3==f) && $8=="queued"     { c++ } END { print c+0 }' "$_JS_OUTBOX_FILE")
+    _jss_d=$(awk -F '\t' -v f="$_jss_feature" 'NR>1 && (f=="" || $3==f) && $8=="deferred"   { c++ } END { print c+0 }' "$_JS_OUTBOX_FILE")
+    _jss_c=$(awk -F '\t' -v f="$_jss_feature" 'NR>1 && (f=="" || $3==f) && $8=="conflict"   { c++ } END { print c+0 }' "$_JS_OUTBOX_FILE")
+    _jss_a=$(awk -F '\t' -v f="$_jss_feature" 'NR>1 && (f=="" || $3==f) && $8=="auth_failed"{ c++ } END { print c+0 }' "$_JS_OUTBOX_FILE")
+    printf 'queued=%s deferred=%s conflict=%s auth_failed=%s\n' "$_jss_q" "$_jss_d" "$_jss_c" "$_jss_a"
+    if [ "$_jss_a" != "0" ]; then
+      printf '\nEventos auth_failed (drain bloqueado ate reconfigurar credencial — jira-setup, FR-016):\n'
+      printf 'feature\tlocal_key\tevent_id\tattempts\n'
+      awk -F '\t' -v f="$_jss_feature" \
+        'NR>1 && (f=="" || $3==f) && $8=="auth_failed" { print $3 "\t" $4 "\t" $1 "\t" $7 }' \
+        "$_JS_OUTBOX_FILE"
+    fi
+  else
+    printf '(vazio — outbox.tsv nao existe)\n'
+  fi
+
+  printf '\n-- Conflitos pendentes (runtime/conflicts.tsv) --\n'
+  if [ -f "$_JS_CONFLICTS_FILE" ]; then
+    _jss_pending=$(awk -F '\t' -v f="$_jss_feature" 'NR>1 && (f=="" || $2==f) && $6=="pending" { c++ } END { print c+0 }' "$_JS_CONFLICTS_FILE")
+    if [ "$_jss_pending" != "0" ]; then
+      printf 'feature\tlocal_key\tjira_key\treason\tdetected_at\n'
+      awk -F '\t' -v f="$_jss_feature" \
+        'NR>1 && (f=="" || $2==f) && $6=="pending" { print $2 "\t" $3 "\t" $4 "\t" $5 "\t" $1 }' \
+        "$_JS_CONFLICTS_FILE"
+      printf '(resolver com: jira-sync.sh resolve --feature F --local-key K --choice keep_jira|overwrite|ignored)\n'
+    else
+      printf '(nenhum conflito pendente)\n'
+    fi
+  else
+    printf '(nenhum — conflicts.tsv nao existe)\n'
+  fi
+
+  printf '\n-- Cards orfaos (jira-map.tsv state=orphan) --\n'
+  _jss_orph_rows=$(_js_orphan_rows "$_jss_feature")
+  if [ -n "$_jss_orph_rows" ]; then
+    printf 'feature\tlocal_key\tjira_key\n'
+    printf '%s\n' "$_jss_orph_rows"
+    printf '(religar com: jira-map.sh relink --feature F --local-key K --jira-key KEY)\n'
+  else
+    printf '(nenhum)\n'
+  fi
+}
+
+# --- resolve ---------------------------------------------------------------
+
+# _js_cmd_resolve --feature F --local-key K --choice keep_jira|overwrite|
+# ignored — 4.3.2 (data-model.md ConflictRecord, resolucao SEMPRE humana):
+# fecha o ConflictRecord PENDENTE de (F, K). keep_jira/ignored so atualizam
+# `resolution` (nenhuma escrita/enqueue); overwrite reenfileira (via
+# `_js_cmd_enqueue`, mesma funcao interna usada pelo subcomando `enqueue`)
+# um NOVO OutboxEvent com o desired_state do ultimo evento `conflict`
+# daquele par — o proximo `drain` tenta de novo e, sem novo conflito,
+# sobrescreve o Jira (contracts/plugin-scripts.md `resolve`). Erro (exit 1)
+# se nao existir ConflictRecord pendente para o par — nunca fabrica um
+# fechamento nem um desired_state (Principio VI).
+_js_cmd_resolve() {
+  _jsr_feature=""
+  _jsr_key=""
+  _jsr_choice=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _js_die_usage "--feature requer valor"
+        _jsr_feature="$2"; shift 2 ;;
+      --local-key)
+        [ "$#" -ge 2 ] || _js_die_usage "--local-key requer valor"
+        _jsr_key="$2"; shift 2 ;;
+      --choice)
+        [ "$#" -ge 2 ] || _js_die_usage "--choice requer valor"
+        _jsr_choice="$2"; shift 2 ;;
+      *)
+        _js_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jsr_feature" ] || _js_die_usage "resolve requer --feature F"
+  _js_is_safe_feature "$_jsr_feature" \
+    || _js_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jsr_feature"
+  _js_is_safe_field "$_jsr_key" \
+    || _js_die_usage "resolve requer --local-key K valido (nao-vazio, sem TAB/newline)"
+  case "$_jsr_choice" in
+    keep_jira|overwrite|ignored) : ;;
+    *) _js_die_usage "--choice invalido: '$_jsr_choice' (validos: keep_jira, overwrite, ignored)" ;;
+  esac
+
+  [ -f "$_JS_CONFLICTS_FILE" ] \
+    || _js_die "nenhum ConflictRecord encontrado (conflicts.tsv nao existe) para feature=$_jsr_feature local_key=$_jsr_key" 1
+  _jsr_row=$(_js_conflict_row "$_jsr_feature" "$_jsr_key")
+  [ -n "$_jsr_row" ] \
+    || _js_die "nenhum ConflictRecord PENDENTE para feature=$_jsr_feature local_key=$_jsr_key" 1
+  _jsr_jkey=$(printf '%s' "$_jsr_row" | cut -f4)
+  _jsr_reason=$(printf '%s' "$_jsr_row" | cut -f5)
+
+  if [ "$_jsr_choice" = "overwrite" ]; then
+    if ! _jsr_ds=$(_js_last_conflict_desired_state "$_jsr_feature" "$_jsr_key"); then
+      _js_die "nao foi possivel determinar desired_state original para reenfileirar (nenhum evento outbox 'conflict' encontrado para feature=$_jsr_feature local_key=$_jsr_key)" 1
+    fi
+    _jsr_new_eid=$(_js_cmd_enqueue --feature "$_jsr_feature" --local-key "$_jsr_key" \
+      --state "$_jsr_ds" --source manual)
+  fi
+
+  _js_close_conflict "$_jsr_feature" "$_jsr_key" "$_jsr_choice" \
+    || _js_die "falha ao fechar ConflictRecord (corrida concorrente com outro drain/resolve?) para feature=$_jsr_feature local_key=$_jsr_key" 1
+
+  case "$_jsr_choice" in
+    overwrite)
+      printf 'resolve: conflito fechado (feature=%s local_key=%s jira_key=%s reason=%s escolha=overwrite) — evento reenfileirado (event_id=%s desired_state=%s) para o proximo drain sobrescrever o Jira\n' \
+        "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" "$_jsr_new_eid" "$_jsr_ds"
+      ;;
+    keep_jira)
+      printf 'resolve: conflito fechado (feature=%s local_key=%s jira_key=%s reason=%s escolha=keep_jira) — estado atual do Jira mantido, nenhuma escrita realizada\n' \
+        "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason"
+      ;;
+    ignored)
+      printf 'resolve: conflito fechado (feature=%s local_key=%s jira_key=%s reason=%s escolha=ignored) — registro apenas encerrado, nenhuma acao tomada\n' \
+        "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason"
+      ;;
+  esac
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _js_sub="${1:-}"
@@ -884,7 +1143,13 @@ case "$_js_sub" in
   drain)
     _js_cmd_drain "$@"
     ;;
+  status)
+    _js_cmd_status "$@"
+    ;;
+  resolve)
+    _js_cmd_resolve "$@"
+    ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve)"
     ;;
 esac

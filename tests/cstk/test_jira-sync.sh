@@ -85,6 +85,24 @@
 #   SY-21 drain (4.4.1): `jira-map.sh mark-orphans` roda como parte do
 #         drain (pura leitura local, sem rede) — local_key ausente de
 #         tasks.md vira `orphan`; NENHUMA linha e removida (4.4.2)
+#
+# status/resolve (FASE 4.3, resolucao SEMPRE humana, nenhum cenario toca
+# rede — status/resolve nunca invocam jira-io.sh):
+#   SY-22 status: outbox+conflicts+jira-map.tsv populados -> contagem
+#         correta por status do outbox (queued/deferred/conflict/
+#         auth_failed), linha auth_failed detalhada, conflitos pendentes
+#         listados com dica de `resolve`, orfaos listados com dica de
+#         `jira-map.sh relink`
+#   SY-23 status --feature: filtra por feature (outra feature nao aparece)
+#   SY-24 resolve: nenhum ConflictRecord pendente para (F, K) -> exit 1,
+#         conflicts.tsv/outbox.tsv NUNCA tocados
+#   SY-25 resolve --choice keep_jira: fecha o registro (resolution=
+#         keep_jira), outbox.tsv INALTERADO (nenhum evento novo)
+#   SY-26 resolve --choice ignored: fecha o registro (resolution=ignored),
+#         outbox.tsv INALTERADO
+#   SY-27 resolve --choice overwrite: fecha o registro (resolution=
+#         overwrite) E reenfileira (novo OutboxEvent status=queued) com o
+#         MESMO desired_state do evento `conflict` original
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -452,6 +470,10 @@ _outbox_file() {
   printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv"
 }
 
+_conflicts_file() {
+  printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv"
+}
+
 _drain_lock_dir() {
   printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/.drain.lock"
 }
@@ -661,6 +683,156 @@ scenario_drain_marca_orfaos_como_parte_do_processo() {
     || { _fail "drain_mark_orphans_keeps_1_1" "1.1 deveria continuar active"; return 1; }
   [ "$(wc -l < "$(_map_file)" | tr -d ' ')" = "4" ] \
     || { _fail "drain_mark_orphans_never_deletes" "linha(s) desaparecida(s) do jira-map.tsv (4.4.2)"; return 1; }
+  return 0
+}
+
+# =========================== status/resolve (FASE 4.3) ======================
+
+# SY-22 status: agrega outbox (contagem por status + detalhe auth_failed),
+# conflitos pendentes e orfaos, com as dicas de proximo comando.
+scenario_status_agrega_outbox_conflitos_e_orfaos() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")" "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	conflict
+e2	2026-01-01T00:00:01Z	demo	5.5	pass	manual	1	auth_failed
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  cat > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv" <<'EOF'
+local_key	kind	jira_id	jira_key	state
+9.9	task	20099	DEMO-9	orphan
+EOF
+  assert_exit 0 "$SCRIPT" status || return 1
+  assert_stdout_contains "queued=0 deferred=0 conflict=1 auth_failed=1" || return 1
+  assert_stdout_contains "demo	5.5	e2	1" || return 1
+  assert_stdout_contains "demo	1.1	DEMO-2	manual_edit" || return 1
+  assert_stdout_contains "jira-sync.sh resolve --feature F --local-key K" || return 1
+  assert_stdout_contains "demo	9.9	DEMO-9" || return 1
+  assert_stdout_contains "jira-map.sh relink --feature F --local-key K --jira-key KEY" || return 1
+  return 0
+}
+
+# SY-23 status --feature: filtra por feature — outra feature nao aparece na
+# saida (nem no outbox, nem nos conflitos, nem nos orfaos).
+scenario_status_filtra_por_feature() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")" \
+    "$TMPDIR_TEST/docs/specs/demo" "$TMPDIR_TEST/docs/specs/outra"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	conflict
+e2	2026-01-01T00:00:01Z	outra	2.2	pass	manual	0	auth_failed
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+2026-01-01T00:00:01Z	outra	2.2	OUT-2	manual_edit	pending
+EOF
+  cat > "$TMPDIR_TEST/docs/specs/outra/jira-map.tsv" <<'EOF'
+local_key	kind	jira_id	jira_key	state
+3.3	task	30003	OUT-3	orphan
+EOF
+  assert_exit 0 "$SCRIPT" status --feature demo || return 1
+  assert_stdout_contains "queued=0 deferred=0 conflict=1 auth_failed=0" || return 1
+  assert_stdout_contains "demo	1.1	DEMO-2" || return 1
+  assert_stdout_not_contains "outra" || return 1
+  assert_stdout_not_contains "OUT-2" || return 1
+  assert_stdout_not_contains "OUT-3" || return 1
+  return 0
+}
+
+# SY-24 resolve: nenhum ConflictRecord pendente para (F, K) -> exit 1,
+# nenhum arquivo tocado.
+scenario_resolve_sem_conflito_pendente_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	keep_jira
+EOF
+  _before=$(cat "$(_conflicts_file)")
+  assert_exit 1 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  _after=$(cat "$(_conflicts_file)")
+  [ "$_before" = "$_after" ] \
+    || { _fail "resolve_no_pending_untouched" "conflicts.tsv foi alterado mesmo sem registro pendente"; return 1; }
+  [ -f "$(_outbox_file)" ] \
+    && { _fail "resolve_no_pending_no_outbox" "outbox.tsv foi criado mesmo sem registro pendente"; return 1; }
+  return 0
+}
+
+# SY-25 resolve --choice keep_jira: fecha o registro sem tocar o outbox.
+scenario_resolve_keep_jira_fecha_registro_sem_tocar_outbox() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  _before_outbox=$(cat "$(_outbox_file)")
+  assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  assert_stdout_contains "escolha=keep_jira" || return 1
+  grep -q 'demo	1\.1	DEMO-2	manual_edit	keep_jira$' "$(_conflicts_file)" \
+    || { _fail "resolve_keep_jira_resolution" "resolution nao virou keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
+  _after_outbox=$(cat "$(_outbox_file)")
+  [ "$_before_outbox" = "$_after_outbox" ] \
+    || { _fail "resolve_keep_jira_outbox_untouched" "outbox.tsv foi alterado por keep_jira"; return 1; }
+  return 0
+}
+
+# SY-26 resolve --choice ignored: fecha o registro sem tocar o outbox.
+scenario_resolve_ignored_fecha_registro_sem_tocar_outbox() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	9.9	pass	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	9.9	DEMO-9	orphan	pending
+EOF
+  _before_outbox=$(cat "$(_outbox_file)")
+  assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 9.9 --choice ignored || return 1
+  assert_stdout_contains "escolha=ignored" || return 1
+  grep -q 'demo	9\.9	DEMO-9	orphan	ignored$' "$(_conflicts_file)" \
+    || { _fail "resolve_ignored_resolution" "resolution nao virou ignored: $(cat "$(_conflicts_file)")"; return 1; }
+  _after_outbox=$(cat "$(_outbox_file)")
+  [ "$_before_outbox" = "$_after_outbox" ] \
+    || { _fail "resolve_ignored_outbox_untouched" "outbox.tsv foi alterado por ignored"; return 1; }
+  return 0
+}
+
+# SY-27 resolve --choice overwrite: fecha o registro E reenfileira um NOVO
+# OutboxEvent (status=queued) com o MESMO desired_state do evento `conflict`
+# original — para o proximo drain sobrescrever o Jira.
+scenario_resolve_overwrite_fecha_registro_e_reenfileira() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	fail	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+  assert_stdout_contains "escolha=overwrite" || return 1
+  grep -q 'demo	1\.1	DEMO-2	manual_edit	overwrite$' "$(_conflicts_file)" \
+    || { _fail "resolve_overwrite_resolution" "resolution nao virou overwrite: $(cat "$(_conflicts_file)")"; return 1; }
+  _novo=$(awk -F '\t' '$1 != "e1" && NR > 1 { print }' "$(_outbox_file)")
+  [ -n "$_novo" ] \
+    || { _fail "resolve_overwrite_new_event" "nenhum evento novo foi enfileirado: $(cat "$(_outbox_file)")"; return 1; }
+  printf '%s\n' "$_novo" | grep -q '	demo	1\.1	fail	manual	0	queued$' \
+    || { _fail "resolve_overwrite_new_event_fields" "evento novo com campos inesperados: $_novo"; return 1; }
   return 0
 }
 

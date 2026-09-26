@@ -555,14 +555,15 @@ Ref: spec.md US3; data-model.md OutboxEvent; contracts/hooks.md "Drenar".
 
 Ref: data-model.md ConflictRecord; checklists/ux.md CHK011/CHK012.
 
-- [ ] 4.3.1 `status [--feature F]`: resumo do outbox + conflitos + orfaos +
+- [x] 4.3.1 `status [--feature F]`: resumo do outbox + conflitos + orfaos +
       eventos `auth_failed`, legivel pelo operador
-- [ ] 4.3.2 `resolve --feature F --local-key K --choice keep_jira|
+- [x] 4.3.2 `resolve --feature F --local-key K --choice keep_jira|
       overwrite|ignored`: fecha o `ConflictRecord` por decisao humana
       (resolucao SEMPRE humana — nunca automatica)
-- [ ] 4.3.3 `jira-map.sh relink` exposto/documentado pela skill `jira-sync`
-      como caminho de UX claro para religar um orfao (CHK012)
-- [ ] 4.3.4 Teste: os 3 `--choice` de `resolve` produzem o efeito esperado
+- [x] 4.3.3 `jira-map.sh relink` exposto/documentado pela skill `jira-sync`
+      como caminho de UX claro para religar um orfao (CHK012) — documentado
+      no usage/--help de `jira-sync.sh` (skill formal e FASE 6)
+- [x] 4.3.4 Teste: os 3 `--choice` de `resolve` produzem o efeito esperado
       (mantem estado do Jira / sobrescreve / apenas fecha o registro)
 
 ### 4.4 Card orfao — nunca apagar (FR-012) `[A]`
