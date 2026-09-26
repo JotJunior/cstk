@@ -243,6 +243,17 @@ _is_internal_test() {
       # ser orfao real.
       [ -f "$REPO_ROOT/docs/specs/cstk-jira/contracts/jira-rest.md" ] && return 0
       return 1 ;;
+    test_jira-mutation.sh)
+      # Suite de MUTATION TESTS (defesa em profundidade, cstk-jira FASE 8
+      # tarefa 8.4): quebra de proposito guardas de seguranca em COPIAS
+      # mutadas de jira-io.sh + os 2 hooks (nunca o script real em disco) e
+      # prova que os testes reais correspondentes (3.1.6/8.3.4, 3.1.7/4.4.3,
+      # 5.2.5, 5.1.8/5.2.6, 3.3.4/3.3.5) detectam a regressao — nao um unico
+      # script "dono" sob a convencao de FASE 9.3. Existence-guarded a
+      # jira-io.sh (o alvo principal). Se a fonte sumir, volta a ser orfao
+      # real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/scripts/jira-io.sh" ] && return 0
+      return 1 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.

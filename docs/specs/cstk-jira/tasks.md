@@ -870,16 +870,32 @@ Ref: plan.md Test Strategy "Falha"; checklists/api.md CHK009.
 
 Ref: plan.md Test Strategy "Mutation"; pratica ja adotada no repo.
 
-- [ ] 8.4.1 Quebrar de proposito a checagem de host unico (3.1.3) e
-      confirmar que 3.1.6/8.3.4 pegam a regressao
-- [ ] 8.4.2 Quebrar de proposito a ausencia de `DELETE` em `jira-io.sh`
-      (remover a validacao) e confirmar que 3.1.7/4.4.3 pegam a regressao
-- [ ] 8.4.3 Quebrar de proposito o hook `pretooluse-jira-deny-destructive.sh`
-      (matcher errado) e confirmar que 5.2.5 pega a regressao
-- [ ] 8.4.4 Quebrar de proposito o no-op de inatividade dos hooks (5.1.2/
-      5.2.3) e confirmar que 5.1.8/5.2.6 pegam a regressao
-- [ ] 8.4.5 Quebrar de proposito o `umask`/`trap` de credencial (3.3.1/
-      3.3.2) e confirmar que 3.3.4/3.3.5 pegam a regressao
+- [x] 8.4.1 Quebrar de proposito a checagem de host unico (3.1.3) e
+      confirmar que 3.1.6/8.3.4 pegam a regressao. Implementado em
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_8_4_1_sec5_redirect_guard`.
+      Achado empirico documentado no cabecalho do arquivo: a asserção
+      ESTATICA de auto-consistencia de host (3.1.3) e defesa-em-profundidade
+      inerte sob qualquer entrada possivel hoje (a URL e sempre montada a
+      partir do proprio `site_host`); a mutacao automatizada mira a guarda
+      FUNCIONAL que 3.1.6/8.3.4 de fato exercitam — a classificacao `3xx`
+      (SEC-5) — e confirma que neutraliza-la faz o teste divergir (302
+      tratado como sucesso, exit 0 em vez de 1)
+- [x] 8.4.2 Quebrar de proposito a ausencia de `DELETE` em `jira-io.sh`
+      (remover a validacao) e confirmar que 3.1.7/4.4.3 pegam a regressao.
+      Implementado em
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_8_4_2_delete_allowlist`
+- [x] 8.4.3 Quebrar de proposito o hook `pretooluse-jira-deny-destructive.sh`
+      (matcher errado) e confirmar que 5.2.5 pega a regressao. Implementado
+      em `tests/cstk/test_jira-mutation.sh::scenario_mutation_8_4_3_pretooluse_matcher`
+- [x] 8.4.4 Quebrar de proposito o no-op de inatividade dos hooks (5.1.2/
+      5.2.3) e confirmar que 5.1.8/5.2.6 pegam a regressao. Implementado em
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_8_4_4_hooks_inatividade_noop`
+      (cobre os 2 hooks numa unica tarefa, cada um com mutacao propria)
+- [x] 8.4.5 Quebrar de proposito o `umask`/`trap` de credencial (3.3.1/
+      3.3.2) e confirmar que 3.3.4/3.3.5 pegam a regressao. Implementado em
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_8_4_5_umask_trap_credencial`
+      (2 mutacoes independentes: `umask 077` removida e `trap ... EXIT`
+      removido)
 
 ---
 
