@@ -1283,3 +1283,270 @@ presentes (incluir `status` e `written_status` na comparacao).
 - [x] 11.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / data-model SyncMarker deteccao de conflito / task 10.2.1`: `_js_maybe_update_mapped_issue` le `summary,status` e trata `status_atual != written_status` como `manual_edit` (sem escrever), com teste em `tests/cstk/test_jira-sync.sh`
 
 <!-- converge-key: ebe0be4d2d21 -->
+
+## FASE 12 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 12.1 `resolve overwrite`/`keep_jira` nao destravam o conflito: o drain re-detecta contra o mesmo SyncMarker `[C]`
+
+Ref: FR-011 / task 4.3.2 / task 4.3.4 resolve (US3, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+tasks.md 4.3.4 exige que os 3 `--choice` produzam "mantem estado do Jira /
+sobrescreve / apenas fecha o registro"; `skills/jira-sync/SKILL.md`:106-107
+promete que `overwrite` "reenfileira o `desired_state` local para
+sobrescrever o Jira no proximo drain". Em
+`plugins/cstk-jira/scripts/jira-sync.sh`, `_js_cmd_resolve` (linhas
+1590-1595) so reenfileira um evento novo, sem tocar o SyncMarker; o proximo
+`drain` (`_js_process_one_event`, linhas 1248-1267) repete a MESMA
+comparacao contra o marker inalterado (a edicao manual continua no Jira) e
+grava um ConflictRecord NOVO (o anterior ja fechado nao casa
+`_js_conflict_pending_exists`) — `overwrite` nunca sobrescreve. Idem
+`keep_jira`: o marker nao e rebaselinado para o estado atual do Jira, entao
+todo evento/reconciliacao posterior daquele item re-abre o conflito (a cada
+`close_wave`, via `_js_process_reconcile_event`). Alem disso,
+`_js_last_conflict_desired_state` (linhas 357-368) so acha `desired_state`
+em evento outbox `conflict` com o MESMO `local_key` — conflitos gerados pela
+reconciliacao `local_key=*` ou por `convert` (`_js_maybe_update_mapped_issue`)
+nao tem essa linha, e `resolve --choice overwrite` sai exit 1 para eles.
+Mensagens que prometem destravamento inexistente: linha 647 ("resolve
+--choice keep_jira destrava") e linha 698 ("ate a proxima convert" — convert
+nao regrava marker ausente de item ja mapeado). Corrigir exige mudar a
+logica de `resolve`/deteccao ja presente (ex.: `keep_jira` regrava o
+SyncMarker com o summary-sha/status ATUAIS lidos via R3; `overwrite`
+regrava o marker antes de reenfileirar, ou o evento carrega marca de
+override aceita pelo drain), com fonte de `desired_state` para conflitos de
+reconciliacao/convert — sem inventar campo REST (so R3/R6 de
+`contracts/jira-rest.md`).
+
+- [ ] 12.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / task 4.3.2 / task 4.3.4 resolve`: `resolve --choice keep_jira` e `--choice overwrite` passam a ter efeito duravel (drain seguinte nao re-abre o mesmo conflito; overwrite de fato transiciona), `overwrite` funciona para conflitos vindos de reconcile/convert, mensagens das linhas 647/698 corrigidas, com teste end-to-end resolve -> drain em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: bd4a7d7b55f4 -->
+
+### 12.2 Evento `deferred` nunca volta a ser processado pelo drain `[C]`
+
+Ref: data-model OutboxEvent deferred->queued / task 3.4.4 (US3, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+data-model.md:208-209 fixa `queued --> deferred: 429 / rede / timeout
+(respeita Retry-After)` e `deferred --> queued: proximo gatilho de drain`;
+contracts/plugin-scripts.md (tabela de status HTTP, linha 429) diz que
+"quem decide quando reenviar e o chamador". Em
+`plugins/cstk-jira/scripts/jira-sync.sh`, `_js_cmd_drain` (linhas
+1422-1423) seleciona SO `$8 == "queued"`; nenhum codigo do plugin move
+`deferred` de volta a `queued`, e o `retry_after` emitido por `jira-io.sh`
+em stderr e descartado (`2>/dev/null` nas chamadas R3/R5/R4). Efeito: um
+unico 429/5xx/timeout deixa o card permanentemente desatualizado (US3
+cenarios 2-3 nao se cumprem "ate o fim da mesma onda"). Corrigir exige
+mudar o filtro de selecao do drain (incluir `deferred` elegivel, respeitando
+o `retry_after` registrado quando houver) — decidir onde persistir o
+`retry_after` sem inventar coluna fora do data-model (ou atualizar o
+data-model junto).
+
+- [ ] 12.2.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model OutboxEvent deferred->queued / task 3.4.4`: `drain` reprocessa eventos `deferred` (respeitando Retry-After), com teste em `tests/cstk/test_jira-sync.sh` (429 -> deferred -> drain seguinte transiciona)
+
+<!-- converge-key: 600a43fbdf2a -->
+
+### 12.3 Drain sem `jq`/cliente HTTP nao sai exit 5 e degrada eventos para `deferred` `[C]`
+
+Ref: contracts/plugin-scripts.md exit 5 carve-out 1.1.0 (a) (US3, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+contracts/plugin-scripts.md:97-99 fixa que, sem `jq`/cliente HTTP, "o que
+degrada e o sync AUTONOMO, que sai com exit 5 + diagnostico e mantem os
+eventos no outbox para o proximo `jira-sync` interativo"; o proprio help de
+`plugins/cstk-jira/scripts/jira-sync.sh` (linhas 202-205) declara "5
+dependencia ausente (convert; drain com eventos queued exige jq/cliente
+HTTP/sha256sum-shasum)" e `jira-io.sh`:10 diz que o drain trata esse
+fallback. O `_js_cmd_drain` nunca roda `jira-io.sh deps-check`: o exit 5 de
+`jira-io.sh request` cai no ramo generico e o evento vira `deferred`
+(`_js_process_one_event`, linha 1216) e o drain termina `exit 0` (linha
+1460) — combinado com 12.2, o evento fica encalhado. Corrigir exige mudar o
+fluxo do drain: `deps-check` antes do 1o evento `queued`, saindo exit 5 com
+os eventos intocados em `queued`.
+
+- [ ] 12.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `contracts/plugin-scripts.md exit 5 carve-out 1.1.0 (a)`: `drain` com eventos `queued` e dependencia ausente sai exit 5 com diagnostico e SEM mudar o status dos eventos, com teste em `tests/cstk/test_jira-sync.sh` (PATH sem `jq`)
+
+<!-- converge-key: 5cc05d2d87e6 -->
+
+### 12.4 Outcome de `record_task` nao tem precedencia na reconciliacao: nenhum `--outcomes-file` e produzido `[C]`
+
+Ref: data-model LocalWorkItem outcome precedence / US3 cenarios 2-3 (US3, P1) · tipo: `partial` · severidade: `HIGH`
+
+data-model.md:114 fixa que, para `kind=task`, o "outcome registrado da task
+(`record_task`/`record-task`: `pass`/`fail`) tem precedencia" sobre os
+checkboxes; contracts/plugin-scripts.md:68 delega a gravacao desse arquivo a
+"`jira-sync.sh`/hooks". Nenhum script do plugin grava um outcomes-file nem
+passa `--outcomes-file` a `jira-tasks.sh items` (unicas referencias sao em
+`plugins/cstk-jira/scripts/jira-tasks.sh`; chamadas em
+`plugins/cstk-jira/scripts/jira-sync.sh` linhas 423, 735 e 975 sem a flag;
+`hooks/posttooluse-jira-sync.sh` so enfileira). Efeito: o evento direto de
+`record_task` leva o card a `pass`/`fail`, mas a reconciliacao `local_key=*`
+do `close_wave` seguinte deriva o estado SO dos checkboxes e — sem conflito,
+porque o marker foi gravado pelo proprio plugin — pode mover o card de volta
+(ex.: `fail` registrado com subtasks `[x]`, ou `pass` com subtask `[ ]`
+remanescente). Completar e aditivo: persistir `task_id<TAB>outcome` no
+runtime quando o evento de `record_task` e enfileirado/processado e passar
+`--outcomes-file` na expansao da reconciliacao.
+
+- [ ] 12.4.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model LocalWorkItem outcome precedence / US3 cenarios 2-3`: outcome de `record_task` persistido e usado via `--outcomes-file` em `_js_process_reconcile_event`, com teste em `tests/cstk/test_jira-sync.sh` (record_task fail + checkboxes `[x]` -> reconcile NAO move para pass)
+
+<!-- converge-key: 41370f6418f8 -->
+
+### 12.5 Descricao (criticidade/dependencias) de item ja mapeado nunca e atualizada sozinha `[C]`
+
+Ref: FR-003 / task 10.2.1 description drift (US1, P1) · tipo: `partial` · severidade: `HIGH`
+
+FR-003 exige atualizar a issue "quando o artefato local correspondente
+mudar"; contracts/plugin-scripts.md:85 e `skills/jira-convert/SKILL.md`
+(ETAPA 2b passo 8) documentam que a checagem cobre "summary/description
+compostos AGORA". Em `plugins/cstk-jira/scripts/jira-sync.sh`,
+`_js_maybe_update_mapped_issue` (linha 567) retorna cedo quando o summary
+nao mudou — uma mudanca so de criticidade (`[C|A|M]`) ou da Matriz de
+Dependencias nunca chega a `fields.description`. O SyncMarker so guarda
+`written_summary_sha256`, entao atualizar descricao sem protecao FR-011
+arriscaria sobrescrever edicao manual. Completar e aditivo: estender a
+deteccao para a descricao (ex.: hash da descricao escrita no SyncMarker,
+atualizando data-model.md) OU, se a leitura de `description` via R3 nao
+tiver fonte em `contracts/jira-rest.md` (Principio VI), restringir
+explicitamente a documentacao (contrato + SKILL.md) a "summary-only".
+
+- [ ] 12.5.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-003 / task 10.2.1 description drift`: mudanca so de criticidade/dependencias propaga para a descricao da Task respeitando FR-011 (ou escopo summary-only documentado com fonte), com teste em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: 3fb17fd6f483 -->
+
+### 12.6 Reconfiguracao nao devolve eventos `auth_failed` a fila: sync fica bloqueado para sempre `[A]`
+
+Ref: FR-016 / data-model OutboxEvent auth_failed->queued (US4, P2) · tipo: `partial` · severidade: `MEDIUM`
+
+data-model.md:212 fixa `auth_failed --> queued: operador reconfigura
+(jira-setup)`. `plugins/cstk-jira/scripts/jira-setup.sh` (so
+`check-status-mapping`/`write-config`) e `skills/jira-setup/SKILL.md` nunca
+tocam o outbox; o gate de `_js_cmd_drain` (`jira-sync.sh` linhas 1414-1420)
+continua vendo o `auth_failed` e bloqueia a feature mesmo apos credencial
+valida reconfigurada. Completar e aditivo: apos o setup validar a credencial
+(`GET /rest/api/3/myself`), reenfileirar (`auth_failed` -> `queued`) os
+eventos, via subcomando novo no motor ou passo do setup.
+
+- [ ] 12.6.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-setup.sh` conforme `FR-016 / data-model OutboxEvent auth_failed->queued`: reconfiguracao bem-sucedida devolve eventos `auth_failed` a `queued`, com teste
+
+<!-- converge-key: dfa8fab2ef16 -->
+
+### 12.7 Hook descarta todo diagnostico do drain: `auth_failed`/conflitos nunca sao sinalizados na execucao autonoma `[A]`
+
+Ref: FR-016 / data-model ConflictRecord resumo do hook · tipo: `partial` · severidade: `MEDIUM`
+
+FR-016 exige "solicitar reconfiguracao de forma explicita"; data-model.md
+(Entity ConflictRecord) diz que o registro e consumido tambem "pelo resumo
+emitido pelo hook no fechamento de onda". Em
+`plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` (linhas 188-193) enqueue e
+drain rodam com `>/dev/null 2>&1`; nenhum resumo e produzido no
+`close_wave` e `runtime/hook.log` so recebe a linha de no-op por
+candidatos. Na execucao autonoma o operador so descobre credencial expirada
+ou conflito rodando `jira-sync.sh status` manualmente. Completar e aditivo,
+sem quebrar o fail-open (exit 0 sempre): anexar stderr do drain e um resumo
+(conflitos pendentes/`auth_failed`) em `runtime/hook.log` e/ou emitir o
+resumo no fechamento de onda.
+
+- [ ] 12.7.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `FR-016 / data-model ConflictRecord resumo do hook`: diagnostico do drain + resumo de conflitos/`auth_failed` persistidos/emitidos no fechamento de onda, mantendo fail-open, com teste
+
+<!-- converge-key: c935b453652f -->
+
+### 12.8 `stage_status.<stage>` nunca e aplicado ao Epic `[A]`
+
+Ref: data-model ProjectConfig stage_status / US2 cenario 1 (US2, P2) · tipo: `partial` · severidade: `MEDIUM`
+
+data-model.md:61 e :115 fixam que o `local_state` do Epic segue
+`stage_status.<stage>` da etapa corrente quando configurado (US2 cenario 1:
+Epics na coluna do estagio atual). Nenhuma chamada a `jira-tasks.sh items`
+em `plugins/cstk-jira/scripts/jira-sync.sh` passa `--stage` (linha 975, na
+reconciliacao); e mesmo que passasse, `jira-tasks.sh` (linha ~299) poe o
+VALOR do override (nome de status Jira) em `local_state`, que
+`_js_process_reconcile_event` descarta no `*) continue` (linhas 1013-1014).
+Completar e aditivo: obter a etapa corrente (fonte real, ex.: o state da
+execucao ativa lido READ-ONLY, sem inventar) e tratar o override como status
+alvo direto na reconciliacao.
+
+- [ ] 12.8.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model ProjectConfig stage_status / US2 cenario 1`: reconciliacao aplica `stage_status.<stage>` ao Epic quando configurado, com teste em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: 39dbe81777b3 -->
+
+### 12.9 Credencial nao e vinculada ao `site_host`: editar o config versionado desvia o token `[A]`
+
+Ref: FR-015 / plan.md credencial resolvida por site_host · tipo: `partial` · severidade: `MEDIUM`
+
+plan.md:237-238 declara como controle confirmado "credencial resolvida POR
+`site_host` (alterar o host no config versionado nao desvia o token para
+outro host)"; data-model.md (Entity Credential) define `site_host` como
+chave de lookup, e `skills/jira-setup/scripts/jira-credential-setup.sh`
+(linha 87) grava `site_host=` no arquivo. `plugins/cstk-jira/scripts/jira-io.sh`
+(`_ji_cred_read`, linhas 376-395; `request`, linhas 657-664) le so
+`email`/`api_token` e nunca compara o `site_host` da credencial com o de
+ProjectConfig (linhas 623-627): trocar `site_host` no config versionado
+envia o token para o novo host. Completar e aditivo: exigir igualdade exata
+entre os dois antes de montar o header de autenticacao (senao exit 4 sem
+requisicao).
+
+- [ ] 12.9.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-io.sh` conforme `FR-015 / plan.md credencial resolvida por site_host`: `request` recusa (exit 4, sem requisicao) quando `site_host` da credencial difere do ProjectConfig, com teste em `tests/cstk/test_jira-io.sh`
+
+<!-- converge-key: 731aea8ed951 -->
+
+### 12.10 `relink` nao cobre renumeracao nem fecha o ConflictRecord `orphan` como `relinked` `[A]`
+
+Ref: FR-012 / data-model SyncMapping orphan->active relinked · tipo: `partial` · severidade: `MEDIUM`
+
+`skills/jira-sync/SKILL.md` (ETAPA 3) promete religar o card orfao "a um
+`local_key` novo/existente" (spec.md edge case de tarefa renumerada);
+data-model.md lista `resolution=relinked` no ConflictRecord e
+`orphan --> active: operador religa`. Em
+`plugins/cstk-jira/scripts/jira-map.sh` (`_jm_cmd_relink`, linhas 278-317) so
+reativa o MESMO `local_key` orfao (que, se sumiu de `tasks.md`, e remarcado
+`orphan` pelo proximo `mark-orphans`) — renumeracao 2.3->2.4 gera card
+duplicado no proximo `convert`; e nada fecha o ConflictRecord `orphan`
+pendente como `relinked` (nenhum codigo produz esse valor), o que tambem
+suprime conflitos futuros do par via `_js_conflict_pending_exists`
+(ignora `reason`). Completar e aditivo: relink para `local_key` novo
+(mover a linha do mapeamento) e fechamento `relinked` do registro pendente.
+
+- [ ] 12.10.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-map.sh` conforme `FR-012 / data-model SyncMapping orphan->active relinked`: relink para `local_key` novo (renumeracao) + fechamento do ConflictRecord `orphan` como `relinked`, com teste em `tests/cstk/test_jira-map.sh`
+
+<!-- converge-key: 9f3c0e52b0de -->
+
+### 12.11 Contrato `plugin-scripts.md` desatualizado frente ao codigo `[A]`
+
+Ref: contracts/plugin-scripts.md completeness / tasks 11.1.1 11.3.1 · tipo: `partial` · severidade: `MEDIUM`
+
+`docs/specs/cstk-jira/contracts/plugin-scripts.md` (linha 85, linha
+`convert`) ainda descreve a checagem de conflito do update como so
+`sha256(summary atual) == written_summary_sha256` (11.3.1 passou a comparar
+status tambem) e nao menciona o SyncMarker inicial gravado apos R1
+(11.1.1). A tabela de `jira-io.sh` (linhas 28-37) omite `json-build
+marker|transition|board` e `sha256-stdin` (`jira-io.sh` linhas 297-331), e
+nao ha secao para `jira-title.sh compose`, `jira-conflict-view.sh` e
+`jira-setup.sh check-status-mapping|write-config`. Completar e aditivo
+(documentacao, sem mudar codigo).
+
+- [ ] 12.11.1 Implementar/corrigir `docs/specs/cstk-jira/contracts/plugin-scripts.md` conforme `contracts/plugin-scripts.md completeness / tasks 11.1.1 11.3.1`: documentar os subcomandos ausentes e atualizar a linha `convert` (marker inicial + comparacao de status)
+
+<!-- converge-key: 25f9d2e1ff46 -->
+
+### 12.12 `jira-setup` nao exibe o lembrete de validade do API token `[A]`
+
+Ref: plan.md risco 5 / FR-019-INFRA-REFRESH lembrete de validade (US4, P2) · tipo: `partial` · severidade: `MEDIUM`
+
+plan.md:187 (ponto 5, FR-019-INFRA-REFRESH) fixa que "`jira-setup` exibe a
+data de validade informada pelo operador como lembrete". Nem
+`plugins/cstk-jira/skills/jira-setup/SKILL.md` nem
+`skills/jira-setup/scripts/jira-credential-setup.sh` coletam ou exibem essa
+data (nenhuma ocorrencia de "validade"/"expira"). Completar e aditivo: passo
+que coleta a data informada pelo operador (nunca inventada) e a exibe como
+lembrete, sem gravar segredo.
+
+- [ ] 12.12.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-setup/SKILL.md` conforme `plan.md risco 5 / FR-019-INFRA-REFRESH lembrete de validade`: coletar/exibir a data de validade do API token informada pelo operador
+
+<!-- converge-key: 56ce1b369eea -->
