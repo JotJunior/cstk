@@ -37,6 +37,8 @@ erDiagram
 | SyncMarker | entity property da issue no Jira | n/a (remoto) | NAO (so hashes) |
 | OutboxEvent | `<projeto>/.claude/cstk-jira/runtime/outbox.tsv` | NAO (`runtime/.gitignore` = `*`) | NAO |
 | ConflictRecord | `<projeto>/.claude/cstk-jira/runtime/conflicts.tsv` | NAO | NAO |
+| task-outcomes sidecar | `<projeto>/.claude/cstk-jira/runtime/task-outcomes.tsv` | NAO | NAO |
+| hook.log | `<projeto>/.claude/cstk-jira/runtime/hook.log` | NAO | NAO |
 
 ## Entity: ProjectConfig
 
@@ -73,11 +75,12 @@ qualquer outra checagem.
 
 Credencial de API token do Atlassian account (research Decision 2).
 
-| Campo | Tipo | Descricao |
-|-------|------|-----------|
-| `site_host` | string | chave de lookup (mesmo valor de ProjectConfig) |
-| `email` | string | email do Atlassian account |
-| `api_token` | string | API token (expira em ate 1 ano — research Decision 2) |
+| Campo | Tipo | Obrigatorio | Descricao |
+|-------|------|-------------|-----------|
+| `site_host` | string | sim | chave de lookup (mesmo valor de ProjectConfig) |
+| `email` | string | sim | email do Atlassian account |
+| `api_token` | string | sim | API token (expira em ate 1 ano — research Decision 2) |
+| `token_expires_at` | string | nao | data de validade do token, TEXTO LIVRE (ex.: `2027-03-15`) informado pelo proprio operador no setup (`jira-setup` skill, `jira-credential-setup.sh`) — FASE 12 tarefa 12.12.1 / FR-019-INFRA-REFRESH. NUNCA inferida/calculada: nao ha chamada do Jira que devolva a expiracao de um API token classico, entao a UNICA fonte possivel e o proprio operador digitando o que ele escolheu ao gerar o token. Se informada, o setup reexibe um lembrete na hora (`LEMBRETE: ... expira em <data> ...`); nenhum outro script LE este campo de volta (so lembrete no momento da escrita). NAO e segredo, mas so vive aqui (Credential) — nunca em ProjectConfig |
 
 **Regras de seguranca (MUST)**
 
@@ -114,6 +117,33 @@ Projecao de `docs/specs/<feature>/tasks.md` no formato do template canonico
 | task | outcome registrado da task (`record_task`/`record-task`: `pass`/`fail`) tem precedencia; sem outcome: qualquer subtask `[!]`->`fail`; todas `[x]`->`pass`; alguma `[~]` ou mistura `[x]`+`[ ]`->`in_progress`; senao `pending` |
 | epic | `stage_status.<stage>` da etapa corrente quando configurado; senao: todas as tasks `pass`->`pass`; alguma task `in_progress`/`pass`->`in_progress`; senao `pending` |
 
+**Sidecar `runtime/task-outcomes.tsv` (FASE 12 tarefa 12.4.1)**: fonte do
+outcome que tem precedencia sobre os checkboxes na regra `task` acima.
+3 colunas SEM cabecalho semantico na leitura (`feature\ttask_id\toutcome`,
+upsert por `(feature, task_id)`, gravacao atomica tmp+`mv`). Gravado
+SOMENTE quando o hook `posttooluse-jira-sync.sh` enfileira com
+`--source hook-record-task` (task 13.3.1 — `enqueue --source manual` ou
+qualquer outra origem NUNCA grava aqui, para nao passar a valer como se
+fosse outcome real de `record_task`). `jira-tasks.sh items
+--outcomes-file` consome um recorte ja filtrado por feature (arquivo
+temporario gerado por `_js_outcomes_file_for_feature`, descartado apos o
+uso) e da a esse outcome precedencia sobre os checkboxes do `tasks.md`.
+
+**Etapa corrente do Epic (`stage_status.<stage>`, FASE 12 tarefa 12.8.1)**:
+o `<stage>` usado para indexar `stage_status.<stage>` de ProjectConfig e
+lido READ-ONLY da execucao autonoma ATIVA da feature — nunca inventado
+nem inferido de heuristica. Ordem de fontes (a 1a que existir vence, nunca
+combinadas): `.claude/feature-00c-state/<feature>/state.json`
+(ou `state.db`) -> `.claude/agente-00c-state/state.json` (ou `state.db`).
+Sem nenhuma das duas, ou sem `current_stage` legivel: string vazia (a
+regra `epic` acima cai no ramo "senao", sem `stage_status.<stage>`).
+Leitura do campo `current_stage`: backend `state.json` via grep/sed puro;
+backend `state.db` delega ao `state-rw.sh` do runtime `agente-00c-runtime`
+(Constitution II carve-out 1.1.0 — este plugin NUNCA chama `sqlite3`
+diretamente, task 13.1.1) QUANDO localizavel (`CSTK_LIB` ou
+`~/.claude/skills/agente-00c-runtime/scripts`); sem o runtime localizavel,
+tambem string vazia (nunca falha, nunca inventa).
+
 Fase (`FASE N`) e dependencia (Matriz de Dependencias) nao viram hierarquia
 Jira extra (Jira tem 3 niveis: Epic > Task > Sub-task — research Decision 3,
 `hierarchyLevel`): a fase entra como prefixo do titulo (`[FASE N] N.M <titulo>`)
@@ -143,10 +173,21 @@ arquivo = feature convertida; ausencia = hook de sync ignora a feature.
   novo; criacao so para `local_key` ausente do arquivo. A linha e escrita
   IMEDIATAMENTE apos a resposta de criacao (write atomico: arquivo temporario
   + `mv`), antes de qualquer outra chamada.
-- Arquivo so muda quando uma issue e criada ou um item vira `orphan` — sync de
-  status NAO reescreve o mapeamento (sem ruido de diff por onda).
-- Renumeracao local = linha antiga vira `orphan` + item novo e criado; o card
-  antigo NUNCA e apagado (FR-012) e o orfao e reportado para decisao humana.
+- Arquivo so muda quando uma issue e criada, um item vira `orphan`, ou um
+  orphan e religado (`relink`) — sync de status NAO reescreve o mapeamento
+  (sem ruido de diff por onda).
+- Renumeracao local (`local_key` mudou, ex.: `2.3`->`2.4`, mas o card Jira
+  e o MESMO): a proxima sync marca a chave antiga `orphan` (FR-012, `mark-
+  orphans`); a decisao humana e `jira-map.sh relink --local-key <antiga>
+  --jira-key <KEY> --new-local-key <nova>` (FASE 12 tarefa 12.10.1), que
+  MOVE a linha (mesmo `jira_id`/`jira_key`) para a chave nova com
+  `state=active` — NUNCA cria uma issue nova nem duplica a linha. Recusa
+  (exit 1) se a chave nova ja existir no mapeamento em qualquer estado
+  (mesma disciplina de `put`). Sem `--new-local-key`, `relink` reativa a
+  MESMA chave antiga no lugar (caso o item so tenha "voltado" ao
+  tasks.md). Em ambos os casos a linha original NUNCA e apagada (FR-012) e
+  o `ConflictRecord` `reason=orphan` PENDENTE do par e fechado como
+  `resolution=relinked` (ver Entity ConflictRecord).
 
 **State transitions**
 
@@ -192,6 +233,20 @@ descricao contra sobrescrita, nao so o titulo). Marker sem essa chave
 (anterior a FASE 12 tarefa 12.5.1, ou item que nunca teve descricao) => sem
 baseline, sem checagem de conflito de descricao ate a proxima atualizacao
 bem-sucedida estabelecer o hash.
+
+**Rebaseline por `jira-sync resolve` (FASE 12 tarefa 12.1.1)**: `keep_jira`
+e `overwrite` SEMPRE rebaselineiam o marker para o titulo+status ATUAIS da
+issue (R3 GET summary/status/description + R6 PUT) ANTES de fechar o
+ConflictRecord — sem isto, a proxima deteccao de conflito comparava contra
+o marker ANTIGO e reabria o MESMO conflito. `keep_jira` so rebaselineia
+(nenhuma escrita de conteudo: "aceitar o Jira como esta"); `overwrite`
+rebaselineia e, alem disso, reenfileira um NOVO OutboxEvent com o
+`desired_state` a aplicar no proximo drain (ver Entity OutboxEvent). Se o
+item carrega descricao composta, o rebaseline tambem grava
+`written_description_sha256` com o hash da descricao ATUAL (mesmo
+mecanismo de 12.5.1) — nunca deixa a chave desatualizada apos um
+`resolve`. `ignored` NUNCA rebaselineia (so fecha o registro, nenhuma
+escrita na issue).
 
 ## Entity: OutboxEvent (fila local de sync)
 
@@ -249,8 +304,32 @@ sem Retry-After). Qualquer transicao de status limpa a linha do sidecar.
 | `reason` | enum | `manual_edit`/`marker_missing`/`orphan`/`auth_failed` |
 | `resolution` | enum | `pending`/`keep_jira`/`overwrite`/`relinked`/`ignored` |
 
-Consumido pela skill `jira-sync` (modo `status`) e pelo resumo emitido pelo
-hook no fechamento de onda. Resolucao e SEMPRE decisao humana.
+Consumido pela skill `jira-sync` (modo `status`, linha grep-avel `pending=N`
+— FASE 13 tarefa 13.4.1) e pelo resumo pos-drain emitido pelo hook
+`posttooluse-jira-sync.sh` em `runtime/hook.log` (ver sidecar `hook.log`
+abaixo). Resolucao e SEMPRE decisao humana (`jira-sync resolve`, exceto
+`relinked`, fechado por `jira-map relink` — ver Entity SyncMapping).
+`jira-sync resolve` (QUALQUER `--choice`) tambem fecha (`status=done`) todo
+evento outbox `status=conflict` do mesmo par `(feature, local_key)` — FASE
+13 tarefa 13.3.1: sem isso, um evento outbox `conflict` ficava vivo para
+sempre (nenhuma compactacao remove `conflict`, so `done`) e podia mascarar
+um 2o conflito no MESMO par com o `desired_state` do conflito ANTERIOR ja
+resolvido.
+
+**Sidecar `runtime/hook.log`**: diagnostico de texto livre, append-only,
+best-effort (fail-open — falha ao criar/escrever nunca aborta o hook),
+escrito SOMENTE pelo hook `posttooluse-jira-sync.sh`. 3 usos: (1) stderr
+do `drain` quando nao-vazio (gate `auth_failed`/FR-016, ProjectConfig
+invalido, conflito detectado — FASE 12 tarefa 12.7.1, antes descartado via
+`>/dev/null 2>&1`); (2) resumo pos-drain `queued=N deferred=N conflict=N
+auth_failed=N`, OMITIDO quando saudavel (`deferred=0 conflict=0
+auth_failed=0`, sem ruido no caminho feliz) — o `conflict=N` vem do
+`pending=N` de `jira-sync status` (ConflictRecords pendentes), NUNCA da
+contagem de eventos outbox `conflict=` (FASE 13 tarefa 13.4.1); (3)
+diagnostico de candidatos ambiguos (`candidatos=N`, `N != 1`) quando a
+execucao ativa nao pode ser resolvida (0 ou >=2 `.lock` simultaneos). Nunca
+ecoa texto lido do Jira (titulo/descricao) — so enums/contagens/timestamps
+ja gravados localmente. NAO versionado (`runtime/.gitignore` = `*`).
 
 ## Entity: JiraIssueRef (referencia externa)
 

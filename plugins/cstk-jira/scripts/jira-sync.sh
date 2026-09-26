@@ -2097,17 +2097,27 @@ _js_cmd_status() {
   printf '\n-- Conflitos pendentes (runtime/conflicts.tsv) --\n'
   if [ -f "$_JS_CONFLICTS_FILE" ]; then
     _jss_pending=$(awk -F '\t' -v f="$_jss_feature" 'NR>1 && (f=="" || $2==f) && $6=="pending" { c++ } END { print c+0 }' "$_JS_CONFLICTS_FILE")
-    if [ "$_jss_pending" != "0" ]; then
-      printf 'feature\tlocal_key\tjira_key\treason\tdetected_at\n'
-      awk -F '\t' -v f="$_jss_feature" \
-        'NR>1 && (f=="" || $2==f) && $6=="pending" { print $2 "\t" $3 "\t" $4 "\t" $5 "\t" $1 }' \
-        "$_JS_CONFLICTS_FILE"
-      printf '(resolver com: jira-sync.sh resolve --feature F --local-key K --choice keep_jira|overwrite|ignored)\n'
-    else
-      printf '(nenhum conflito pendente)\n'
-    fi
   else
-    printf '(nenhum — conflicts.tsv nao existe)\n'
+    _jss_pending=0
+  fi
+  # task 13.4.1 (FR-016 / data-model ConflictRecord "resumo emitido pelo
+  # hook"): linha grep-avel `pending=N`, contando ConflictRecords PENDENTES
+  # (resolution=pending) do proprio conflicts.tsv — inclui os originados em
+  # reconcile/convert (que nunca geram evento outbox `conflict`) e exclui
+  # os ja resolvidos (resolution vira keep_jira/overwrite/ignored em
+  # `_js_close_conflict`, chamado por QUALQUER `--choice` de `resolve`).
+  # E a fonte que o hook `posttooluse-jira-sync.sh` consome para o resumo
+  # pos-drain, em vez da contagem `conflict=` do outbox (que so via eventos
+  # e nunca "esquecia" um conflito ja fechado por causa de 13.3.1).
+  printf 'pending=%s\n' "$_jss_pending"
+  if [ "$_jss_pending" != "0" ]; then
+    printf 'feature\tlocal_key\tjira_key\treason\tdetected_at\n'
+    awk -F '\t' -v f="$_jss_feature" \
+      'NR>1 && (f=="" || $2==f) && $6=="pending" { print $2 "\t" $3 "\t" $4 "\t" $5 "\t" $1 }' \
+      "$_JS_CONFLICTS_FILE"
+    printf '(resolver com: jira-sync.sh resolve --feature F --local-key K --choice keep_jira|overwrite|ignored)\n'
+  else
+    printf '(nenhum conflito pendente)\n'
   fi
 
   printf '\n-- Cards orfaos (jira-map.tsv state=orphan) --\n'

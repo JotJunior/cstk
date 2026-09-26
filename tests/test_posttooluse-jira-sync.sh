@@ -53,6 +53,13 @@
 #   HS-15 resumo pos-drain OMITIDO quando outbox esta saudavel
 #         (deferred=0 conflict=0 auth_failed=0) — sem ruido no caminho
 #         feliz
+#   HS-16 resumo pos-drain (task 13.4.1): ConflictRecord PENDENTE
+#         originado em reconcile/convert (sem evento outbox `conflict`
+#         correspondente) APARECE no resumo (conflict=1) — antes desta
+#         tarefa a contagem vinha so do outbox e nunca via esse conflito
+#   HS-17 resumo pos-drain (task 13.4.1): ConflictRecord JA RESOLVIDO
+#         (resolution != pending) NAO aparece — mesmo com um evento outbox
+#         `conflict` remanescente, o resumo nao acusa conflito pendente
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -94,6 +101,10 @@ _outbox() {
 
 _hooklog() {
   printf '%s\n' "$1/.claude/cstk-jira/runtime/hook.log"
+}
+
+_conflicts_file() {
+  printf '%s\n' "$1/.claude/cstk-jira/runtime/conflicts.tsv"
 }
 
 _json_task() {
@@ -299,6 +310,50 @@ scenario_resumo_pos_drain_omitido_quando_saudavel() {
   # aparecer (evita ruido no caminho feliz).
   grep -q 'resumo pos-drain' "$(_hooklog "$TMPDIR_TEST")" \
     && { _fail "resumo_noise" "resumo pos-drain apareceu com outbox saudavel: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# HS-16 (task 13.4.1): ConflictRecord pendente originado em reconcile/
+# convert nunca gera evento outbox `conflict` correspondente — o resumo
+# precisa contar `runtime/conflicts.tsv` diretamente (via `pending=` de
+# `jira-sync.sh status`), nao a contagem `conflict=` do outbox.
+scenario_resumo_conflito_reconcile_pendente_aparece() {
+  _config_on "$TMPDIR_TEST"
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$(_conflicts_file "$TMPDIR_TEST")" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	9.1	DEMO-9	manual_edit	pending
+EOF
+  _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  grep -q 'resumo pos-drain (demo):.*conflict=1' "$(_hooklog "$TMPDIR_TEST")" \
+    || { _fail "resumo_reconcile_conflict_missing" "conflito de reconcile pendente nao apareceu no resumo: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# HS-17 (task 13.4.1): ConflictRecord ja fechado (`resolve`, qualquer
+# --choice) nao pode reaparecer no resumo so porque um evento outbox
+# `conflict` remanescente ainda existe (cenario que a contagem antiga, por
+# evento outbox, acusaria para sempre).
+scenario_resumo_conflito_resolvido_nao_aparece() {
+  _config_on "$TMPDIR_TEST"
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$(_outbox "$TMPDIR_TEST")" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file "$TMPDIR_TEST")" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	keep_jira
+EOF
+  _J=$(_json_task "$TMPDIR_TEST" 5.2 fail)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  grep -q 'resumo pos-drain' "$(_hooklog "$TMPDIR_TEST")" \
+    && { _fail "resumo_resolved_conflict_noise" "conflito ja resolvido ainda apareceu no resumo: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
   return 0
 }
 

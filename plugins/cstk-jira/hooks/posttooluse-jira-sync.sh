@@ -211,14 +211,31 @@ if [ -n "$_PJS_DRAIN_DIAG" ]; then
   _pjs_log "drain: $(printf '%s' "$_PJS_DRAIN_DIAG" | tr '\n' ' ' | cut -c1-500)"
 fi
 
-_PJS_STATUS_LINE=$(
+# task 13.4.1 (FR-016 / data-model ConflictRecord "resumo emitido pelo
+# hook no fechamento de onda"): a contagem de conflito do resumo NUNCA vem
+# mais do outbox (`conflict=` da linha `queued=...` — eventos, so cobre
+# conflitos originados de drain direto e, antes de 13.3.1, nunca esquecia
+# um ja resolvido) — vem do `pending=N` de ConflictRecords PENDENTES
+# (runtime/conflicts.tsv), que `jira-sync.sh status` ja expoe e cobre TODA
+# origem (drain, reconcile via close_wave, convert) e nunca acusa um
+# conflito ja fechado por `resolve` (qualquer --choice).
+_PJS_STATUS_OUT=$(
   cd "$_PJS_CWD" 2>/dev/null || exit 0
-  sh "$_PJS_ENGINE" status --feature "$_PJS_FEATURE" 2>/dev/null | grep '^queued='
+  sh "$_PJS_ENGINE" status --feature "$_PJS_FEATURE" 2>/dev/null
 )
-case "$_PJS_STATUS_LINE" in
-  '' | *'deferred=0 conflict=0 auth_failed=0') : ;;
-  *) _pjs_log "resumo pos-drain ($_PJS_FEATURE): $_PJS_STATUS_LINE" ;;
-esac
+_PJS_OUTBOX_LINE=$(printf '%s\n' "$_PJS_STATUS_OUT" | grep '^queued=')
+_PJS_Q=$(printf '%s\n' "$_PJS_OUTBOX_LINE" | sed -n 's/^queued=\([0-9]*\).*/\1/p')
+_PJS_D=$(printf '%s\n' "$_PJS_OUTBOX_LINE" | sed -n 's/.*deferred=\([0-9]*\).*/\1/p')
+_PJS_A=$(printf '%s\n' "$_PJS_OUTBOX_LINE" | sed -n 's/.*auth_failed=\([0-9]*\).*/\1/p')
+[ -n "$_PJS_Q" ] || _PJS_Q=0
+[ -n "$_PJS_D" ] || _PJS_D=0
+[ -n "$_PJS_A" ] || _PJS_A=0
+_PJS_CONFLICT_PENDING=$(printf '%s\n' "$_PJS_STATUS_OUT" | sed -n 's/^pending=\([0-9]*\)$/\1/p')
+[ -n "$_PJS_CONFLICT_PENDING" ] || _PJS_CONFLICT_PENDING=0
+
+if [ "$_PJS_D" != "0" ] || [ "$_PJS_CONFLICT_PENDING" != "0" ] || [ "$_PJS_A" != "0" ]; then
+  _pjs_log "resumo pos-drain ($_PJS_FEATURE): queued=$_PJS_Q deferred=$_PJS_D conflict=$_PJS_CONFLICT_PENDING auth_failed=$_PJS_A"
+fi
 
 # ==== 6. Fail-open absoluto ====
 exit 0
