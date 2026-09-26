@@ -106,6 +106,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 SCRIPT="$REPO_ROOT/plugins/cstk-jira/scripts/jira-io.sh"
+CONFIG_SCRIPT="$REPO_ROOT/plugins/cstk-jira/scripts/jira-config.sh"
 
 # _write_site_host_config HOST — cria ProjectConfig minimo (so o suficiente
 # para `jira-config.sh get site_host`, que nao exige os demais campos
@@ -943,6 +944,48 @@ scenario_contrato_401_403_429_sem_colisao() {
 #         --name (texto livre) tambem nunca e interpolado em jql
 #   JI-63 json-build: MODE desconhecido -> exit 2
 #   JI-64 json-build: subcomando sem MODE -> exit 2
+#
+# JI-65..JI-70 (cstk-jira FASE 7 tarefa 7.1, onda-029): `json-build board`
+# (R10, contracts/jira-rest.md, campos confirmados via OpenAPI oficial da
+# Agile API):
+#   JI-65 json-build board: --name + --filter-id + --project-key validos ->
+#         corpo R10 {"name":...,"type":"kanban","filterId":<numero>,
+#         "location":{"type":"project","projectKeyOrId":...}} — filterId
+#         E NUMERO JSON (nao string), conforme schema oficial (integer/int64)
+#   JI-66 json-build board: falta --name -> exit 2
+#   JI-67 json-build board: falta --filter-id -> exit 2
+#   JI-68 json-build board: falta --project-key -> exit 2
+#   JI-69 json-build board: --filter-id fora da allowlist [0-9] (letras,
+#         espaco, tentativa de injecao) -> exit 2, RECUSADO antes de montar
+#         qualquer corpo (teste negativo obrigatorio)
+#   JI-70 json-build board: --project-key fora da allowlist [A-Za-z0-9_-]
+#         -> exit 2, RECUSADO antes de montar qualquer corpo
+#
+# JI-71..JI-74 (cstk-jira FASE 7 tarefa 7.1, onda-029): algoritmo de
+# criacao/reuso de filtro+board documentado em `references/board-setup.md`
+# da skill `jira-setup` (ETAPA 6 e conduzida pelo MODELO/LLM, sem script
+# dedicado — mesmo desenho de ETAPA 3/4/5, `references/api-discovery.md`).
+# Os cenarios abaixo reproduzem, passo a passo, a sequencia de comandos
+# `jira-io.sh` que o reference documenta (funcao `_run_board_setup`),
+# provando corretude de payload E idempotencia de reuso — mesma estrategia
+# de `test_jira-convert-parity.sh` para o caminho MCP (sem sessao MCP real
+# em ambiente de shell, a prova mecanica fica no caminho REST):
+#   JI-71 board ausente (R11 values=[]) -> cria filtro (R9) + board (R10),
+#         nesta ordem; corpo de R9 bate com {"name":...,"jql":"project =
+#         \"KEY\""}; corpo de R10 usa o `id` de R9 como filterId (NUMERO,
+#         nao string) + location.projectKeyOrId = project_key; board_id
+#         final = id da resposta de R10; 1a chamada usa
+#         projectKeyOrId+type=kanban na query (nao `name`)
+#   JI-72 (US2 cenario 2 / tasks.md 7.1.5, idempotencia): reexecutar o
+#         algoritmo para o MESMO projeto quando R11 ja retorna o board
+#         existente -> ZERO chamadas POST (nem filtro nem board), MESMO
+#         board_id da 1a execucao — nenhum board/filtro duplicado
+#   JI-73 corpo de R9 (filtro) e R10 (board) usam --name como texto livre
+#         (aspas/espacos) sem corromper o JSON de saida (preservado via
+#         jq --arg, mesma disciplina de JI-60)
+#   JI-74 R11 com `values` vazio (board so de outro tipo/projeto na
+#         resposta simulada) -> NUNCA reusa um id de fora de `values[0]`;
+#         cria filtro+board normalmente
 
 # NOTA: `printf ... | assert_exit ...` NAO funciona neste harness — o lado
 # direito de um pipe roda em subshell (POSIX puro, sem `lastpipe`), entao
@@ -1089,6 +1132,57 @@ scenario_json_build_sem_mode_exit2() {
   assert_exit 2 "$SCRIPT" json-build || return 1
 }
 
+# --- json-build board (cstk-jira FASE 7 tarefa 7.1, onda-029) --------------
+
+scenario_json_build_board_valido() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build board \
+    --name "CSTK Board" --filter-id 10040 --project-key CSTK || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n \
+    '{name:"CSTK Board", type:"kanban", filterId:10040, location:{type:"project", projectKeyOrId:"CSTK"}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_board_r10" "corpo nao bate com contracts/jira-rest.md R10: obtido=$_got want=$_want"; return 1; }
+  # filterId MUST ser numero JSON, nunca string (schema Agile API: integer/int64).
+  _filter_id_type=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.filterId | type')
+  [ "$_filter_id_type" = "number" ] \
+    || { _fail "json_build_board_filterid_number" "esperado type=number, obtido=$_filter_id_type"; return 1; }
+}
+
+scenario_json_build_board_falta_name_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build board --filter-id 1 --project-key CSTK || return 1
+}
+
+scenario_json_build_board_falta_filter_id_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build board --name x --project-key CSTK || return 1
+}
+
+scenario_json_build_board_falta_project_key_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build board --name x --filter-id 1 || return 1
+}
+
+# JI-69 (teste negativo obrigatorio, SEC-1): --filter-id fora de [0-9]
+# (letras, espaco, tentativa de injecao) e RECUSADO antes de montar corpo —
+# nenhum JSON e impresso em stdout.
+scenario_json_build_board_filter_id_fora_allowlist_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build board \
+    --name x --filter-id '10040; DROP TABLE' --project-key CSTK || return 1
+  assert_stdout_not_contains "filterId" || return 1
+}
+
+# JI-70 (teste negativo obrigatorio, SEC-1): --project-key fora de
+# [A-Za-z0-9_-] e RECUSADO antes de montar corpo.
+scenario_json_build_board_project_key_fora_allowlist_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build board \
+    --name x --filter-id 1 --project-key 'CSTK OR 1=1' || return 1
+  assert_stdout_not_contains "projectKeyOrId" || return 1
+}
+
 # --- json-build transition (FASE 4.2.5, dec-081) ---------------------------
 
 scenario_json_build_transition_valido() {
@@ -1167,6 +1261,155 @@ scenario_sha256_stdin_deterministico_mesma_entrada() {
   [ "$_h1" = "$_h2" ] || { _fail "sha256_stdin_deterministic" "hashes diferentes para a mesma entrada"; return 1; }
   _h3=$(printf '%s' "titulo diferente" | "$SCRIPT" sha256-stdin)
   [ "$_h1" != "$_h3" ] || { _fail "sha256_stdin_differs" "hashes iguais para entradas diferentes"; return 1; }
+}
+
+# --- algoritmo de board-setup (cstk-jira FASE 7 tarefa 7.1, onda-029) ------
+
+# _write_board_setup_config PROJECT_KEY — ProjectConfig minimo (site_host +
+# project_key), reproduzindo o estado real de ProjectConfig no momento da
+# ETAPA 6 (ANTES da gravacao atomica da ETAPA 7 — o board_id ainda NAO
+# existe quando este algoritmo roda, "Nunca gravar ProjectConfig
+# incrementalmente" do SKILL.md).
+_write_board_setup_config() {
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira"
+  printf 'site_host=example.atlassian.net\nproject_key=%s\n' "$1" \
+    > "$TMPDIR_TEST/.claude/cstk-jira/config"
+}
+
+# _run_board_setup NAME -> reproduz EXATAMENTE o algoritmo de
+# plugins/cstk-jira/skills/jira-setup/references/board-setup.md (secoes
+# 1-3): checa existencia via R11 (projectKeyOrId+type=kanban), reusa se
+# encontrado, senao cria filtro (R9) + board (R10). Imprime o board_id
+# final em stdout.
+_run_board_setup() {
+  _rbs_name="$1"
+  _rbs_project_key=$("$CONFIG_SCRIPT" get project_key) || return 1
+  "$SCRIPT" validate-segment "$_rbs_project_key" || return 1
+
+  _rbs_boards=$("$SCRIPT" request GET \
+    "/rest/agile/1.0/board?projectKeyOrId=${_rbs_project_key}&type=kanban" --op R11) || return 1
+  _rbs_board_id=$(printf '%s' "$_rbs_boards" | "$SCRIPT" json-get '.values[0].id // empty')
+
+  if [ -n "$_rbs_board_id" ]; then
+    printf '%s' "$_rbs_board_id"
+    return 0
+  fi
+
+  _rbs_filter_body=$("$SCRIPT" json-build filter --name "$_rbs_name" --project-key "$_rbs_project_key") || return 1
+  _rbs_filter_bf=$(mktemp "${TMPDIR:-/tmp}/board-setup-filter.XXXXXX") || return 1
+  printf '%s' "$_rbs_filter_body" > "$_rbs_filter_bf"
+  _rbs_filter_resp=$("$SCRIPT" request POST /rest/api/3/filter \
+    --body-file "$_rbs_filter_bf" --op R9) || { rm -f "$_rbs_filter_bf"; return 1; }
+  rm -f "$_rbs_filter_bf"
+  _rbs_filter_id=$(printf '%s' "$_rbs_filter_resp" | "$SCRIPT" json-get '.id')
+
+  _rbs_board_body=$("$SCRIPT" json-build board --name "$_rbs_name" \
+    --filter-id "$_rbs_filter_id" --project-key "$_rbs_project_key") || return 1
+  _rbs_board_bf=$(mktemp "${TMPDIR:-/tmp}/board-setup-board.XXXXXX") || return 1
+  printf '%s' "$_rbs_board_body" > "$_rbs_board_bf"
+  _rbs_board_resp=$("$SCRIPT" request POST /rest/agile/1.0/board \
+    --body-file "$_rbs_board_bf" --op R10) || { rm -f "$_rbs_board_bf"; return 1; }
+  rm -f "$_rbs_board_bf"
+  _rbs_board_id=$(printf '%s' "$_rbs_board_resp" | "$SCRIPT" json-get '.id')
+
+  printf '%s' "$_rbs_board_id"
+}
+
+# JI-71: board ausente -> cria filtro + board, nesta ordem, com payloads
+# corretos.
+scenario_board_setup_ausente_cria_filtro_e_board() {
+  _write_board_setup_config "DEMO"
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  _bin=$(_make_tracking_curl_stub 'https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=DEMO&type=kanban|200|{"isLast":true,"maxResults":50,"startAt":0,"total":0,"values":[]}
+https://example.atlassian.net/rest/api/3/filter|200|{"id":"10040","name":"CSTK Board","jql":"project = \"DEMO\"","self":"https://example.atlassian.net/rest/api/3/filter/10040"}
+https://example.atlassian.net/rest/agile/1.0/board|201|{"id":84,"name":"CSTK Board","self":"https://example.atlassian.net/rest/agile/1.0/board/84","type":"kanban"}')
+
+  _got_id=$(PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" _run_board_setup "CSTK Board") \
+    || { _fail "board_setup_create_run" "algoritmo falhou (esperado sucesso)"; return 1; }
+  [ "$_got_id" = "84" ] || { _fail "board_setup_create_id" "esperado 84, obtido $_got_id"; return 1; }
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "board_setup_create_calls" "esperado 3 chamadas (R11+R9+R10), obtido $(_curl_call_count)"; return 1; }
+
+  _url1=$(sed -n '1p' "$TMPDIR_TEST/io-curl-calls.log")
+  case "$_url1" in
+    *"GET"*"projectKeyOrId=DEMO"*"type=kanban"*) : ;;
+    *) _fail "board_setup_create_r11_query" "1a chamada nao tem projectKeyOrId=DEMO&type=kanban: $_url1"; return 1 ;;
+  esac
+  return 0
+}
+
+# JI-72 (US2 cenario 2 / tasks.md 7.1.5, idempotencia): reexecutar o
+# algoritmo para o MESMO projeto quando R11 ja retorna o board -> ZERO
+# chamadas POST na 2a execucao, MESMO board_id. Usa DOIS stubs distintos
+# (um por "execucao do setup"), cada um com seu proprio io-curl-calls.log.
+scenario_board_setup_reuso_idempotente_sem_duplicar() {
+  _write_board_setup_config "DEMO"
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+
+  _bin1=$(_make_tracking_curl_stub 'https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=DEMO&type=kanban|200|{"isLast":true,"maxResults":50,"startAt":0,"total":0,"values":[]}
+https://example.atlassian.net/rest/api/3/filter|200|{"id":"10040","name":"CSTK Board","jql":"project = \"DEMO\"","self":"https://example.atlassian.net/rest/api/3/filter/10040"}
+https://example.atlassian.net/rest/agile/1.0/board|201|{"id":84,"name":"CSTK Board","self":"https://example.atlassian.net/rest/agile/1.0/board/84","type":"kanban"}')
+  _first_id=$(PATH="$_bin1:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" _run_board_setup "CSTK Board") \
+    || { _fail "board_setup_reuse_first_run" "1a execucao falhou"; return 1; }
+  [ "$_first_id" = "84" ] || { _fail "board_setup_reuse_first_id" "esperado 84, obtido $_first_id"; return 1; }
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "board_setup_reuse_first_calls" "esperado 3 chamadas na 1a execucao, obtido $(_curl_call_count)"; return 1; }
+
+  # 2a "execucao do setup": R11 ja devolve o board criado. NENHUMA entrada
+  # de POST filter/board no mapa — se o algoritmo tentar criar de novo, o
+  # stub responde exit 22 (URL nao mapeada) e a chamada falha (prova
+  # negativa de nao-duplicacao).
+  _bin2=$(_make_tracking_curl_stub 'https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=DEMO&type=kanban|200|{"isLast":true,"maxResults":50,"startAt":0,"total":1,"values":[{"id":84,"name":"CSTK Board","self":"https://example.atlassian.net/rest/agile/1.0/board/84","type":"kanban"}]}')
+  _second_id=$(PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 _run_board_setup "CSTK Board") \
+    || { _fail "board_setup_reuse_second_run" "2a execucao falhou"; return 1; }
+  [ "$_second_id" = "84" ] || { _fail "board_setup_reuse_second_id" "esperado 84 (MESMO board), obtido $_second_id"; return 1; }
+  [ "$(_curl_call_count)" = "1" ] \
+    || { _fail "board_setup_reuse_second_calls" "esperado 1 chamada (so R11, ZERO POST) na 2a execucao, obtido $(_curl_call_count)"; return 1; }
+  return 0
+}
+
+# JI-73: --name com aspas/espacos preservado literalmente nos corpos de R9
+# (filtro) e R10 (board) — jq --arg, nunca concatenacao de string.
+scenario_board_setup_name_com_aspas_preservado() {
+  _write_board_setup_config "DEMO"
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  _name='Board "CSTK" do projeto'
+  _bin=$(_make_tracking_curl_stub 'https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=DEMO&type=kanban|200|{"isLast":true,"maxResults":50,"startAt":0,"total":0,"values":[]}
+https://example.atlassian.net/rest/api/3/filter|200|{"id":"10040","name":"x","jql":"project = \"DEMO\"","self":"https://example.atlassian.net/rest/api/3/filter/10040"}
+https://example.atlassian.net/rest/agile/1.0/board|201|{"id":84,"name":"x","self":"https://example.atlassian.net/rest/agile/1.0/board/84","type":"kanban"}')
+
+  PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" _run_board_setup "$_name" >/dev/null \
+    || { _fail "board_setup_quotes_run" "algoritmo falhou"; return 1; }
+
+  _filter_body=$("$SCRIPT" json-build filter --name "$_name" --project-key DEMO)
+  printf '%s' "$_filter_body" | "$SCRIPT" json-get . >/dev/null \
+    || { _fail "board_setup_quotes_filter_valid_json" "corpo do filtro nao e JSON valido"; return 1; }
+  _roundtrip_name=$(printf '%s' "$_filter_body" | "$SCRIPT" json-get '.name')
+  [ "$_roundtrip_name" = "$_name" ] \
+    || { _fail "board_setup_quotes_filter_name" "esperado='$_name' obtido='$_roundtrip_name'"; return 1; }
+  return 0
+}
+
+# JI-74: `values` vazio -> NUNCA reusa nenhum id (mesmo que a resposta
+# contivesse outros boards de tipos diferentes, o server ja filtra
+# type=kanban na query, entao `values` vem vazio) -> cria normalmente.
+scenario_board_setup_values_vazio_cria_normalmente() {
+  _write_board_setup_config "DEMO"
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  _bin=$(_make_tracking_curl_stub 'https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=DEMO&type=kanban|200|{"isLast":true,"maxResults":50,"startAt":0,"total":0,"values":[]}
+https://example.atlassian.net/rest/api/3/filter|200|{"id":"10041","name":"x","jql":"project = \"DEMO\"","self":"https://example.atlassian.net/rest/api/3/filter/10041"}
+https://example.atlassian.net/rest/agile/1.0/board|201|{"id":85,"name":"x","self":"https://example.atlassian.net/rest/agile/1.0/board/85","type":"kanban"}')
+
+  _got_id=$(PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" _run_board_setup "CSTK Board") \
+    || { _fail "board_setup_empty_values_run" "algoritmo falhou"; return 1; }
+  [ "$_got_id" = "85" ] || { _fail "board_setup_empty_values_id" "esperado 85 (board novo), obtido $_got_id"; return 1; }
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "board_setup_empty_values_calls" "esperado 3 chamadas, obtido $(_curl_call_count)"; return 1; }
+  return 0
 }
 
 run_all_scenarios

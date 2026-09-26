@@ -25,9 +25,9 @@ delas.
 | R6 | gravar/ler propriedade de issue | `PUT` / `GET /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` (max 32 KB) | https://developer.atlassian.com/cloud/jira/platform/jira-entity-properties/ | citado |
 | R7 | busca JQL | `GET`/`POST /rest/api/3/search/jql`, paginacao `nextPageToken`; `/rest/api/3/search` removido | https://confluence.atlassian.com/jirakb/run-jql-search-query-using-jira-cloud-rest-api-1289424308.html | citado |
 | R8 | tipos de issue para criacao | `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes[/{issueTypeId}]` | https://community.developer.atlassian.com/t/create-issue-meta-endpoint-deprecation/75413 + OpenAPI v3 (secao onda-005) | citado |
-| R9 | criar filtro | `POST /rest/api/3/filter` com `name`, `jql` | https://support.atlassian.com/jira/kb/creating-and-granting-edit-permission-for-filters-in-team-managed-projects-via-rest-api/ | citado |
-| R10 | criar board | `POST /rest/agile/1.0/board` com `name`, `type` (`scrum`/`kanban`), `filterId`, `location` | https://developer.atlassian.com/cloud/jira/software/rest/api-group-board/ | citado |
-| R11 | boards do projeto | `GET /rest/agile/1.0/board?projectKeyOrId=...` | mesma pagina de R10 | citado |
+| R9 | criar filtro | `POST /rest/api/3/filter` com `name`, `jql` | https://support.atlassian.com/jira/kb/creating-and-granting-edit-permission-for-filters-in-team-managed-projects-via-rest-api/ | campos confirmados (OpenAPI onda-029, secao abaixo) |
+| R10 | criar board | `POST /rest/agile/1.0/board` com `name`, `type` (`scrum`/`kanban`), `filterId`, `location` | https://developer.atlassian.com/cloud/jira/software/rest/api-group-board/ | campos confirmados (OpenAPI onda-029, secao abaixo) |
+| R11 | boards do projeto | `GET /rest/agile/1.0/board?projectKeyOrId=...` | mesma pagina de R10 | campos confirmados (OpenAPI onda-029, secao abaixo) |
 
 Hierarquia (R1): campo `parent` liga filho ao Epic; Epic Link
 (`customfield_10014`) descontinuado; `hierarchyLevel` -1/0/1 (post de R1).
@@ -267,6 +267,65 @@ usou o projeto de teste ja existente `SCRUM`, ver secao seguinte).
 
 `tipo/formato de fields.updated` SAIU desta lista — CONFIRMADO na secao R3
 acima pelo roundtrip onda-011.
+
+## Campos de request/response de R9-R11 a partir do OpenAPI oficial (onda-029)
+
+**Fontes desta secao** (cstk-jira FASE 7 tarefa 7.1, dec-099): (a) OpenAPI
+oficial do Jira Cloud REST v3 (platform), MESMO arquivo ja citado na secao
+"Campos de request/response a partir do OpenAPI oficial (onda-005)" acima —
+re-baixado nesta onda para conferir R9 (`filter`); sha256
+`6ecc461bb85e92a46331a4316b6c63c91c16ed6baf5f06b03ab616da3f1ab3d7` (IDENTICO
+ao ja citado, confirma estabilidade da fonte); (b) OpenAPI oficial da Agile
+API, `https://developer.atlassian.com/cloud/jira/software/swagger.v3.json`
+(baixado 2026-09-26 via `curl`, HTTP 200, 658314 bytes, `openapi: 3.0.1`,
+`info.version: 1001.0.0`, sha256
+`4e108d54b99064475c6ba0f986cce46dcace81336e034b58a5400b93174b927a`) — para
+R10/R11 (`board`). Ambos os hosts ja constam na whitelist (block-005).
+
+### R9 — criar filtro: `POST /rest/api/3/filter` (operationId `createFilter`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| corpo | schema `Filter` (`$ref`); UNICO campo `required`: `name` | `P:./rest/api/3/filter.post.requestBody.content.application/json.schema` → `S:.Filter.required` |
+| `name` | string (`example`: `"All Open Bugs"`) | `...requestBody...example.name` |
+| `jql` | string, OPCIONAL no schema — o motor sempre envia (SEC-3, `json-build filter`) | `...requestBody...example.jql` |
+| sucesso | `200` (nao `201`) → `Filter`: `id` (string, ex. `"10000"`), `name`, `jql`, `self` (string), demais campos (`owner`, `favourite`, `sharePermissions`, ...) fora do uso do motor | `P:./rest/api/3/filter.post.responses.200` → `S:.Filter.properties` |
+| erros | `400`, `401` | `...filter.post.responses` |
+
+Confirma o corpo ja implementado por `jira-io.sh json-build filter`
+(`{"name":...,"jql":...}`) — nenhuma mudanca de codigo necessaria, so
+fechamento do gap de fonte (o contrato antes so citava a pagina de suporte,
+nao o schema OpenAPI).
+
+### R10 — criar board: `POST /rest/agile/1.0/board` (operationId `createBoard`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| corpo | `additionalProperties: false` — SOMENTE os 4 campos abaixo | `P:./rest/agile/1.0/board.post.requestBody.content.application/json.schema` |
+| `name` | string | `...schema.properties.name` |
+| `type` | enum `kanban`/`scrum`/`agility` — o motor SEMPRE envia `kanban` (US2 so preve board kanban por projeto) | `...schema.properties.type` |
+| `filterId` | integer, `format: int64` — **NUNCA string** (`jira-io.sh json-build board --filter-id` valida `[0-9]` e emite via `--argjson`) | `...schema.properties.filterId` |
+| `location` | objeto `{type: "project"\|"user", projectKeyOrId: string}`; description: "If choosing 'project', then a project must be specified by a `projectKeyOrId` property"; "If choosing 'user', ... `projectKeyOrId` should not be provided" — o motor SEMPRE usa `type=project` (nunca board pessoal) | `...schema.properties.location` |
+| exemplo oficial | `{"filterId":10040,"location":{"projectKeyOrId":"10000","type":"project"},"name":"scrum board","type":"scrum"}` | `...requestBody.content.application/json.example` |
+| sucesso | `201` → `Board`: `id` (integer, `format: int64`), `name`, `self` (string), `type` — exemplo `{"id":84,"name":"scrum board","self":"https://your-domain.atlassian.net/rest/agile/1.0/board/84","type":"scrum"}` | `P:./rest/agile/1.0/board.post.responses.201` |
+| descricao (nota) | "If you want to create a new project with an associated board, use the Jira platform REST API" / "You can create a filter using the Jira REST API" — CONFIRMA que `filterId` precisa vir de uma chamada R9 PREVIA (nao ha criacao implicita de filtro) | `...post.description` |
+
+### R11 — boards do projeto: `GET /rest/agile/1.0/board` (operationId `getAllBoards`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| query `projectKeyOrId` | string — "Filters results to boards that are relevant to a project." | `P:./rest/agile/1.0/board.get.parameters[name=projectKeyOrId]` |
+| query `type` | "Filters results to boards of the specified types. Valid values: scrum, kanban, simple." — o motor usa `type=kanban` na checagem de existencia (7.1.2) para nunca confundir um board scrum pre-existente com o board do cstk-jira | `...parameters[name=type]` |
+| sucesso | `200` → `{isLast, maxResults, startAt, total, values: [Board...]}`; elemento `values[]` = MESMO shape do sucesso de R10 (`id`, `name`, `self`, `type`) | `P:./rest/agile/1.0/board.get.responses.200` |
+| exemplo oficial | `{"isLast":false,"maxResults":2,"startAt":1,"total":5,"values":[{"id":84,"name":"scrum board","self":"...","type":"scrum"},{"id":92,"name":"kanban board","self":"...","type":"kanban"}]}` | `...responses.200.content.application/json.example` |
+
+**Decisao de reuso (US2 cenario 2, tasks.md 7.1.2)**: a checagem de
+existencia usa SOMENTE `projectKeyOrId`+`type=kanban` (nao compara `name`) —
+`values` nao-vazio ⇒ reusa `values[0].id`; vazio ⇒ cria filtro (R9) e board
+(R10) na sequencia, usando o `id` da resposta de R9 como `filterId` de R10.
+Evita depender de o operador (ou uma reexecucao do setup) escolher
+exatamente o mesmo texto de `name` duas vezes — o par projeto+tipo ja e
+suficiente para a garantia de nao-duplicacao exigida pela spec.
 
 ## Roundtrip real onda-011 (FASE 0 task 0.1 — resolve block-008)
 

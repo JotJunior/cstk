@@ -21,7 +21,7 @@ do workflow que o operador precisa mapear.
 Ref: `docs/specs/cstk-jira/spec.md` US4; `plan.md` Fluxo 1 "Setup";
 `quickstart.md` Cenario 3; `data-model.md` Entity ProjectConfig/Credential;
 `checklists/ux.md` CHK001-CHK006; `checklists/security.md` CHK004/CHK005;
-`contracts/jira-rest.md` R1/R5/R8; `contracts/rovo-mcp.md`.
+`contracts/jira-rest.md` R1/R5/R8/R9/R10/R11; `contracts/rovo-mcp.md`.
 
 ## Pre-requisitos
 
@@ -132,10 +132,16 @@ resposta explicita.
 
 ## ETAPA 6: Filtro + Board (US2)
 
-Verificar se ja existe filtro/board para o projeto (`R11 GET
-/rest/agile/1.0/board?projectKeyOrId=...`); se sim, reusar (US2 cenario 2 —
-nunca duplicar). Senao, criar filtro (`R9 POST /rest/api/3/filter`) e board
-kanban (`R10 POST /rest/agile/1.0/board`, `type=kanban`).
+Detalhe completo (comandos exatos, decisao de reuso por projeto+tipo em vez
+de nome, ressalva do caminho MCP sem `createJiraFilter` dedicado) em
+`references/board-setup.md` — carregar sob demanda aqui, nao antes.
+
+Resumo: verificar se ja existe board KANBAN para o projeto (`R11 GET
+/rest/agile/1.0/board?projectKeyOrId=...&type=kanban`); `values` nao-vazio
+=> reusar `values[0].id` (US2 cenario 2 — nunca duplicar). Vazio => criar
+filtro (`R9 POST /rest/api/3/filter`, via `jira-io.sh json-build filter`) e,
+com o `id` da resposta, criar o board kanban (`R10 POST
+/rest/agile/1.0/board`, via `jira-io.sh json-build board`).
 
 ## ETAPA 7: Gravacao atomica
 

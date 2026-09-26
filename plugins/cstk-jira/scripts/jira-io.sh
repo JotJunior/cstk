@@ -47,6 +47,19 @@
 #                            e interpolado em `jql`). Base da JQL do board
 #                            (FR-013, plan.md SEC-3); o motor de board (FASE 7)
 #                            reusa este subcomando.
+#   `json-build board ...` — monta o corpo de R10 (`POST /rest/agile/1.0/board`,
+#                            contracts/jira-rest.md, campos confirmados via
+#                            OpenAPI oficial da Agile API): `name` (texto
+#                            livre, `jq --arg`), `type` fixo em `"kanban"`
+#                            (unico tipo de board previsto pela spec — US2),
+#                            `filterId` (SEC-1: SOMENTE digitos, emitido como
+#                            numero JSON via `--argjson` — o schema exige
+#                            `integer`/`int64`, nunca string) e
+#                            `location.projectKeyOrId` (`--project-key` MUST
+#                            passar pela allowlist [A-Za-z0-9_-] de
+#                            `validate-segment`, mesma disciplina de
+#                            `json-build filter`) com `location.type` fixo em
+#                            `"project"`.
 #
 # 3.4 (classificacao de status HTTP, dec-073): `request` ganhou a opcao
 # `--op OP` (OP em `R1`..`R11`, contracts/jira-rest.md) para o motor
@@ -194,6 +207,19 @@
 #         plan.md SEC-3) — o motor de board (FASE 7) reusa este subcomando
 #         em vez de montar JQL por conta propria.
 #
+#   jira-io.sh json-build board --name TEXT --filter-id ID --project-key KEY
+#       — SEC-3: monta o corpo de R10 (`POST /rest/agile/1.0/board`,
+#         contracts/jira-rest.md, campos confirmados via OpenAPI oficial da
+#         Agile API, onda-029): `{"name": TEXT, "type": "kanban",
+#         "filterId": <ID como numero>, "location": {"type": "project",
+#         "projectKeyOrId": KEY}}`. `--filter-id` MUST ser SOMENTE digitos
+#         (allowlist mais restrita que SEC-1, porque o schema oficial exige
+#         `integer`/`format: int64` — nunca string) — exit 2 caso contrario,
+#         SEM montar corpo algum; `--project-key` MUST casar a allowlist
+#         SEC-1 (mesma de `validate-segment`). `type`/`location.type` sao
+#         fixos (`kanban`/`project` — US2 so preve board kanban por projeto,
+#         nunca scrum/board pessoal).
+#
 # Exit codes (mesma convencao de jira-config.sh):
 #   0 sucesso
 #   1 erro geral / falha de requisicao (rede, 3xx recusado, etc.) OU
@@ -267,6 +293,15 @@ USO:
       Monta o corpo de R9 (criar filtro): {"name":..., "jql":...}. KEY
       passa pela allowlist SEC-1 ANTES de entrar na JQL (SEC-3) — nenhum
       texto livre (--name incluso) e interpolado em jql.
+
+  jira-io.sh json-build board --name TEXT --filter-id ID --project-key KEY
+      Monta o corpo de R10 (criar board kanban):
+      {"name":...,"type":"kanban","filterId":<numero>,
+      "location":{"type":"project","projectKeyOrId":...}}. ID (--filter-id)
+      MUST ser so digitos (emitido como numero JSON, nunca string — o
+      schema oficial da Agile API exige integer/int64); KEY (--project-key)
+      passa pela allowlist [A-Za-z0-9_-] (SEC-1). --name e texto livre,
+      escapado via jq --arg.
 
   jira-io.sh json-build transition --transition-id ID
       Monta o corpo de R4 (executar transicao): {"transition":{"id":ID}}.
@@ -483,6 +518,21 @@ _ji_charset_ok() {
   [ -n "$1" ] || return 1
   case "$1" in
     *[!A-Za-z0-9_-]*) return 1 ;;
+  esac
+  return 0
+}
+
+# _ji_digits_ok VALUE — SEC-1 (mais restrita que _ji_charset_ok): allowlist
+# FECHADA [0-9], nao-vazio. Usado por `json-build board --filter-id` (R10,
+# contracts/jira-rest.md onda-029) porque o schema oficial da Agile API
+# exige `filterId` como `integer`/`format: int64` — nunca string. Um valor
+# fora deste charset NUNCA vira `--argjson` (evita jq falhar tentando
+# converter texto arbitrario em numero, ou pior, jq interpretar o valor
+# como expressao).
+_ji_digits_ok() {
+  [ -n "$1" ] || return 1
+  case "$1" in
+    *[!0-9]*) return 1 ;;
   esac
   return 0
 }
@@ -755,8 +805,8 @@ _ji_cmd_json_get() {
 }
 
 # _ji_cmd_json_build MODE [ARGS...] — 3.5 (SEC-3): dispatcher interno de
-# `json-build`. MODE em {issue, filter, transition, marker} — allowlist
-# FECHADA (mesmo estilo de `_ji_method_allowed`/`_ji_op_allowed`).
+# `json-build`. MODE em {issue, filter, board, transition, marker} —
+# allowlist FECHADA (mesmo estilo de `_ji_method_allowed`/`_ji_op_allowed`).
 _ji_cmd_json_build() {
   _jib_mode="${1:-}"
   if [ "$#" -ge 1 ]; then
@@ -769,6 +819,9 @@ _ji_cmd_json_build() {
     filter)
       _ji_cmd_json_build_filter "$@"
       ;;
+    board)
+      _ji_cmd_json_build_board "$@"
+      ;;
     transition)
       _ji_cmd_json_build_transition "$@"
       ;;
@@ -776,10 +829,10 @@ _ji_cmd_json_build() {
       _ji_cmd_json_build_marker "$@"
       ;;
     '')
-      _ji_die_usage "json-build requer MODE (issue, filter, transition, marker)"
+      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker)"
       ;;
     *)
-      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, transition, marker)"
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker)"
       ;;
   esac
 }
@@ -927,6 +980,66 @@ _ji_cmd_json_build_filter() {
 
   _jbf_jql="project = \"${_jbf_project_key}\""
   jq -n --arg name "$_jbf_name" --arg jql "$_jbf_jql" '{name: $name, jql: $jql}'
+}
+
+# _ji_cmd_json_build_board --name TEXT --filter-id ID --project-key KEY —
+# FASE 7 tarefa 7.1 (contracts/jira-rest.md R10, campos confirmados via
+# OpenAPI oficial da Agile API onda-029): monta
+# {"name":TEXT,"type":"kanban","filterId":<ID numero>,
+# "location":{"type":"project","projectKeyOrId":KEY}}. `--filter-id` MUST
+# ser SOMENTE digitos (`_ji_digits_ok` — o schema exige integer/int64,
+# nunca string) e e emitido via `--argjson` (nunca `--arg`, que produziria
+# uma string JSON). `--project-key` MUST casar a allowlist SEC-1 (mesma de
+# `validate-segment`/`json-build filter`). `--name` e texto livre, escapado
+# via `jq --arg`. `type`/`location.type` sao fixos: a spec (US2) so preve
+# board kanban por projeto, nunca scrum/board pessoal (`location.type=user`).
+_ji_cmd_json_build_board() {
+  _jbb_name=""
+  _jbb_filter_id=""
+  _jbb_project_key=""
+  _jbb_have_name="no"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name)
+        [ "$#" -ge 2 ] || _ji_die_usage "--name requer argumento"
+        _jbb_name="$2"
+        _jbb_have_name="yes"
+        shift 2
+        ;;
+      --filter-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--filter-id requer argumento"
+        _jbb_filter_id="$2"
+        shift 2
+        ;;
+      --project-key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--project-key requer argumento"
+        _jbb_project_key="$2"
+        shift 2
+        ;;
+      *)
+        _ji_die_usage "json-build board: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ "$_jbb_have_name" = "yes" ] \
+    || _ji_die_usage "json-build board requer --name"
+  [ -n "$_jbb_filter_id" ] \
+    || _ji_die_usage "json-build board requer --filter-id"
+  [ -n "$_jbb_project_key" ] \
+    || _ji_die_usage "json-build board requer --project-key"
+
+  _ji_digits_ok "$_jbb_filter_id" \
+    || _ji_die_usage "--filter-id fora da allowlist [0-9] (SEC-1) — schema exige integer/int64"
+  _ji_charset_ok "$_jbb_project_key" \
+    || _ji_die_usage "--project-key fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+
+  _ji_require_jq
+  jq -n --arg name "$_jbb_name" --argjson filterId "$_jbb_filter_id" \
+        --arg projectKeyOrId "$_jbb_project_key" \
+    '{name: $name, type: "kanban", filterId: $filterId,
+      location: {type: "project", projectKeyOrId: $projectKeyOrId}}'
 }
 
 # _ji_cmd_json_build_transition --transition-id ID — FASE 4.2.5 (dec-081):

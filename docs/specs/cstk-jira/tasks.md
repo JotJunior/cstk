@@ -766,18 +766,29 @@ convert ja permitem criar issues a organizar no board).
 Ref: contracts/jira-rest.md R9/R10/R11; contracts/rovo-mcp.md
 `listJiraBoards`/`listJiraFilters`/`createJiraBoard`.
 
-- [ ] 7.1.1 Caminho MCP: `listJiraBoards`/`listJiraFilters` para checar
-      existencia; `createJiraBoard` so se nao existir
-- [ ] 7.1.2 Caminho REST: `GET /rest/agile/1.0/board?projectKeyOrId=...`
+- [x] 7.1.1 Caminho MCP: `listJiraBoards`/`listJiraFilters` para checar
+      existencia; `createJiraBoard` so se nao existir <!-- documentado em
+      skills/jira-setup/references/board-setup.md §5 (ETAPA 6 e conduzida
+      pelo LLM, sem script dedicado — mesmo desenho MCP de ETAPA 3/4/5;
+      inputSchema real de createJiraBoard decide se listJiraFilters entra
+      no fluxo, Principio VI) -->
+- [x] 7.1.2 Caminho REST: `GET /rest/agile/1.0/board?projectKeyOrId=...`
       (R11) para checar existencia; `POST /rest/api/3/filter` (R9) +
       `POST /rest/agile/1.0/board` (R10, `type=kanban`) so se necessario
-- [ ] 7.1.3 JQL do filtro do board interpola SOMENTE valores que passaram
+      <!-- jira-io.sh json-build board (R10) + references/board-setup.md
+      §1-3; campos confirmados via OpenAPI oficial da Agile API (dec-099,
+      contracts/jira-rest.md secao onda-029) -->
+- [x] 7.1.3 JQL do filtro do board interpola SOMENTE valores que passaram
       pela allowlist de SEC-1/FASE 3 (SEC-3) — nunca titulo/descricao
-      livres
-- [ ] 7.1.4 `board_id` gravado em `ProjectConfig` (FASE 2) apos criacao/
-      reuso
-- [ ] 7.1.5 Teste: 2a chamada de setup para o mesmo projeto Jira REUSA o
-      board existente, sem criar um duplicado (US2 cenario 2)
+      livres <!-- jira-io.sh json-build filter (ja existente desde FASE 3,
+      reutilizado tal-e-qual por board-setup.md §2) -->
+- [x] 7.1.4 `board_id` gravado em `ProjectConfig` (FASE 2) apos criacao/
+      reuso <!-- jira-setup.sh write-config (ja existente); ordem exata
+      documentada em references/board-setup.md §4 -->
+- [x] 7.1.5 Teste: 2a chamada de setup para o mesmo projeto Jira REUSA o
+      board existente, sem criar um duplicado (US2 cenario 2) <!--
+      test_jira-io.sh JI-72 scenario_board_setup_reuso_idempotente_sem_duplicar
+      (stub por URL, 2a execucao faz 0 chamadas POST) -->
 
 ### 7.2 Mapeamento coluna do board <-> status do workflow `[M]`
 
