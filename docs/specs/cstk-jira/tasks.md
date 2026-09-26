@@ -390,19 +390,48 @@ Ref: plan.md Test Strategy "Falha"; checklists/api.md CHK009
 
 Ref: plan.md SEC-3; contracts/plugin-scripts.md `json-get`/`json-build`.
 
-- [ ] 3.5.1 `json-get FILTER`: wrapper de leitura que restringe `jq` a este
-      arquivo (nenhum outro script do plugin invoca `jq` diretamente)
-- [ ] 3.5.2 `json-build ...`: monta corpos REST (`fields.project.id`,
+- [x] 3.5.1 `json-get FILTER`: wrapper de leitura que restringe `jq` a este
+      arquivo (nenhum outro script do plugin invoca `jq` diretamente) —
+      `jq -r FILTER` sobre stdin; so exige `jq` (nao exige cliente HTTP nem
+      ProjectConfig/credencial); filtro/entrada invalidos => exit 2
+- [x] 3.5.2 `json-build ...`: monta corpos REST (`fields.project.id`,
       `fields.issuetype.id`, `fields.summary`, `fields.parent.key`,
       `fields.description` em ADF) a partir de `contracts/jira-rest.md`
-      confirmado na FASE 0
-- [ ] 3.5.3 JQL montada pelo plugin (filtro do board) interpola SOMENTE
+      confirmado na FASE 0 — `json-build issue --project-id ID
+      --issuetype-id ID --summary TEXT [--parent-key KEY] [--description
+      TEXT]`: ids/keys passam pela mesma allowlist `[A-Za-z0-9_-]` de
+      `validate-segment` (SEC-1) ANTES de entrar no corpo; summary/
+      description sao texto livre, via `jq --arg` (nunca concatenacao de
+      string); tambem `json-build filter --name TEXT --project-key KEY`
+      (corpo de R9, base da JQL do board de 3.5.3)
+- [x] 3.5.3 JQL montada pelo plugin (filtro do board) interpola SOMENTE
       valores que ja passaram pela allowlist de 3.2 — nenhum texto livre
-      (titulo/descricao) entra em JQL
-- [ ] 3.5.4 Teste de contrato: corpo gerado por `json-build` bate campo a
-      campo com `contracts/jira-rest.md` para R1 (criar issue)
-- [ ] 3.5.5 Teste: tentativa de montar JQL com texto livre (titulo/
-      descricao simulados) e recusada/sanitizada antes de interpolar
+      (titulo/descricao) entra em JQL — `json-build filter`: `--project-key`
+      validado pela allowlist SEC-1 ANTES de montar `jql`; `--name` (texto
+      livre) so entra no campo `name`, nunca em `jql`
+- [x] 3.5.4 Teste de contrato: corpo gerado por `json-build` bate campo a
+      campo com `contracts/jira-rest.md` para R1 (criar issue) —
+      `scenario_json_build_issue_contrato_r1_completo` (JI-53), compara via
+      `jq -S -c` contra o corpo esperado (project/issuetype/summary/parent/
+      description ADF)
+- [x] 3.5.5 Teste: tentativa de montar JQL com texto livre (titulo/
+      descricao simulados) e recusada/sanitizada antes de interpolar —
+      `scenario_json_build_filter_project_key_texto_livre_recusado_antes_de_montar_jql`
+      (JI-62): `--project-key` com espaco/aspas/operador JQL (`OR 1=1`) =>
+      exit 2, nenhuma JQL em stdout; `scenario_json_build_issue_summary_com_aspas_barra_e_quebra_de_linha`
+      (JI-60) confere round-trip de `--summary`/`--description` com aspas,
+      barra invertida e quebra de linha continuando JSON valido (`jq -e .`)
+
+      Implementado em `plugins/cstk-jira/scripts/jira-io.sh`: `_ji_require_jq`
+      (checagem dedicada, so `jq` — `json-get`/`json-build` nunca exigem o
+      cliente HTTP), `_ji_cmd_json_get`, `_ji_cmd_json_build` (dispatcher
+      `issue`/`filter`), `_ji_cmd_json_build_issue`, `_ji_cmd_json_build_filter`.
+      `contracts/plugin-scripts.md` atualizado (tabela de subcomandos de
+      `jira-io.sh` com `json-get`/`json-build issue`/`json-build filter`).
+      Testes em `tests/cstk/test_jira-io.sh`: 17 cenarios novos JI-48..JI-64
+      + os 47 de 3.1-3.4 continuam verdes — `sh tests/run.sh jira-io`:
+      64/64 PASS; `sh tests/run.sh --check-coverage`: zero orfaos;
+      `shellcheck -s sh` limpo nos dois arquivos.
 
 ---
 

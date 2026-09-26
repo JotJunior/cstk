@@ -6,17 +6,39 @@
 #
 # Ref: docs/specs/cstk-jira/plan.md SEC-1..SEC-5;
 #      docs/specs/cstk-jira/contracts/plugin-scripts.md `jira-io.sh`;
-#      docs/specs/cstk-jira/contracts/jira-rest.md (autenticacao Basic);
+#      docs/specs/cstk-jira/contracts/jira-rest.md (autenticacao Basic, R1/R9);
 #      docs/specs/cstk-jira/data-model.md Entity ProjectConfig/Credential;
-#      tasks.md FASE 3 tarefa 3.1.
+#      tasks.md FASE 3 tarefas 3.1-3.5.
 #
-# ESCOPO ATE AGORA (3.1 `deps-check`+`request` com host unico/SEC-5, 3.2
+# ESCOPO ATE AGORA: 3.1 `deps-check`+`request` com host unico/SEC-5, 3.2
 # allowlist de charset em PATH/SEC-1, 3.3 credencial temporaria segura/SEC-4,
-# e 3.4 classificacao fina de status HTTP). NAO implementado aqui (fica para
-# a proxima tarefa da FASE 3, com seus proprios testes):
-#   - 3.5 `json-get`/`json-build` (SEC-3) — subcomandos ainda nao existem
-#     neste dispatcher. A JQL de FASE 7 (SEC-3) MUST reusar `validate-segment`
-#     (abaixo) para cada valor interpolado — nenhum texto livre entra em JQL.
+# 3.4 classificacao fina de status HTTP, e 3.5 `json-get`/`json-build` +
+# JQL segura (SEC-3, abaixo).
+#
+# 3.5 (SEC-3 — `json-get`/`json-build`): este arquivo continua o
+# UNICO ponto do plugin que invoca `jq` diretamente — `json-get`/`json-build`
+# sao o wrapper que o motor (jira-sync.sh/jira-map.sh, FASE 4+) MUST usar em
+# vez de chamar `jq` por conta propria.
+#   `json-get FILTER`      — le JSON de stdin, aplica `jq -r FILTER`, exit 2
+#                            se o filtro/entrada for invalido.
+#   `json-build issue ...` — monta o corpo de R1 (`POST /rest/api/3/issue`,
+#                            contracts/jira-rest.md): `fields.project.id`,
+#                            `fields.issuetype.id`, `fields.summary`,
+#                            `fields.parent.key` (opcional), `fields.description`
+#                            em Atlassian Document Format (opcional). `--project-id`/
+#                            `--issuetype-id`/`--parent-key` MUST passar pela mesma
+#                            allowlist [A-Za-z0-9_-] de `validate-segment` (SEC-1)
+#                            ANTES de entrar no corpo; `--summary`/`--description`
+#                            sao texto livre, escapado por `jq --arg` (NUNCA
+#                            concatenacao de string).
+#   `json-build filter ...`— monta o corpo de R9 (`POST /rest/api/3/filter`,
+#                            contracts/jira-rest.md): `name` (texto livre,
+#                            `jq --arg`) e `jql` (SEC-3: montada so com o
+#                            `--project-key` ja validado pela allowlist SEC-1
+#                            — nenhum texto livre entra na JQL; `--name` nunca
+#                            e interpolado em `jql`). Base da JQL do board
+#                            (FR-013, plan.md SEC-3); o motor de board (FASE 7)
+#                            reusa este subcomando.
 #
 # 3.4 (classificacao de status HTTP, dec-073): `request` ganhou a opcao
 # `--op OP` (OP em `R1`..`R11`, contracts/jira-rest.md) para o motor
@@ -130,19 +152,57 @@
 #         falhar, sem revelar o valor bruto em stderr (pode conter bytes de
 #         controle).
 #
+#   jira-io.sh json-get FILTER
+#       — SEC-3: le JSON de stdin, aplica `jq -r FILTER` e imprime o
+#         resultado em stdout. Wrapper de LEITURA — restringe `jq` a este
+#         arquivo (nenhum outro script do plugin invoca `jq` diretamente).
+#         Nao exige credencial/ProjectConfig (nao chama `_ji_cmd_deps_check`
+#         completo — so confere `jq`, exit 5 se ausente). Filtro invalido ou
+#         entrada nao-JSON => exit 2 (uso incorreto), sem ecoar o filtro
+#         bruto em caso de erro (pode conter dado do chamador).
+#
+#   jira-io.sh json-build issue --project-id ID --issuetype-id ID
+#                              --summary TEXT [--parent-key KEY]
+#                              [--description TEXT]
+#       — SEC-3: monta o corpo de R1 (`POST /rest/api/3/issue`,
+#         contracts/jira-rest.md secao "Campos de request/response a partir
+#         do OpenAPI oficial"): `fields.project.id`, `fields.issuetype.id`,
+#         `fields.summary`, `fields.parent.key` (so se `--parent-key` vier),
+#         `fields.description` em Atlassian Document Format (so se
+#         `--description` vier). `--project-id`/`--issuetype-id`/
+#         `--parent-key` MUST casar a mesma allowlist `[A-Za-z0-9_-]` de
+#         `validate-segment` (SEC-1) — exit 2 caso contrario, SEM montar
+#         corpo algum. `--summary`/`--description` sao texto livre: passam
+#         por `jq --arg` (nunca concatenacao de string), preservando aspas/
+#         barras/quebras de linha como JSON valido.
+#
+#   jira-io.sh json-build filter --name TEXT --project-key KEY
+#       — SEC-3: monta o corpo de R9 (`POST /rest/api/3/filter`,
+#         contracts/jira-rest.md): `{"name": TEXT, "jql": "project = \"KEY\""}`.
+#         `--project-key` MUST casar a allowlist SEC-1 (mesma de
+#         `validate-segment`) ANTES de entrar na JQL — exit 2 se falhar, SEM
+#         montar JQL alguma; nenhum texto livre (titulo/descricao/`--name`)
+#         e interpolado em `jql`. Base da JQL do filtro do board (FR-013,
+#         plan.md SEC-3) — o motor de board (FASE 7) reusa este subcomando
+#         em vez de montar JQL por conta propria.
+#
 # Exit codes (mesma convencao de jira-config.sh):
 #   0 sucesso
 #   1 erro geral / falha de requisicao (rede, 3xx recusado, etc.) OU
 #     `classification=deferred` (429; 5xx/rede/timeout apos ate 3
 #     tentativas; 400/409 em `--op R4`) — candidato a retry pelo chamador
 #   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, PATH/
-#     segmento fora da allowlist SEC-1, `--op` fora de R1..R11, args)
+#     segmento fora da allowlist SEC-1, `--op` fora de R1..R11, args,
+#     `json-get` com filtro/entrada invalidos, `json-build` com segmento
+#     fora da allowlist SEC-1 ou campo obrigatorio ausente)
 #   3 ProjectConfig ausente/inacessivel (propagado de jira-config.sh get)
 #   4 credencial ausente/permissao insegura (propagado de jira-config.sh
 #     credential-check) ou incompleta (falta `email`/`api_token` no arquivo)
 #     OU `classification=auth_failed` (401 em qualquer operacao; 403 fora
 #     de `--op R1`/`--op R2`) — nunca retry automatico (FR-016/FR-019)
-#   5 dependencia ausente (`jq` ou cliente HTTP fora do PATH)
+#   5 dependencia ausente (`jq` fora do PATH — `json-get`/`json-build` so
+#     exigem `jq`, nunca o cliente HTTP; `request`/`deps-check` exigem os
+#     dois)
 #   7 `classification=permission_denied` (403 em `--op R1`/`--op R2`,
 #     dec-073) — credencial valida, permissao insuficiente no projeto/tipo;
 #     NUNCA reconfiguracao de credencial (nao reusa o exit 6, ja reservado
@@ -182,6 +242,23 @@ USO:
       Valida cada VALUE contra a allowlist [A-Za-z0-9_-] (SEC-1), a usar
       pelo motor ANTES de interpolar jira_id/jira_key/project_key em
       PATH ou JQL.
+
+  jira-io.sh json-get FILTER
+      Le JSON de stdin, aplica 'jq -r FILTER'. Wrapper de leitura (SEC-3);
+      unico ponto do plugin que invoca jq. So exige jq (nao exige cliente
+      HTTP nem ProjectConfig/credencial).
+
+  jira-io.sh json-build issue --project-id ID --issuetype-id ID
+                             --summary TEXT [--parent-key KEY]
+                             [--description TEXT]
+      Monta o corpo de R1 (criar issue). ID/KEY passam pela allowlist
+      [A-Za-z0-9_-] (SEC-1); summary/description sao texto livre, escapado
+      via jq --arg.
+
+  jira-io.sh json-build filter --name TEXT --project-key KEY
+      Monta o corpo de R9 (criar filtro): {"name":..., "jql":...}. KEY
+      passa pela allowlist SEC-1 ANTES de entrar na JQL (SEC-3) — nenhum
+      texto livre (--name incluso) e interpolado em jql.
 
 EXIT CODES:
   0 sucesso   1 erro geral/requisicao/deferred   2 uso incorreto
@@ -319,6 +396,14 @@ _ji_cmd_deps_check() {
     _ji_die "dependencia(s) ausente(s) no PATH:$_jidc_missing — instale (ex.: 'brew install jq curl' no macOS, 'apt-get install jq curl' em distros Debian/Ubuntu) e reexecute" 5
   fi
   return 0
+}
+
+# _ji_require_jq — 3.5: `json-get`/`json-build` so precisam de `jq` (nunca do
+# cliente HTTP nem de ProjectConfig/credencial) — checagem dedicada, mais
+# estreita que `_ji_cmd_deps_check` (que tambem exige o cliente HTTP).
+_ji_require_jq() {
+  command -v jq >/dev/null 2>&1 \
+    || _ji_die "dependencia ausente no PATH: jq — instale (ex.: 'brew install jq' no macOS, 'apt-get install jq' em distros Debian/Ubuntu) e reexecute" 5
 }
 
 # _ji_method_allowed METHOD — allowlist FECHADA (FR-012): DELETE nunca
@@ -594,6 +679,190 @@ _ji_cmd_validate_segment() {
   return 0
 }
 
+# _ji_cmd_json_get FILTER — 3.5 (SEC-3): le JSON de stdin, aplica
+# `jq -r FILTER`. Wrapper de LEITURA — restringe `jq` a este arquivo (nenhum
+# outro script do plugin invoca `jq` diretamente). So exige `jq` (nunca o
+# cliente HTTP nem ProjectConfig/credencial). Filtro invalido ou entrada
+# nao-JSON => exit 2 (uso incorreto); o FILTER bruto nao e ecoado no erro
+# (pode conter dado sensivel vindo do chamador).
+_ji_cmd_json_get() {
+  [ "$#" -eq 1 ] || _ji_die_usage "json-get requer exatamente 1 FILTER"
+  _jig_filter="$1"
+  _ji_require_jq
+  jq -r "$_jig_filter" 2>/dev/null \
+    || _ji_die_usage "json-get: filtro invalido ou entrada em stdin nao e JSON valido"
+  return 0
+}
+
+# _ji_cmd_json_build MODE [ARGS...] — 3.5 (SEC-3): dispatcher interno de
+# `json-build`. MODE em {issue, filter} — allowlist FECHADA (mesmo estilo de
+# `_ji_method_allowed`/`_ji_op_allowed`).
+_ji_cmd_json_build() {
+  _jib_mode="${1:-}"
+  if [ "$#" -ge 1 ]; then
+    shift
+  fi
+  case "$_jib_mode" in
+    issue)
+      _ji_cmd_json_build_issue "$@"
+      ;;
+    filter)
+      _ji_cmd_json_build_filter "$@"
+      ;;
+    '')
+      _ji_die_usage "json-build requer MODE (issue, filter)"
+      ;;
+    *)
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter)"
+      ;;
+  esac
+}
+
+# _ji_cmd_json_build_issue --project-id ID --issuetype-id ID --summary TEXT
+#                          [--parent-key KEY] [--description TEXT]
+# — 3.5 (SEC-3): monta o corpo de R1 (`POST /rest/api/3/issue`,
+# contracts/jira-rest.md). `--project-id`/`--issuetype-id`/`--parent-key`
+# MUST casar a allowlist [A-Za-z0-9_-] (SEC-1) — a mesma de
+# `validate-segment` — ANTES de entrar no corpo; `--summary`/`--description`
+# sao texto livre, passados a `jq --arg` (NUNCA concatenacao de string), o
+# que preserva aspas/barras/quebras de linha como JSON valido.
+_ji_cmd_json_build_issue() {
+  _jbi_project_id=""
+  _jbi_issuetype_id=""
+  _jbi_summary=""
+  _jbi_parent_key=""
+  _jbi_description=""
+  _jbi_have_summary="no"
+  _jbi_have_parent="no"
+  _jbi_have_description="no"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--project-id requer argumento"
+        _jbi_project_id="$2"
+        shift 2
+        ;;
+      --issuetype-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--issuetype-id requer argumento"
+        _jbi_issuetype_id="$2"
+        shift 2
+        ;;
+      --summary)
+        [ "$#" -ge 2 ] || _ji_die_usage "--summary requer argumento"
+        _jbi_summary="$2"
+        _jbi_have_summary="yes"
+        shift 2
+        ;;
+      --parent-key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--parent-key requer argumento"
+        _jbi_parent_key="$2"
+        _jbi_have_parent="yes"
+        shift 2
+        ;;
+      --description)
+        [ "$#" -ge 2 ] || _ji_die_usage "--description requer argumento"
+        _jbi_description="$2"
+        _jbi_have_description="yes"
+        shift 2
+        ;;
+      *)
+        _ji_die_usage "json-build issue: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$_jbi_project_id" ] \
+    || _ji_die_usage "json-build issue requer --project-id"
+  [ -n "$_jbi_issuetype_id" ] \
+    || _ji_die_usage "json-build issue requer --issuetype-id"
+  [ "$_jbi_have_summary" = "yes" ] \
+    || _ji_die_usage "json-build issue requer --summary"
+
+  # SEC-1: ids/keys ANTES de entrar no corpo — mesma allowlist de
+  # `validate-segment`. Falha SEM montar corpo algum (nenhuma chamada a jq).
+  _ji_charset_ok "$_jbi_project_id" \
+    || _ji_die_usage "--project-id fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+  _ji_charset_ok "$_jbi_issuetype_id" \
+    || _ji_die_usage "--issuetype-id fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+  if [ "$_jbi_have_parent" = "yes" ]; then
+    _ji_charset_ok "$_jbi_parent_key" \
+      || _ji_die_usage "--parent-key fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+  fi
+
+  _ji_require_jq
+
+  _jbi_have_parent_json="false"
+  [ "$_jbi_have_parent" = "yes" ] && _jbi_have_parent_json="true"
+  _jbi_have_description_json="false"
+  [ "$_jbi_have_description" = "yes" ] && _jbi_have_description_json="true"
+
+  jq -n \
+    --arg pid "$_jbi_project_id" \
+    --arg tid "$_jbi_issuetype_id" \
+    --arg summary "$_jbi_summary" \
+    --arg parent_key "$_jbi_parent_key" \
+    --arg description "$_jbi_description" \
+    --argjson have_parent "$_jbi_have_parent_json" \
+    --argjson have_description "$_jbi_have_description_json" \
+    '{fields: {project: {id: $pid}, issuetype: {id: $tid}, summary: $summary}}
+     | if $have_parent then .fields.parent = {key: $parent_key} else . end
+     | if $have_description then
+         .fields.description = {
+           type: "doc",
+           version: 1,
+           content: [{type: "paragraph", content: [{type: "text", text: $description}]}]
+         }
+       else . end'
+}
+
+# _ji_cmd_json_build_filter --name TEXT --project-key KEY — 3.5 (SEC-3):
+# monta o corpo de R9 (`POST /rest/api/3/filter`, contracts/jira-rest.md):
+# `{"name": TEXT, "jql": "project = \"KEY\""}`. `--project-key` MUST casar a
+# allowlist [A-Za-z0-9_-] (SEC-1) ANTES de entrar na JQL — recusado (exit 2)
+# SEM montar JQL alguma; `--name` (texto livre) NUNCA e interpolado em
+# `jql` (so entra no campo `name` via `jq --arg`).
+_ji_cmd_json_build_filter() {
+  _jbf_name=""
+  _jbf_project_key=""
+  _jbf_have_name="no"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name)
+        [ "$#" -ge 2 ] || _ji_die_usage "--name requer argumento"
+        _jbf_name="$2"
+        _jbf_have_name="yes"
+        shift 2
+        ;;
+      --project-key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--project-key requer argumento"
+        _jbf_project_key="$2"
+        shift 2
+        ;;
+      *)
+        _ji_die_usage "json-build filter: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ "$_jbf_have_name" = "yes" ] \
+    || _ji_die_usage "json-build filter requer --name"
+  [ -n "$_jbf_project_key" ] \
+    || _ji_die_usage "json-build filter requer --project-key"
+
+  # SEC-3: --project-key MUST passar pela allowlist SEC-1 ANTES de entrar na
+  # JQL — nenhum texto livre (ex.: titulo/descricao) e aceito aqui. Falha
+  # SEM montar JQL alguma.
+  _ji_charset_ok "$_jbf_project_key" \
+    || _ji_die_usage "--project-key fora da allowlist [A-Za-z0-9_-] (SEC-1) — recusado antes de montar JQL (SEC-3)"
+
+  _ji_require_jq
+
+  _jbf_jql="project = \"${_jbf_project_key}\""
+  jq -n --arg name "$_jbf_name" --arg jql "$_jbf_jql" '{name: $name, jql: $jql}'
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _ji_sub="${1:-}"
@@ -613,7 +882,13 @@ case "$_ji_sub" in
   request)
     _ji_cmd_request "$@"
     ;;
+  json-get)
+    _ji_cmd_json_get "$@"
+    ;;
+  json-build)
+    _ji_cmd_json_build "$@"
+    ;;
   *)
-    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment)"
+    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, json-get, json-build)"
     ;;
 esac

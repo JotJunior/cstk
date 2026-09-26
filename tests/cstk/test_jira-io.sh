@@ -1,19 +1,20 @@
 #!/bin/sh
 # test_jira-io.sh — cobre plugins/cstk-jira/scripts/jira-io.sh, tarefas
-# 3.1-3.4 (cstk-jira, FASE 3 "Cliente REST Seguro").
+# 3.1-3.5 (cstk-jira, FASE 3 "Cliente REST Seguro").
 #
-# Ref: docs/specs/cstk-jira/plan.md SEC-1, SEC-4, SEC-5, Test Strategy
+# Ref: docs/specs/cstk-jira/plan.md SEC-1, SEC-3, SEC-4, SEC-5, Test Strategy
 #      "Falha"; docs/specs/cstk-jira/contracts/plugin-scripts.md `jira-io.sh`;
-#      contracts/jira-rest.md (R1/R2/R4); checklists/api.md CHK009; tasks.md
-#      3.1.1-3.1.7, 3.2.1-3.2.5, 3.3.1-3.3.5, 3.4.1-3.4.7; dec-073.
+#      contracts/jira-rest.md (R1/R2/R4/R9); checklists/api.md CHK009;
+#      checklists/security.md CHK002/CHK003; tasks.md 3.1.1-3.1.7,
+#      3.2.1-3.2.5, 3.3.1-3.3.5, 3.4.1-3.4.7, 3.5.1-3.5.5; dec-073.
 #
 # Escopo desta suite (mesmo escopo do script ate esta tarefa): `deps-check`
 # + `request` (host unico, allowlist de METHOD, recusa de redirect, allowlist
 # de charset em PATH/SEC-1, credencial temporaria segura/SEC-4, e desde a
 # tarefa 3.4 tambem classificacao fina de status HTTP: `401`/`403`(`--op`
 # R1/R2 vs demais)/`429`(`Retry-After`)/`5xx`-e-rede-com-backoff/`400`-`409`-
-# em-R4) + o subcomando `validate-segment`. NAO cobre `json-get`/`json-build`
-# (3.5) — ganha sua propria suite quando a tarefa correspondente rodar.
+# em-R4) + `validate-segment` + (desde a tarefa 3.5) `json-get`/`json-build`
+# (issue/filter) e a recusa de JQL com texto livre (SEC-3).
 #
 # JI-33..JI-47 (tarefa 3.4): ver bloco de comentarios proprio logo antes dos
 # cenarios correspondentes, mais abaixo neste arquivo.
@@ -912,6 +913,180 @@ scenario_contrato_401_403_429_sem_colisao() {
   # (auth_failed, permission_denied, deferred) provam que nao ha colisao:
   # 401 e "403 demais" COMPARTILHAM auth_failed de proposito (mesmo
   # tratamento, plan.md), mas 403-R1/R2 e 429 sao SEMPRE distintos dos dois.
+}
+
+# JI-48..JI-62 (tarefa 3.5, SEC-3): `json-get`/`json-build` + JQL segura.
+# Nenhum destes cenarios toca rede (json-get/json-build nunca chamam
+# jira-config.sh nem o cliente HTTP) — so precisam de `jq` no PATH.
+#   JI-48 json-get: filtro valido sobre JSON de stdin -> valor em stdout
+#   JI-49 json-get: entrada em stdin NAO e JSON valido -> exit 2
+#   JI-50 json-get: filtro jq invalido -> exit 2
+#   JI-51 json-get: numero errado de argumentos -> exit 2 (uso incorreto)
+#   JI-52 json-get: jq ausente do PATH -> exit 5
+#   JI-53 json-build issue: contrato R1 completo (project/issuetype/summary/
+#         parent/description ADF) bate campo a campo com
+#         contracts/jira-rest.md (3.5.4)
+#   JI-54 json-build issue: so os 3 campos obrigatorios (sem parent/description)
+#   JI-55 json-build issue: falta --project-id -> exit 2
+#   JI-56 json-build issue: falta --issuetype-id -> exit 2
+#   JI-57 json-build issue: falta --summary -> exit 2
+#   JI-58 json-build issue: --project-id fora da allowlist [A-Za-z0-9_-] -> exit 2
+#   JI-59 json-build issue: --parent-key fora da allowlist -> exit 2
+#   JI-60 json-build issue: --summary/--description com aspas, barra invertida
+#         e quebra de linha -> JSON de saida ainda e valido (round-trip via
+#         `jq -e .`) e preserva o conteudo literal (teste negativo obrigatorio)
+#   JI-61 json-build filter: --name + --project-key validos -> corpo R9
+#         {"name":..., "jql":"project = \"KEY\""}
+#   JI-62 json-build filter: --project-key com texto livre/tentativa de
+#         injecao JQL (espaco, aspas, operador OR) -> exit 2, RECUSADA antes
+#         de montar qualquer JQL (SEC-3, teste negativo obrigatorio 3.5.5) —
+#         --name (texto livre) tambem nunca e interpolado em jql
+#   JI-63 json-build: MODE desconhecido -> exit 2
+#   JI-64 json-build: subcomando sem MODE -> exit 2
+
+# NOTA: `printf ... | assert_exit ...` NAO funciona neste harness — o lado
+# direito de um pipe roda em subshell (POSIX puro, sem `lastpipe`), entao
+# _CAPTURED_* setadas dentro de `capture`/`assert_exit` seriam perdidas ao
+# sair do subshell. Usar heredoc (`<<EOF`), que e redirecionamento de
+# argumento (mesmo shell), nunca pipe — mesmo padrao ja usado alhures no
+# repo (ex.: tests/test_bloqueios.sh `capture jq -e '...' <<EOF`).
+scenario_json_get_filtro_valido() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-get '.fields.status.name' <<'EOF' || return 1
+{"fields":{"status":{"name":"To Do"}}}
+EOF
+  assert_stdout_contains "To Do" || return 1
+}
+
+scenario_json_get_entrada_nao_json_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-get '.' <<'EOF' || return 1
+nao e json
+EOF
+}
+
+scenario_json_get_filtro_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-get '.[[[' <<'EOF' || return 1
+{}
+EOF
+}
+
+scenario_json_get_argumentos_errados_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-get || return 1
+}
+
+scenario_json_get_jq_ausente_exit5() {
+  cd "$TMPDIR_TEST" || return 1
+  _bin="$TMPDIR_TEST/bin-none"
+  mkdir -p "$_bin"
+  assert_exit 5 env PATH="$_bin" "$SCRIPT" json-get '.' <<'EOF' || return 1
+{}
+EOF
+  assert_stderr_contains "jq" || return 1
+}
+
+scenario_json_build_issue_contrato_r1_completo() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build issue \
+    --project-id 10000 --issuetype-id 10004 --summary "Story de teste" \
+    --parent-key SCRUM-5 --description "corpo da descricao" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n \
+    '{fields:{project:{id:"10000"},issuetype:{id:"10004"},summary:"Story de teste",parent:{key:"SCRUM-5"},description:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"corpo da descricao"}]}]}}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_issue_r1" "corpo nao bate com contracts/jira-rest.md R1: obtido=$_got want=$_want"; return 1; }
+}
+
+scenario_json_build_issue_so_campos_obrigatorios() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build issue \
+    --project-id 10000 --issuetype-id 10001 --summary "Epic minimo" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{fields:{project:{id:"10000"},issuetype:{id:"10001"},summary:"Epic minimo"}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_issue_minimo" "corpo inesperado: $_got"; return 1; }
+}
+
+scenario_json_build_issue_falta_project_id_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue --issuetype-id 1 --summary x || return 1
+}
+
+scenario_json_build_issue_falta_issuetype_id_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue --project-id 1 --summary x || return 1
+}
+
+scenario_json_build_issue_falta_summary_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue --project-id 1 --issuetype-id 1 || return 1
+}
+
+scenario_json_build_issue_project_id_fora_allowlist_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue \
+    --project-id "10000; DROP" --issuetype-id 1 --summary x || return 1
+}
+
+scenario_json_build_issue_parent_key_fora_allowlist_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue \
+    --project-id 1 --issuetype-id 1 --summary x --parent-key "SCRUM 5" || return 1
+}
+
+# JI-60 (teste negativo obrigatorio): valor com aspas/barra/quebra de linha
+# em --summary/--description continua produzindo JSON VALIDO (round-trip via
+# `jq -e .`) e preserva o conteudo literal — prova de que a montagem usa
+# `jq --arg` (escaping correto), nunca concatenacao de string.
+scenario_json_build_issue_summary_com_aspas_barra_e_quebra_de_linha() {
+  cd "$TMPDIR_TEST" || return 1
+  _summary='titulo com "aspas", \barra\ e
+quebra de linha'
+  assert_exit 0 "$SCRIPT" json-build issue \
+    --project-id 1 --issuetype-id 1 --summary "$_summary" \
+    --description "$_summary" || return 1
+  printf '%s' "$_CAPTURED_STDOUT" | jq -e . >/dev/null 2>&1 \
+    || { _fail "json_build_issue_json_valido" "saida nao e JSON valido: $_CAPTURED_STDOUT"; return 1; }
+  _roundtrip_summary=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.fields.summary')
+  [ "$_roundtrip_summary" = "$_summary" ] \
+    || { _fail "json_build_issue_summary_preservado" "esperado='$_summary' obtido='$_roundtrip_summary'"; return 1; }
+  _roundtrip_desc=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.fields.description.content[0].content[0].text')
+  [ "$_roundtrip_desc" = "$_summary" ] \
+    || { _fail "json_build_issue_description_preservado" "esperado='$_summary' obtido='$_roundtrip_desc'"; return 1; }
+}
+
+scenario_json_build_filter_valido() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build filter \
+    --name "Board do projeto SCRUM" --project-key SCRUM || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{name:"Board do projeto SCRUM", jql:"project = \"SCRUM\""}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_filter_r9" "corpo nao bate com contracts/jira-rest.md R9: obtido=$_got want=$_want"; return 1; }
+}
+
+# JI-62 (teste negativo obrigatorio, SEC-3/3.5.5): tentativa de montar JQL
+# com texto livre (aqui simulado via --project-key contendo espaco/aspas/
+# operador JQL) e RECUSADA (exit 2) ANTES de qualquer interpolacao — nenhuma
+# JQL e impressa em stdout.
+scenario_json_build_filter_project_key_texto_livre_recusado_antes_de_montar_jql() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build filter \
+    --name "x" --project-key 'SCRUM" OR 1=1 --' || return 1
+  assert_stdout_not_contains "jql" || return 1
+  assert_stdout_not_contains "OR 1=1" || return 1
+}
+
+scenario_json_build_mode_desconhecido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build transition --transition-id 5 || return 1
+}
+
+scenario_json_build_sem_mode_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build || return 1
 }
 
 run_all_scenarios
