@@ -1,18 +1,26 @@
 #!/bin/sh
-# jira-io.sh — UNICO arquivo do plugin cstk-jira que referencia `jq` e o
-# cliente HTTP de linha de comando (o mesmo binario de `cli/lib/http.sh`),
-# sob o carve-out 1.1.0 do Principio II (POSIX sh, zero dependencia) —
-# consentido pelo operador em block-002 (plan.md Runtime B1 / dec-021).
+# jira-io.sh — UNICO arquivo do plugin cstk-jira que referencia `jq`, o
+# cliente HTTP de linha de comando (o mesmo binario de `cli/lib/http.sh`) e
+# (FASE 4.2.3, dec-081) um utilitario de hash SHA-256, sob o carve-out 1.1.0
+# do Principio II (POSIX sh, zero dependencia) — consentido pelo operador em
+# block-002 (plan.md Runtime B1 / dec-021). O utilitario de hash preenche uma
+# lacuna ja presente em data-model.md Entity SyncMarker (`written_summary_
+# sha256`, ratificado antes desta onda) — mesma disciplina de confinamento
+# do carve-out original: um UNICO ponto de acesso (este arquivo), mesmo
+# padrao de fallback (exit 5, outbox preservado — jira-sync.sh drain trata
+# como qualquer outra dependencia ausente). Decisao dec-081 (onda-022),
+# operacional (nao fixa nenhum dos eixos estruturais da execucao).
 #
 # Ref: docs/specs/cstk-jira/plan.md SEC-1..SEC-5;
 #      docs/specs/cstk-jira/contracts/plugin-scripts.md `jira-io.sh`;
-#      docs/specs/cstk-jira/contracts/jira-rest.md (autenticacao Basic, R1/R9);
-#      docs/specs/cstk-jira/data-model.md Entity ProjectConfig/Credential;
-#      tasks.md FASE 3 tarefas 3.1-3.5.
+#      docs/specs/cstk-jira/contracts/jira-rest.md (autenticacao Basic,
+#      R1/R4/R6/R9); docs/specs/cstk-jira/data-model.md Entity
+#      ProjectConfig/Credential/SyncMarker; tasks.md FASE 3 tarefas 3.1-3.5
+#      + FASE 4 tarefa 4.2.3-4.2.5.
 #
 # ESCOPO ATE AGORA: 3.1 `deps-check`+`request` com host unico/SEC-5, 3.2
 # allowlist de charset em PATH/SEC-1, 3.3 credencial temporaria segura/SEC-4,
-# 3.4 classificacao fina de status HTTP, e 3.5 `json-get`/`json-build` +
+# 3.4 classificacao fina de status HTTP, 3.5 `json-get`/`json-build` +
 # JQL segura (SEC-3, abaixo).
 #
 # 3.5 (SEC-3 — `json-get`/`json-build`): este arquivo continua o
@@ -260,6 +268,27 @@ USO:
       passa pela allowlist SEC-1 ANTES de entrar na JQL (SEC-3) — nenhum
       texto livre (--name incluso) e interpolado em jql.
 
+  jira-io.sh json-build transition --transition-id ID
+      Monta o corpo de R4 (executar transicao): {"transition":{"id":ID}}.
+      ID passa pela allowlist [A-Za-z0-9_-] (SEC-1).
+
+  jira-io.sh json-build marker --local-key K --feature F
+                              --written-summary-sha256 H --written-status S
+                              --written-at T
+      Monta o VALOR CRU do SyncMarker (R6 PUT, sem envelope {key,value} —
+      a chave ja vai na URL): {"schema":1,"local_key":K,"feature":F,
+      "written_summary_sha256":H,"written_status":S,"written_at":T}.
+      Todos os campos sao texto livre, escapados via jq --arg (local_key/
+      status podem conter pontos/espacos, ex. "4.2.1"/"In Progress").
+
+  jira-io.sh sha256-stdin
+      Le stdin, imprime o SHA-256 hex (sha256sum ou shasum -a 256, o que
+      estiver no PATH). Usado pelo motor (jira-sync.sh, FASE 4.2.3) para
+      comparar o titulo atual da issue contra `written_summary_sha256` do
+      SyncMarker (data-model.md Entity SyncMarker) — so o hash e comparado/
+      gravado, nunca o titulo em si (aviso oficial de nao guardar dado
+      sensivel em entity property, research Decision 3).
+
 EXIT CODES:
   0 sucesso   1 erro geral/requisicao/deferred   2 uso incorreto
   3 ProjectConfig ausente   4 credencial ausente/incompleta/auth_failed
@@ -404,6 +433,37 @@ _ji_cmd_deps_check() {
 _ji_require_jq() {
   command -v jq >/dev/null 2>&1 \
     || _ji_die "dependencia ausente no PATH: jq — instale (ex.: 'brew install jq' no macOS, 'apt-get install jq' em distros Debian/Ubuntu) e reexecute" 5
+}
+
+# _ji_require_sha256 — `sha256-stdin` (FASE 4.2.3, dec-081) so precisa de UM
+# utilitario de hash (nem jq nem cliente HTTP). `sha256sum` (coreutils/
+# Linux) tem precedencia; `shasum -a 256` (macOS default) e o fallback —
+# mesma deteccao/precedencia de `cli/lib/compat.sh` `sha256_stdin` no resto
+# do toolkit (nao reusada aqui: este plugin e distribuido separadamente e
+# nao depende de `cli/lib/`, carve-out 1.1.0 confinado a este arquivo).
+# Preenche `_JI_SHA_TOOL` com o nome do binario escolhido.
+_ji_require_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    _JI_SHA_TOOL="sha256sum"
+    return 0
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    _JI_SHA_TOOL="shasum"
+    return 0
+  fi
+  _ji_die "dependencia ausente no PATH: sha256sum ou shasum — instale (ex.: coreutils no Linux; shasum ja vem por padrao no macOS) e reexecute" 5
+}
+
+# _ji_cmd_sha256_stdin — le stdin, imprime SHA-256 hex (40... 64 chars) +
+# newline. So os primeiros 64 chars da 1a coluna do output do binario
+# (sha256sum/shasum imprimem "<hash>  -" ou "<hash>  <arquivo>").
+_ji_cmd_sha256_stdin() {
+  _ji_require_sha256
+  if [ "$_JI_SHA_TOOL" = "sha256sum" ]; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
 }
 
 # _ji_method_allowed METHOD — allowlist FECHADA (FR-012): DELETE nunca
@@ -695,8 +755,8 @@ _ji_cmd_json_get() {
 }
 
 # _ji_cmd_json_build MODE [ARGS...] — 3.5 (SEC-3): dispatcher interno de
-# `json-build`. MODE em {issue, filter} — allowlist FECHADA (mesmo estilo de
-# `_ji_method_allowed`/`_ji_op_allowed`).
+# `json-build`. MODE em {issue, filter, transition, marker} — allowlist
+# FECHADA (mesmo estilo de `_ji_method_allowed`/`_ji_op_allowed`).
 _ji_cmd_json_build() {
   _jib_mode="${1:-}"
   if [ "$#" -ge 1 ]; then
@@ -709,11 +769,17 @@ _ji_cmd_json_build() {
     filter)
       _ji_cmd_json_build_filter "$@"
       ;;
+    transition)
+      _ji_cmd_json_build_transition "$@"
+      ;;
+    marker)
+      _ji_cmd_json_build_marker "$@"
+      ;;
     '')
-      _ji_die_usage "json-build requer MODE (issue, filter)"
+      _ji_die_usage "json-build requer MODE (issue, filter, transition, marker)"
       ;;
     *)
-      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter)"
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, transition, marker)"
       ;;
   esac
 }
@@ -863,6 +929,86 @@ _ji_cmd_json_build_filter() {
   jq -n --arg name "$_jbf_name" --arg jql "$_jbf_jql" '{name: $name, jql: $jql}'
 }
 
+# _ji_cmd_json_build_transition --transition-id ID — FASE 4.2.5 (dec-081):
+# monta o corpo de R4 (`POST .../transitions`, contracts/jira-rest.md):
+# {"transition":{"id":ID}}. ID MUST casar a allowlist [A-Za-z0-9_-] (SEC-1)
+# — mesma disciplina de --project-id/--issuetype-id em `json-build issue`.
+_ji_cmd_json_build_transition() {
+  _jbt_id=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --transition-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--transition-id requer argumento"
+        _jbt_id="$2"
+        shift 2
+        ;;
+      *)
+        _ji_die_usage "json-build transition: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+  [ -n "$_jbt_id" ] || _ji_die_usage "json-build transition requer --transition-id"
+  _ji_charset_ok "$_jbt_id" \
+    || _ji_die_usage "--transition-id fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+
+  _ji_require_jq
+  jq -n --arg id "$_jbt_id" '{transition: {id: $id}}'
+}
+
+# _ji_cmd_json_build_marker --local-key K --feature F
+#                          --written-summary-sha256 H --written-status S
+#                          --written-at T — FASE 4.2.5 (dec-081): monta o
+# VALOR CRU do SyncMarker (R6 PUT — contracts/jira-rest.md R6 confirma que
+# o corpo e o `value` sem envelope, a chave ja vai na URL; data-model.md
+# Entity SyncMarker define os campos). `schema` e fixo em 1 (unica versao
+# ate agora). Todos os campos sao texto livre (local_key pode conter pontos,
+# ex. "4.2.1"; written_status pode conter espacos, ex. "In Progress") —
+# escapados via jq --arg, NUNCA concatenacao de string (SEC-3).
+_ji_cmd_json_build_marker() {
+  _jbm_local_key=""
+  _jbm_feature=""
+  _jbm_sha=""
+  _jbm_status=""
+  _jbm_at=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --local-key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--local-key requer argumento"
+        _jbm_local_key="$2"; shift 2 ;;
+      --feature)
+        [ "$#" -ge 2 ] || _ji_die_usage "--feature requer argumento"
+        _jbm_feature="$2"; shift 2 ;;
+      --written-summary-sha256)
+        [ "$#" -ge 2 ] || _ji_die_usage "--written-summary-sha256 requer argumento"
+        _jbm_sha="$2"; shift 2 ;;
+      --written-status)
+        [ "$#" -ge 2 ] || _ji_die_usage "--written-status requer argumento"
+        _jbm_status="$2"; shift 2 ;;
+      --written-at)
+        [ "$#" -ge 2 ] || _ji_die_usage "--written-at requer argumento"
+        _jbm_at="$2"; shift 2 ;;
+      *)
+        _ji_die_usage "json-build marker: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+  [ -n "$_jbm_local_key" ] || _ji_die_usage "json-build marker requer --local-key"
+  [ -n "$_jbm_feature" ] || _ji_die_usage "json-build marker requer --feature"
+  [ -n "$_jbm_sha" ] || _ji_die_usage "json-build marker requer --written-summary-sha256"
+  [ -n "$_jbm_status" ] || _ji_die_usage "json-build marker requer --written-status"
+  [ -n "$_jbm_at" ] || _ji_die_usage "json-build marker requer --written-at"
+
+  _ji_require_jq
+  jq -n --argjson schema 1 \
+    --arg local_key "$_jbm_local_key" \
+    --arg feature "$_jbm_feature" \
+    --arg sha "$_jbm_sha" \
+    --arg status "$_jbm_status" \
+    --arg at "$_jbm_at" \
+    '{schema: $schema, local_key: $local_key, feature: $feature,
+      written_summary_sha256: $sha, written_status: $status, written_at: $at}'
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _ji_sub="${1:-}"
@@ -888,7 +1034,10 @@ case "$_ji_sub" in
   json-build)
     _ji_cmd_json_build "$@"
     ;;
+  sha256-stdin)
+    _ji_cmd_sha256_stdin "$@"
+    ;;
   *)
-    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, json-get, json-build)"
+    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, json-get, json-build, sha256-stdin)"
     ;;
 esac

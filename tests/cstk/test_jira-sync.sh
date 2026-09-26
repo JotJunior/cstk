@@ -58,9 +58,8 @@
 #         conversao anterior -> convert cria SOMENTE a task nova associada
 #         ao Epic ja existente (nenhuma chamada para os itens ja mapeados)
 #
-# enqueue/drain (FASE 4.2 PARCIAL — 4.2.1/4.2.2/4.2.6/4.2.8; deteccao de
-# conflito/transicao real via R4/R6 fica para 4.2.3-4.2.5, fora desta tarefa
-# — ver nota de escopo no topo de jira-sync.sh):
+# enqueue/drain (FASE 4.2 COMPLETA — 4.2.1-4.2.8/4.2.10/4.2.11; deteccao de
+# conflito/transicao real via R4/R6 fechada na onda-022, dec-081):
 #   SY-13 enqueue: 1a chamada cria outbox.tsv com cabecalho + 1 linha
 #         (status=queued, attempts=0); --state/--source fora do enum -> exit
 #         2, outbox.tsv nunca criado
@@ -71,11 +70,21 @@
 #         (4.2.8); lock e sempre liberado ao final (rmdir)
 #   SY-16 drain: evento `auth_failed` presente para a feature -> nenhum
 #         evento `queued` da MESMA feature e alterado, diagnostico em
-#         stderr citando FR-016 (4.2.6 — nota de escopo: cobre o gate no
-#         nivel do outbox; bloqueio de chamadas de rede reais pende de
-#         4.2.3-4.2.5, ainda nao implementadas)
+#         stderr citando FR-016 (4.2.6)
 #   SY-17 drain: evento `auth_failed` de OUTRA feature nao bloqueia o drain
 #         da feature corrente (gate e por feature, nao global)
+#   SY-18 drain (4.2.5): sem conflito -> resolve transition.id via R5,
+#         executa R4, regrava o SyncMarker via R6 PUT, marca `done` (5
+#         chamadas de rede na ordem R3/R6-GET/R5/R4/R6-PUT)
+#   SY-19 drain (4.2.3/4.2.4/4.2.10): titulo atual diverge do sha256
+#         gravado no SyncMarker -> ConflictRecord reason=manual_edit,
+#         evento vira `conflict`, NENHUMA chamada de transicao/escrita
+#         (so R3+R6-GET, 2 chamadas)
+#   SY-20 drain (4.2.3): SyncMarker ausente (R6 GET -> 404) -> ConflictRecord
+#         reason=marker_missing (nunca tratado como issue nova)
+#   SY-21 drain (4.4.1): `jira-map.sh mark-orphans` roda como parte do
+#         drain (pura leitura local, sem rede) — local_key ausente de
+#         tasks.md vira `orphan`; NENHUMA linha e removida (4.4.2)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -138,6 +147,17 @@ EOF
 
 _map_file() {
   printf '%s\n' "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+}
+
+# _write_map_row LOCAL_KEY KIND JIRA_ID JIRA_KEY STATE — grava
+# docs/specs/demo/jira-map.tsv com cabecalho + 1 linha (cria o arquivo se
+# ausente, ACRESCENTA se ja existir — usado pelos cenarios de drain 4.2.3-
+# 4.2.5/4.4 que precisam de um mapeamento `active`/`orphan` pre-existente).
+_write_map_row() {
+  _wmr_file="$(_map_file)"
+  mkdir -p "$(dirname "$_wmr_file")"
+  [ -f "$_wmr_file" ] || printf '%s\n' 'local_key	kind	jira_id	jira_key	state' > "$_wmr_file"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$_wmr_file"
 }
 
 # --- stub de rede por FILA (so usado pelos cenarios de convert) -----------
@@ -521,6 +541,126 @@ EOF
     *FR-016*) _fail "drain_cross_feature_gate" "gate auth_failed vazou de outra feature"; return 1 ;;
   esac
   grep -q '^e2	' "$(_outbox_file)" || { _fail "drain_cross_feature_queued_kept" "evento queued da feature corrente sumiu"; return 1; }
+  return 0
+}
+
+# =========================== drain: 4.2.3-4.2.5 (deteccao de conflito/transicao real) ====
+
+# SY-18 drain: sem conflito (sha256(titulo) e status atuais batem com o
+# SyncMarker) -> resolve transition.id via R5, executa R4, regrava o
+# SyncMarker via R6 PUT, marca o evento `done`. Exatamente 5 chamadas de
+# rede na ordem R3/R6-GET/R5/R4/R6-PUT.
+scenario_drain_sem_conflito_transiciona_e_grava_marker() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _sha=$(printf '%s' "Titulo Atual" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo Atual","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha\",\"written_status\":\"In Progress\"}}"
+  _queue_push 200 '{"transitions":[{"id":"11","to":{"name":"In Progress"}},{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "drain_ok_calls_count" "esperado 5 chamadas, obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "drain_ok_marks_done" "evento e1 nao foi marcado done: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+
+  _trans_id=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_trans_id" = "31" ] || { _fail "drain_ok_transition_id" "esperado transition.id=31, obtido $_trans_id"; return 1; }
+
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_marker_status" = "Done" ] || { _fail "drain_ok_marker_status" "esperado written_status=Done, obtido $_marker_status"; return 1; }
+  _marker_lkey=$("$IO_SCRIPT" json-get '.local_key' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_marker_lkey" = "1.1" ] || { _fail "drain_ok_marker_local_key" "esperado local_key=1.1, obtido $_marker_lkey"; return 1; }
+  return 0
+}
+
+# SY-19 drain: titulo atual diverge do sha256 gravado no SyncMarker ->
+# ConflictRecord (reason=manual_edit), evento vira `conflict`, NUNCA
+# sobrescreve (FR-011) — so 2 chamadas de rede (R3 + R6-GET), nenhuma
+# transicao/escrita.
+scenario_drain_conflito_manual_edit_gera_conflict_record_sem_sobrescrever() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	queued
+EOF
+  _sha_original=$(printf '%s' "Titulo Original" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo Mudou Manualmente","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_original\",\"written_status\":\"To Do\"}}"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "2" ] \
+    || { _fail "drain_conflict_calls_count" "esperado 2 chamadas (R3+R6-GET), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'conflict$' \
+    || { _fail "drain_conflict_marks_conflict" "evento e1 nao foi marcado conflict"; return 1; }
+  [ -f "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" ] \
+    || { _fail "drain_conflict_writes_file" "conflicts.tsv nao foi criado"; return 1; }
+  grep -q 'demo	1\.1	DEMO-2	manual_edit	pending$' "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" \
+    || { _fail "drain_conflict_record_reason" "ConflictRecord ausente/incorreto: $(cat "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv")"; return 1; }
+  return 0
+}
+
+# SY-20 drain: SyncMarker ausente (GET .../properties -> 404) -> tratado
+# como conflito (reason=marker_missing), NUNCA como issue nova a sincronizar
+# do zero (data-model.md Entity SyncMarker).
+scenario_drain_marker_ausente_404_vira_conflict_marker_missing() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pending	manual	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Qualquer Titulo","status":{"name":"To Do"}}}'
+  _queue_push 404 '{"errorMessages":["Property not found."]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'conflict$' \
+    || { _fail "drain_marker_missing_marks_conflict" "evento e1 nao foi marcado conflict"; return 1; }
+  grep -q 'demo	1\.1	DEMO-2	marker_missing	pending$' "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" \
+    || { _fail "drain_marker_missing_reason" "ConflictRecord ausente/incorreto: $(cat "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# SY-21 drain: `jira-map.sh mark-orphans` (4.4.1) roda como parte do drain
+# (pura leitura/rewrite LOCAL, sem rede) — local_key ausente de tasks.md
+# vira `orphan`; local_keys presentes permanecem `active`; NENHUMA linha e
+# removida (4.4.2 — card orfao nunca e apagado).
+scenario_drain_marca_orfaos_como_parte_do_processo() {
+  _write_tasks_1task_1sub
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  _write_map_row "1.1.1" subtask 20003 DEMO-3 active
+  _write_map_row "9.9" task 20099 DEMO-9 active
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  grep -q '^9\.9	task	20099	DEMO-9	orphan$' "$(_map_file)" \
+    || { _fail "drain_mark_orphans_flags_9_9" "9.9 nao foi marcado orphan: $(cat "$(_map_file)")"; return 1; }
+  grep -q '^1\.1	task	20002	DEMO-2	active$' "$(_map_file)" \
+    || { _fail "drain_mark_orphans_keeps_1_1" "1.1 deveria continuar active"; return 1; }
+  [ "$(wc -l < "$(_map_file)" | tr -d ' ')" = "4" ] \
+    || { _fail "drain_mark_orphans_never_deletes" "linha(s) desaparecida(s) do jira-map.tsv (4.4.2)"; return 1; }
   return 0
 }
 

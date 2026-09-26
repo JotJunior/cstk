@@ -1081,12 +1081,92 @@ scenario_json_build_filter_project_key_texto_livre_recusado_antes_de_montar_jql(
 
 scenario_json_build_mode_desconhecido_exit2() {
   cd "$TMPDIR_TEST" || return 1
-  assert_exit 2 "$SCRIPT" json-build transition --transition-id 5 || return 1
+  assert_exit 2 "$SCRIPT" json-build bogus --whatever x || return 1
 }
 
 scenario_json_build_sem_mode_exit2() {
   cd "$TMPDIR_TEST" || return 1
   assert_exit 2 "$SCRIPT" json-build || return 1
+}
+
+# --- json-build transition (FASE 4.2.5, dec-081) ---------------------------
+
+scenario_json_build_transition_valido() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build transition --transition-id 31 || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{transition:{id:"31"}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_transition_r4" "corpo nao bate com contracts/jira-rest.md R4: obtido=$_got want=$_want"; return 1; }
+}
+
+scenario_json_build_transition_falta_id_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build transition || return 1
+}
+
+scenario_json_build_transition_id_fora_allowlist_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build transition --transition-id '31; DROP TABLE' || return 1
+}
+
+# --- json-build marker (FASE 4.2.5, dec-081/dec-082 — SyncMarker via R6) ---
+
+scenario_json_build_marker_valido() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build marker --local-key "4.2.1" --feature "cstk-jira" \
+    --written-summary-sha256 "abc123" --written-status "In Progress" \
+    --written-at "2026-09-26T00:00:00Z" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{schema:1, local_key:"4.2.1", feature:"cstk-jira", written_summary_sha256:"abc123", written_status:"In Progress", written_at:"2026-09-26T00:00:00Z"}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_marker_r6" "corpo nao bate com data-model.md Entity SyncMarker: obtido=$_got want=$_want"; return 1; }
+}
+
+# JI-marker-2 (teste negativo, SEC-3): texto livre com aspas/barra invertida
+# em local_key/written_status e escapado via jq --arg, nunca corrompe o JSON
+# de saida (nem produz JSON invalido).
+scenario_json_build_marker_campos_com_aspas_e_barra() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build marker --local-key '4."2"\1' --feature "cstk-jira" \
+    --written-summary-sha256 "abc123" --written-status 'In "Review"' \
+    --written-at "2026-09-26T00:00:00Z" || return 1
+  printf '%s' "$_CAPTURED_STDOUT" | jq -e . >/dev/null \
+    || { _fail "json_build_marker_quotes_valid_json" "saida nao e JSON valido: $_CAPTURED_STDOUT"; return 1; }
+  _lkey=$(printf '%s' "$_CAPTURED_STDOUT" | "$SCRIPT" json-get '.local_key')
+  [ "$_lkey" = '4."2"\1' ] || { _fail "json_build_marker_quotes_local_key" "local_key corrompido: $_lkey"; return 1; }
+}
+
+scenario_json_build_marker_falta_campo_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build marker --local-key "4.2.1" --feature "cstk-jira" \
+    --written-summary-sha256 "abc123" --written-status "In Progress" || return 1
+}
+
+# --- sha256-stdin (FASE 4.2.3, dec-081/dec-082) -----------------------------
+
+scenario_sha256_stdin_bate_com_sha256sum_do_sistema() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" sha256-stdin <<'EOF'
+Titulo de teste
+EOF
+  _got="$_CAPTURED_STDOUT"
+  if command -v sha256sum >/dev/null 2>&1; then
+    _want=$(printf '%s\n' "Titulo de teste" | sha256sum | awk '{print $1}')
+  else
+    _want=$(printf '%s\n' "Titulo de teste" | shasum -a 256 | awk '{print $1}')
+  fi
+  [ "$_got" = "$_want" ] \
+    || { _fail "sha256_stdin_matches_system" "esperado $_want, obtido $_got"; return 1; }
+}
+
+scenario_sha256_stdin_deterministico_mesma_entrada() {
+  cd "$TMPDIR_TEST" || return 1
+  _h1=$(printf '%s' "mesmo titulo" | "$SCRIPT" sha256-stdin)
+  _h2=$(printf '%s' "mesmo titulo" | "$SCRIPT" sha256-stdin)
+  [ "$_h1" = "$_h2" ] || { _fail "sha256_stdin_deterministic" "hashes diferentes para a mesma entrada"; return 1; }
+  _h3=$(printf '%s' "titulo diferente" | "$SCRIPT" sha256-stdin)
+  [ "$_h1" != "$_h3" ] || { _fail "sha256_stdin_differs" "hashes iguais para entradas diferentes"; return 1; }
 }
 
 run_all_scenarios

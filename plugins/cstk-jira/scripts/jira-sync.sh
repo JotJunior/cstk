@@ -10,20 +10,27 @@
 #      issue) + nota "Resolucao do project.id"; data-model.md Entity
 #      LocalWorkItem/SyncMapping; tasks.md 4.1.1-4.1.7.
 #
-# ESCOPO ATE AGORA (tarefas 4.1 + 4.2 parcial): `plan`/`convert` (US1, FASE
-# 4.1 completa) e `enqueue`/`drain` (US3, FASE 4.2 PARCIAL — 4.2.1/4.2.2/
-# 4.2.6/4.2.8). `status`/`resolve`/`relink` sao FASE 4.3, fora do escopo.
+# ESCOPO ATE AGORA (tarefas 4.1 + 4.2 completa): `plan`/`convert` (US1, FASE
+# 4.1 completa) e `enqueue`/`drain` (US3, FASE 4.2 completa —
+# 4.2.1-4.2.8/4.2.10/4.2.11; 4.2.9 ja coberta desde a onda anterior).
+# `status`/`resolve`/`relink` (FASE 4.3) e a integracao completa de
+# mark-orphans/relink na UX (FASE 4.4 alem do wiring ja feito em `drain`)
+# seguem fora do escopo desta tarefa.
 #
-# `drain` NAO implementa ainda deteccao de conflito (4.2.3/4.2.4, SyncMarker
-# via R6) nem transicao de status (4.2.5, R4): o corpo de resposta de
-# `GET .../properties/{propertyKey}` (R6) NAO tem confirmacao de roundtrip
-# real em `contracts/jira-rest.md` (so os LIMITES de tamanho da propriedade
-# estao CONFIRMADO; o shape exato da resposta segue sem fonte citavel) — por
-# Principio VI (Zero Fabricacao) o motor nao decide esse shape sem uma fonte
-# (roundtrip real ou doc oficial explicito). Eventos `queued` permanecem na
-# fila (proximo `drain` os reconsidera); nenhuma chamada de rede e feita para
-# eles nesta tarefa. Serializacao de escritas por issue (4.2.7, rate limit)
-# tambem fica para quando a transicao real existir.
+# `drain` implementa deteccao de conflito (4.2.3/4.2.4, SyncMarker via R6) e
+# transicao de status (4.2.5, R4) desde a onda-022 (dec-081 fechou o gap de
+# R6 — `contracts/jira-rest.md` R6 confirma o envelope `{key,value}` por
+# OpenAPI oficial + roundtrip real contra o Jira Cloud de teste). Para cada
+# evento `queued`: le titulo+status atuais (R3) e o SyncMarker (R6 GET); se
+# ausente (404, `marker_missing`) ou divergente (sha256 do titulo OU status,
+# `manual_edit`) do que o plugin gravou por ultimo, gera `ConflictRecord`
+# (`runtime/conflicts.tsv`) e NUNCA sobrescreve (FR-011). Sem conflito:
+# resolve `transition.id` via R5, executa R4, regrava o SyncMarker via R6
+# PUT. Serializacao de escritas por issue (4.2.7): o lock de drain e GLOBAL
+# ao projeto (so um drain roda por vez em todo o projeto), o que ja impede 2
+# escritas concorrentes em qualquer issue sem precisar de lock adicional
+# por-issue. 4.4.1 (`mark-orphans` como parte do drain) tambem esta
+# integrado aqui — ver `_js_cmd_drain`.
 #
 # Subcomandos:
 #
@@ -121,18 +128,26 @@ USO:
       pass/fail/reconcile; SRC em hook-record-task/hook-close-wave/manual.
 
   jira-sync.sh drain --feature F
-      Processa o outbox da feature sob lock proprio (`runtime/.drain.lock/`,
-      `mkdir` atomico — lock ocupado: sai exit 0 sem processar). Compacta
-      eventos `done`; se houver QUALQUER evento `auth_failed` da feature, nao
-      faz nenhuma chamada nova (FR-016). Deteccao de conflito/transicao real
-      (SyncMarker/R4/R6) ainda NAO implementada nesta tarefa (ver nota de
-      escopo no topo do arquivo) — eventos `queued` permanecem na fila.
+      Processa o outbox da feature sob lock GLOBAL do projeto
+      (`runtime/.drain.lock/`, `mkdir` atomico — lock ocupado: sai exit 0
+      sem processar). Compacta eventos `done`; roda `jira-map.sh
+      mark-orphans` (4.4.1, pura leitura local); se houver QUALQUER evento
+      `auth_failed` da feature, nao faz nenhuma chamada nova (FR-016).
+      Para cada evento `queued`: detecta conflito via SyncMarker (R6) —
+      `marker_missing`/`manual_edit` viram `ConflictRecord`
+      (`runtime/conflicts.tsv`) e NUNCA sobrescrevem (FR-011); sem
+      conflito, transiciona (R4/R5) e regrava o SyncMarker (R6 PUT).
+      auth_failed em qualquer chamada real interrompe o processamento do
+      restante do lote nesta chamada (credencial invalida vale para todas).
 
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
   0 sucesso   1 erro geral   2 uso incorreto   3 ProjectConfig ausente
-  4 credencial ausente/incompleta/auth_failed   5 dependencia ausente (convert)
+  4 credencial ausente/incompleta/auth_failed   5 dependencia ausente
+                                                 (convert; drain com eventos
+                                                 queued exige jq/cliente
+                                                 HTTP/sha256sum-shasum)
 HELP
 }
 
@@ -179,11 +194,71 @@ _JS_OUTBOX_FILE="./.claude/cstk-jira/runtime/outbox.tsv"
 _JS_OUTBOX_HEADER='event_id	created_at	feature	local_key	desired_state	source	attempts	status'
 _JS_DRAIN_LOCK_DIR="./.claude/cstk-jira/runtime/.drain.lock"
 
+# Entity ConflictRecord (data-model.md) — nunca sobrescrito automaticamente;
+# resolucao e SEMPRE decisao humana (jira-sync.sh resolve, FASE 4.3).
+_JS_CONFLICTS_FILE="./.claude/cstk-jira/runtime/conflicts.tsv"
+_JS_CONFLICTS_HEADER='detected_at	feature	local_key	jira_key	reason	resolution'
+
+# Chave da entity property do SyncMarker (data-model.md) — DESIGN do
+# plugin, nao dado externo.
+_JS_MARKER_PROPERTY_KEY="cstk-jira.sync"
+
 # _js_script_dir -> diretorio deste script (para localizar os irmaos
 # jira-config.sh/jira-tasks.sh/jira-map.sh/jira-io.sh — mesmo padrao de
 # _jt_script_dir/_jm_script_dir/_ji_script_dir).
 _js_script_dir() {
   CDPATH='' cd -- "$(dirname -- "$0")" && pwd
+}
+
+# _js_set_event_status EVENT_ID STATUS [ATTEMPTS] — 4.2.3-4.2.5: reescreve
+# a linha do OutboxEvent (coluna 8, `status`; coluna 7, `attempts`, so se
+# ATTEMPTS vier nao-vazio) via awk, tmp+mv atomico (mesmo padrao de
+# compactacao 4.2.8). NUNCA remove linhas (isso e responsabilidade exclusiva
+# da compactacao de eventos `done` no PROXIMO drain).
+_js_set_event_status() {
+  _jses_id="$1"
+  _jses_status="$2"
+  _jses_attempts="${3:-}"
+  _jses_tmp="$_JS_OUTBOX_FILE.tmp.$$"
+  awk -F '\t' -v OFS='\t' -v id="$_jses_id" -v st="$_jses_status" -v att="$_jses_attempts" '
+    NR == 1 { print; next }
+    $1 == id {
+      if (att != "") { $7 = att }
+      $8 = st
+    }
+    { print }
+  ' "$_JS_OUTBOX_FILE" > "$_jses_tmp"
+  mv -- "$_jses_tmp" "$_JS_OUTBOX_FILE"
+}
+
+# _js_conflict_pending_exists FEATURE LOCAL_KEY -> exit 0 se ja existe um
+# ConflictRecord com resolution=pending para o mesmo par (evita duplicar o
+# mesmo conflito a cada drain enquanto o operador nao resolve — FASE 4.3
+# `resolve`).
+_js_conflict_pending_exists() {
+  [ -f "$_JS_CONFLICTS_FILE" ] || return 1
+  awk -F '\t' -v f="$1" -v k="$2" \
+    'NR > 1 && $2 == f && $3 == k && $6 == "pending" { found=1 } END { exit !found }' \
+    "$_JS_CONFLICTS_FILE"
+}
+
+# _js_append_conflict FEATURE LOCAL_KEY JIRA_KEY REASON — grava um
+# ConflictRecord (data-model.md), append-only, resolution inicial sempre
+# `pending` (resolucao e SEMPRE decisao humana, FASE 4.3 `resolve`).
+_js_append_conflict() {
+  _jsac_dir=$(dirname -- "$_JS_CONFLICTS_FILE")
+  mkdir -p "$_jsac_dir" || _js_die "falha ao criar diretorio runtime: $_jsac_dir" 1
+  _jsac_tmp="$_JS_CONFLICTS_FILE.tmp.$$"
+  {
+    if [ -f "$_JS_CONFLICTS_FILE" ]; then
+      cat "$_JS_CONFLICTS_FILE"
+    else
+      printf '%s\n' "$_JS_CONFLICTS_HEADER"
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\tpending\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$3" "$4"
+  } > "$_jsac_tmp"
+  mv -- "$_jsac_tmp" "$_JS_CONFLICTS_FILE"
 }
 
 _js_parse_feature_arg() {
@@ -474,19 +549,235 @@ _js_cmd_enqueue() {
 
 # --- drain ---------------------------------------------------------------
 
-# _js_cmd_drain --feature F — 4.2.2/4.2.6/4.2.8 (US3, FR-004/005/016/018):
+# _js_process_one_event ROW — 4.2.3/4.2.4/4.2.5 (US3, FR-004/005/011/018,
+# resolve dec-079/dec-081): processa UM OutboxEvent `queued` ja lido em ROW
+# (linha TSV completa do outbox). Le titulo+status atuais da issue (R3) e o
+# SyncMarker (R6, `contracts/jira-rest.md` R6 — envelope `{key,value}`
+# confirmado por OpenAPI + roundtrip onda-022); se ausente (404) ou
+# divergente do que o plugin gravou por ultimo (sha256 do titulo OU status),
+# gera ConflictRecord e NAO escreve (FR-011 — nunca sobrescreve
+# silenciosamente). Sem conflito: resolve `transition.id` via R5 comparando
+# `to.name` ao status alvo (ProjectConfig `status_*`), executa R4, regrava o
+# SyncMarker via R6 PUT (overwrite total do `value`, `contracts/jira-rest.md`
+# R6 — nao e merge). Serializacao de escritas (4.2.7): o lock de drain e
+# GLOBAL ao projeto (`_JS_DRAIN_LOCK_DIR`, `_js_cmd_drain` abaixo) — so um
+# processo de drain roda por vez em todo o projeto, o que ja impede 2
+# escritas concorrentes na MESMA issue (ou em qualquer issue) sem precisar de
+# serializacao adicional por-issue.
+# Efeitos colaterais: reescreve o status do evento em `_JS_OUTBOX_FILE` via
+# `_js_set_event_status`; pode gravar `_JS_CONFLICTS_FILE`. Retorna (via
+# `_JSPE_BREAK`) `yes` quando o chamador MUST parar de processar novos
+# eventos nesta chamada de drain (auth_failed — credencial invalida para
+# TODAS as chamadas subsequentes, nao so para este evento).
+_js_process_one_event() {
+  _jspe_row="$1"
+  _JSPE_BREAK="no"
+
+  _jspe_eid=$(printf '%s' "$_jspe_row" | cut -f1)
+  _jspe_lkey=$(printf '%s' "$_jspe_row" | cut -f4)
+  _jspe_dstate=$(printf '%s' "$_jspe_row" | cut -f5)
+  _jspe_attempts=$(printf '%s' "$_jspe_row" | cut -f7)
+
+  if [ "$_jspe_lkey" = "*" ]; then
+    printf '%s: reconciliacao de feature inteira (local_key=*) ainda nao implementada (FASE 4.2, fora desta tarefa) — evento %s permanece na fila\n' \
+      "$_JS_NAME" "$_jspe_eid" >&2
+    return 0
+  fi
+
+  if ! _jspe_mline=$("$_jsd_map" get --feature "$_jsd_feature" --local-key "$_jspe_lkey" 2>/dev/null); then
+    printf '%s: local_key %s sem mapeamento — evento %s permanece na fila\n' \
+      "$_JS_NAME" "$_jspe_lkey" "$_jspe_eid" >&2
+    return 0
+  fi
+  _jspe_jkey=$(printf '%s' "$_jspe_mline" | cut -f4)
+  _jspe_mstate=$(printf '%s' "$_jspe_mline" | cut -f5)
+
+  # 4.4 (FR-012): orfao nunca e sobrescrito — vira ConflictRecord
+  # (reason=orphan) ate o operador religar (jira-map.sh relink).
+  if [ "$_jspe_mstate" = "orphan" ]; then
+    _js_conflict_pending_exists "$_jsd_feature" "$_jspe_lkey" \
+      || _js_append_conflict "$_jsd_feature" "$_jspe_lkey" "$_jspe_jkey" orphan
+    _js_set_event_status "$_jspe_eid" conflict
+    return 0
+  fi
+
+  case "$_jspe_dstate" in
+    pending)     _jspe_target="$_jsd_status_pending" ;;
+    in_progress) _jspe_target="$_jsd_status_in_progress" ;;
+    pass)        _jspe_target="$_jsd_status_pass" ;;
+    fail)        _jspe_target="$_jsd_status_fail" ;;
+    *)
+      printf '%s: desired_state %s sem status alvo mapeado — evento %s permanece na fila\n' \
+        "$_JS_NAME" "$_jspe_dstate" "$_jspe_eid" >&2
+      return 0
+      ;;
+  esac
+
+  # R3 — titulo + status atuais.
+  if ! _jspe_issue_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey?fields=summary,status" --op R3 2>/dev/null); then
+    _jspe_ec=$?
+    if [ "$_jspe_ec" -eq 4 ]; then
+      _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
+      _JSPE_BREAK="yes"
+      return 0
+    fi
+    _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    return 0
+  fi
+  _jspe_cur_summary=$(printf '%s' "$_jspe_issue_resp" | "$_jsd_io" json-get '.fields.summary')
+  _jspe_cur_status=$(printf '%s' "$_jspe_issue_resp" | "$_jsd_io" json-get '.fields.status.name')
+  _jspe_cur_sha=$(printf '%s' "$_jspe_cur_summary" | "$_jsd_io" sha256-stdin)
+
+  # R6 GET — SyncMarker. 404 (marker_missing) passa por `request` como
+  # sucesso (exit 0, corpo = erro do Jira, sem uso) — o unico jeito de
+  # distinguir "marker ausente" de "marker presente" e ler o `http_status`
+  # que `request` sempre emite em stderr (contrato ja documentado no
+  # cabecalho de jira-io.sh, nao uma classificacao nova/inventada).
+  _jspe_err_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  if _jspe_prop_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey/properties/$_JS_MARKER_PROPERTY_KEY" --op R6 2>"$_jspe_err_file"); then
+    _jspe_prop_ec=0
+  else
+    _jspe_prop_ec=$?
+  fi
+  _jspe_prop_status=$(grep '^http_status=' "$_jspe_err_file" | tail -n 1 | cut -d= -f2)
+  rm -f "$_jspe_err_file"
+
+  if [ "$_jspe_prop_ec" -ne 0 ]; then
+    if [ "$_jspe_prop_ec" -eq 4 ]; then
+      _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
+      _JSPE_BREAK="yes"
+      return 0
+    fi
+    _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    return 0
+  fi
+
+  _jspe_conflict="no"
+  _jspe_conflict_reason=""
+  if [ "$_jspe_prop_status" = "404" ]; then
+    _jspe_conflict="yes"
+    _jspe_conflict_reason="marker_missing"
+  else
+    _jspe_written_sha=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_summary_sha256')
+    _jspe_written_status=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_status')
+    if [ "$_jspe_cur_sha" != "$_jspe_written_sha" ] || [ "$_jspe_cur_status" != "$_jspe_written_status" ]; then
+      _jspe_conflict="yes"
+      _jspe_conflict_reason="manual_edit"
+    fi
+  fi
+
+  if [ "$_jspe_conflict" = "yes" ]; then
+    _js_conflict_pending_exists "$_jsd_feature" "$_jspe_lkey" \
+      || _js_append_conflict "$_jsd_feature" "$_jspe_lkey" "$_jspe_jkey" "$_jspe_conflict_reason"
+    _js_set_event_status "$_jspe_eid" conflict
+    return 0
+  fi
+
+  # Sem conflito, ja no status alvo: nada a transicionar; o SyncMarker ja
+  # bate (sem conflito significa written_status == status atual == alvo).
+  if [ "$_jspe_cur_status" = "$_jspe_target" ]; then
+    _js_set_event_status "$_jspe_eid" "done"
+    return 0
+  fi
+
+  # R5 — resolver transition.id cujo to.name bate o status alvo. Filtro FIXO
+  # (nenhum texto livre entra no programa jq — SEC-3); o alvo e comparado
+  # depois, em awk, via -v (dado, nao programa).
+  if ! _jspe_trans_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey/transitions" --op R5 2>/dev/null); then
+    _jspe_ec=$?
+    if [ "$_jspe_ec" -eq 4 ]; then
+      _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
+      _JSPE_BREAK="yes"
+      return 0
+    fi
+    _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    return 0
+  fi
+  _jspe_trans_tsv=$(printf '%s' "$_jspe_trans_resp" | "$_jsd_io" json-get '.transitions[] | [.id, .to.name] | @tsv')
+  _jspe_trans_id=$(printf '%s\n' "$_jspe_trans_tsv" | awk -F '\t' -v want="$_jspe_target" '$2 == want { print $1; exit }')
+  if [ -z "$_jspe_trans_id" ]; then
+    printf '%s: nenhuma transicao disponivel para o status alvo "%s" na issue %s — evento %s permanece na fila (config de workflow?)\n' \
+      "$_JS_NAME" "$_jspe_target" "$_jspe_jkey" "$_jspe_eid" >&2
+    return 0
+  fi
+
+  # R4 — executar a transicao.
+  _jspe_trans_body=$("$_jsd_io" json-build transition --transition-id "$_jspe_trans_id")
+  _jspe_trans_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r4body.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jspe_trans_body" > "$_jspe_trans_body_file"
+  if "$_jsd_io" request POST "/rest/api/3/issue/$_jspe_jkey/transitions" \
+      --body-file "$_jspe_trans_body_file" --op R4 >/dev/null 2>/dev/null; then
+    rm -f "$_jspe_trans_body_file"
+  else
+    _jspe_ec=$?
+    rm -f "$_jspe_trans_body_file"
+    if [ "$_jspe_ec" -eq 4 ]; then
+      _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
+      _JSPE_BREAK="yes"
+      return 0
+    fi
+    _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+    return 0
+  fi
+
+  # R6 PUT — regravar o SyncMarker com o novo written_summary_sha256/
+  # written_status/written_at (titulo nao mudou nesta operacao — so o
+  # status; o hash gravado e o do titulo ATUAL, que e o mesmo de antes).
+  # Nota (limitacao conhecida, aceita nesta tarefa): se este PUT falhar
+  # apos a transicao R4 ja ter sido aplicada, o evento fica `deferred` e o
+  # PROXIMO drain repete a transicao inteira (R3/R6-get/R5/R4) — a issue ja
+  # estara no status alvo, o que faria a deteccao de conflito comparar
+  # status atual != written_status antigo e reportar `manual_edit`
+  # indevidamente. Nao resolvido aqui (exigiria idempotencia mais fina);
+  # aceito porque a janela e estreita (R6 PUT so falha por auth_failed/
+  # deferred, ja raros) e o operador sempre pode `resolve --choice
+  # keep_jira` para destravar (FASE 4.3).
+  _jspe_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  _jspe_marker_body=$("$_jsd_io" json-build marker --local-key "$_jspe_lkey" --feature "$_jsd_feature" \
+    --written-summary-sha256 "$_jspe_cur_sha" --written-status "$_jspe_target" --written-at "$_jspe_now")
+  _jspe_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jspe_marker_body" > "$_jspe_marker_body_file"
+  if "$_jsd_io" request PUT "/rest/api/3/issue/$_jspe_jkey/properties/$_JS_MARKER_PROPERTY_KEY" \
+      --body-file "$_jspe_marker_body_file" --op R6 >/dev/null 2>/dev/null; then
+    rm -f "$_jspe_marker_body_file"
+    _js_set_event_status "$_jspe_eid" "done" "$((_jspe_attempts + 1))"
+  else
+    _jspe_ec=$?
+    rm -f "$_jspe_marker_body_file"
+    if [ "$_jspe_ec" -eq 4 ]; then
+      _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
+      _JSPE_BREAK="yes"
+      return 0
+    fi
+    _js_set_event_status "$_jspe_eid" deferred "$((_jspe_attempts + 1))"
+  fi
+  return 0
+}
+
+# _js_cmd_drain --feature F — 4.2.2-4.2.8 (US3, FR-004/005/011/016/018):
 # processa o outbox da feature sob lock GLOBAL do projeto
 # (`runtime/.drain.lock/`, `mkdir` atomico — contracts/hooks.md "Drenar").
 # Lock ocupado: sai exit 0 IMEDIATAMENTE sem tocar o outbox (proximo
-# gatilho de drain reprocessa). Sob o lock: compacta eventos `done` (4.2.8);
-# se QUALQUER evento `auth_failed` da feature estiver presente, nao faz
-# NENHUMA chamada nova (regra dura FR-016 — nunca repetir silenciosamente
-# tentativas que falham) e sai. Deteccao de conflito (SyncMarker/R6) e
-# transicao real (R4) SAO FASE 4.2.3-4.2.5, NAO implementadas aqui (ver nota
-# de escopo no topo do arquivo — shape de resposta de R6 sem fonte citavel,
-# Principio VI): eventos `queued` permanecem na fila.
+# gatilho de drain reprocessa). Sob o lock, NESTA ORDEM: (1) compacta
+# eventos `done` (4.2.8); (2) `jira-map.sh mark-orphans` (4.4.1 — pura
+# leitura local de tasks.md + rewrite de estado, NUNCA rede, por isso roda
+# mesmo quando o gate auth_failed abaixo bloquearia chamadas novas); (3)
+# gate FR-016 — QUALQUER evento `auth_failed` da feature bloqueia toda
+# chamada de rede nova ate reconfiguracao; (4) para cada evento `queued` da
+# feature, `_js_process_one_event` (4.2.3-4.2.5 acima) — para na primeira
+# ocorrencia de `auth_failed` (credencial invalida para TODAS as chamadas
+# subsequentes, nao so para o evento corrente).
 _js_cmd_drain() {
   _jsd_feature=$(_js_parse_feature_arg "$@")
+
+  _jsd_dir="$(_js_script_dir)"
+  _jsd_config="$_jsd_dir/jira-config.sh"
+  _jsd_map="$_jsd_dir/jira-map.sh"
+  _jsd_io="$_jsd_dir/jira-io.sh"
+  _jsd_map_file="./docs/specs/$_jsd_feature/jira-map.tsv"
 
   _jsd_lock_parent=$(dirname -- "$_JS_DRAIN_LOCK_DIR")
   mkdir -p "$_jsd_lock_parent" || _js_die "falha ao criar diretorio runtime: $_jsd_lock_parent" 1
@@ -499,6 +790,15 @@ _js_cmd_drain() {
   trap 'rmdir -- "$_JS_DRAIN_LOCK_DIR" 2>/dev/null || :' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
+
+  # 4.4.1 — mark-orphans e pura leitura/rewrite LOCAL (nunca rede): roda
+  # sempre que o mapeamento da feature existir, independente do resto do
+  # outbox. `mark-orphans` sai 6 quando ha orfaos (informativo, nao erro) e
+  # 1 se o mapeamento nao existir (ja coberto pelo `-f` abaixo) — nenhum dos
+  # dois deve derrubar o drain.
+  if [ -f "$_jsd_map_file" ]; then
+    "$_jsd_map" mark-orphans --feature "$_jsd_feature" >/dev/null 2>&1 || :
+  fi
 
   [ -f "$_JS_OUTBOX_FILE" ] || exit 0
 
@@ -521,12 +821,43 @@ _js_cmd_drain() {
     exit 0
   fi
 
-  _jsd_queued=$(awk -F '\t' -v f="$_jsd_feature" \
+  _jsd_queued_ids=$(awk -F '\t' -v f="$_jsd_feature" \
     'NR > 1 && $3 == f && $8 == "queued" { print $1 }' "$_JS_OUTBOX_FILE")
-  if [ -n "$_jsd_queued" ]; then
-    printf '%s: deteccao de conflito/transicao (R4/R6, tarefas 4.2.3-4.2.5) ainda nao implementada — eventos permanecem na fila: %s\n' \
-      "$_JS_NAME" "$(printf '%s' "$_jsd_queued" | tr '\n' ' ')" >&2
+  [ -n "$_jsd_queued_ids" ] || exit 0
+
+  # 4.2.3-4.2.5: ProjectConfig valido e um pre-requisito de TODO o lote (o
+  # site/credencial/mapeamento de status sao os mesmos para todos os
+  # eventos desta feature) — invalido/ausente => nenhum evento e tocado,
+  # diagnostico em stderr, drain sai limpo (exit 0, mesma filosofia
+  # fail-open de hook das demais falhas deste script).
+  if ! "$_jsd_config" validate >/dev/null 2>&1; then
+    printf '%s: ProjectConfig invalido/ausente — eventos permanecem na fila: %s\n' \
+      "$_JS_NAME" "$(printf '%s' "$_jsd_queued_ids" | tr '\n' ' ')" >&2
+    exit 0
   fi
+  _jsd_status_pending=$("$_jsd_config" get status_pending)
+  _jsd_status_in_progress=$("$_jsd_config" get status_in_progress)
+  _jsd_status_pass=$("$_jsd_config" get status_pass)
+  _jsd_status_fail=$("$_jsd_config" get status_fail)
+
+  # Loop sobre um arquivo (nao um pipe) para os IDs: um `while read` num
+  # pipe roda em subshell (POSIX) — inofensivo aqui porque cada iteracao so
+  # PRECISA ler o outbox corrente (ja mutado pela iteracao anterior via
+  # `_js_set_event_status`, que reescreve o arquivo diretamente, nao uma
+  # copia em memoria).
+  _jsd_ids_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-ids.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s\n' "$_jsd_queued_ids" > "$_jsd_ids_file"
+  while IFS= read -r _jsd_eid; do
+    [ -n "$_jsd_eid" ] || continue
+    _jsd_row=$(awk -F '\t' -v id="$_jsd_eid" '$1 == id { print; exit }' "$_JS_OUTBOX_FILE")
+    [ -n "$_jsd_row" ] || continue
+    _js_process_one_event "$_jsd_row"
+    if [ "$_JSPE_BREAK" = "yes" ]; then
+      break
+    fi
+  done < "$_jsd_ids_file"
+  rm -f "$_jsd_ids_file"
 
   exit 0
 }

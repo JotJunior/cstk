@@ -169,6 +169,36 @@ category."). Os exemplos oficiais trazem `in-flight`, `completed` e `DONE`
 categoria: mapeia por status alvo configurado (`status_*` em ProjectConfig,
 comparado a `to.name`/`to.id`). Valores de categoria seguem **NAO ENCONTRADO**.
 
+### R6 — propriedade de issue (SyncMarker): `GET`/`PUT /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` (operationId `getIssueProperty`/`setIssueProperty`) — CONFIRMADO (OpenAPI onda-005 + roundtrip onda-022, resolve dec-079)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| GET sucesso | `200` → schema `EntityProperty`: `key` (string), `value` (tipo livre — "Required on create and update", sem schema fixo) | `S:.EntityProperty.properties` — **CONFIRMADO por roundtrip** |
+| GET erros | `401`, `404` | `...properties/{propertyKey}.get.responses` |
+| PUT corpo | o corpo da requisicao E o `value` CRU (schema `{}` — nenhum envelope; nao e `{key,value}`), max 32768 bytes | `...properties/{propertyKey}.put.requestBody` |
+| PUT sucesso | `200` (propriedade atualizada) OU `201` (propriedade criada) — ambos com corpo VAZIO (schema `{}` sem `example`) | `...properties/{propertyKey}.put.responses` |
+| PUT erros | `400`, `401`, `403`, `404` | `...properties/{propertyKey}.put.responses` |
+
+**CONFIRMADO por roundtrip real (onda-022, resolve dec-079)**: `PUT
+/rest/api/3/issue/SCRUM-5/properties/cstk-jira.sync` com corpo
+`{"synced_at":"2026-09-26T00:00:00Z","checksum":"r6-roundtrip-test"}` (Epic de
+teste `SCRUM-5`, mesmo criado no roundtrip onda-011) devolveu `201` com corpo
+vazio (primeira gravacao — propriedade nao existia). Uma segunda `PUT` na
+mesma chave com valor diferente devolveu `200` com corpo vazio (atualizacao) —
+confirma a distincao `200`=update/`201`=create do OpenAPI, ambos sem payload
+util. Em seguida, `GET
+/rest/api/3/issue/SCRUM-5/properties/cstk-jira.sync` devolveu `200` com corpo
+`{"key":"cstk-jira.sync","value":{"synced_at":"2026-09-26T00:05:00Z","checksum":"r6-roundtrip-test-2"}}`
+— confirma o envelope `EntityProperty` (`key`+`value`) do OpenAPI, com `value`
+igual ao ultimo corpo gravado via PUT (nao ao primeiro), ou seja PUT faz
+overwrite total do `value`, nao merge. O motor (SyncMarker) MUST: (a) ler o
+marker via `GET`, desembrulhar `.value` (nunca tratar a resposta inteira como
+o marker); (b) gravar via `PUT` enviando SOMENTE o `value` cru (sem envelope
+`{key,value}` — a chave ja vai na URL); (c) tratar `200`/`201` do PUT como
+sucesso equivalente (ambos corpo vazio, nenhuma info adicional a extrair); (d)
+tratar `404` do GET como "marker inexistente" (SyncMarker nunca gravado para
+esta issue), nao como erro fatal.
+
 ### R7 — busca JQL (refinamento)
 
 `GET`/`POST /rest/api/3/search/jql` (`deprecated: false`): query `jql`,
@@ -267,3 +297,23 @@ nao tem ferramenta de navegador). Acao manual do operador: arquivar `SCRUM-5`
 e `SCRUM-6` no projeto `SCRUM` via UI do Jira quando conveniente; nenhuma
 credencial nem dado sensivel fica exposto por deixa-las como estao (issues de
 teste vazias, sem dados reais, em projeto de sandbox).
+
+## Roundtrip real onda-022 (FASE 4 task 4.2 — resolve dec-079, gap R6)
+
+Executado com a mesma credencial (`.env`, Basic auth, nunca impressa) contra
+`https://cstk.atlassian.net`, reusando a Epic de teste `SCRUM-5` (criada no
+roundtrip onda-011, ainda nao arquivada — ver nota 0.1.6 acima).
+
+- `PUT /rest/api/3/issue/SCRUM-5/properties/cstk-jira.sync` com corpo
+  `{"synced_at":"2026-09-26T00:00:00Z","checksum":"r6-roundtrip-test"}` →
+  `201`, corpo vazio (propriedade nao existia).
+- `GET /rest/api/3/issue/SCRUM-5/properties/cstk-jira.sync` → `200`
+  `{"key":"cstk-jira.sync","value":{"synced_at":"2026-09-26T00:00:00Z","checksum":"r6-roundtrip-test"}}`
+  — confirma o envelope `EntityProperty` do OpenAPI.
+- `PUT` na mesma chave com corpo
+  `{"synced_at":"2026-09-26T00:05:00Z","checksum":"r6-roundtrip-test-2"}` →
+  `200`, corpo vazio (atualizacao, distinta do `201` de criacao).
+- Nenhum `DELETE` foi executado (FR-012); a propriedade de teste
+  `cstk-jira.sync` permanece gravada em `SCRUM-5` — mesmo criterio de risco
+  aceito da nota 0.1.6 (issue de teste vazia, sem dados reais, em projeto de
+  sandbox).
