@@ -172,6 +172,7 @@ Gravado em cada issue sincronizada via entity property
 | `written_summary_sha256` | string | hash do titulo que o plugin gravou por ultimo |
 | `written_status` | string | status que o plugin deixou por ultimo |
 | `written_at` | string | timestamp ISO 8601 UTC da ultima escrita do plugin |
+| `written_description_sha256` | string (opcional) | hash da descricao que o plugin gravou por ultimo — SO presente para `kind=task` com descricao composta (criticidade e/ou dependencias, FR-001); Epic/Sub-task e Task sem nenhum dos dois NUNCA gravam esta chave (FASE 12 tarefa 12.5.1) |
 
 Chave da propriedade: `cstk-jira.sync` (DESIGN do plugin, nao dado externo).
 So hashes/identificadores — o aviso oficial de nao guardar dado sensivel em
@@ -183,6 +184,14 @@ ler titulo + status atuais da issue e o SyncMarker. Se
 `status_atual != written_status` => alteracao manual desde a ultima sync =>
 NAO escrever; gerar ConflictRecord. Issue sem SyncMarker mas presente no
 mapeamento => tratado como conflito (`marker_missing`), nunca sobrescrito.
+Quando o item carrega descricao composta E o marker ja tem
+`written_description_sha256` (baseline estabelecida por uma atualizacao
+anterior desta mesma tarefa) => `sha256(descricao_atual) !=
+written_description_sha256` TAMBEM conta como alteracao manual (protege a
+descricao contra sobrescrita, nao so o titulo). Marker sem essa chave
+(anterior a FASE 12 tarefa 12.5.1, ou item que nunca teve descricao) => sem
+baseline, sem checagem de conflito de descricao ate a proxima atualizacao
+bem-sucedida estabelecer o hash.
 
 ## Entity: OutboxEvent (fila local de sync)
 

@@ -263,6 +263,23 @@ _JS_DRAIN_LOCK_DIR="./.claude/cstk-jira/runtime/.drain.lock"
 _JS_CONFLICTS_FILE="./.claude/cstk-jira/runtime/conflicts.tsv"
 _JS_CONFLICTS_HEADER='detected_at	feature	local_key	jira_key	reason	resolution'
 
+# Sidecar de outcomes de record_task (FASE 12 tarefa 12.4.1, data-model.md
+# LocalWorkItem outcome precedence / US3 cenarios 2-3): persiste, por
+# feature, o outcome (`pass`/`fail`) do ULTIMO evento direto de record_task
+# enfileirado para cada task_id — arquivo global compartilhado entre
+# features (mesmo padrao do outbox/conflicts, coluna `feature` filtra).
+# `jira-tasks.sh items --outcomes-file` (`contracts/plugin-scripts.md`) ja
+# da precedencia a este outcome sobre os checkboxes agregados (kind=task,
+# `flush_task()`); sem persistir aqui e sem passar a flag em
+# `_js_process_reconcile_event`, a reconciliacao `local_key=*` (enfileirada
+# pelo hook a cada `close_wave`) derivava SO dos checkboxes e podia desfazer
+# o outcome que o proprio record_task acabou de levar ao Jira (achado
+# 12.4). NUNCA gravado para `local_key=*` (evento de reconciliacao nao
+# carrega um task_id real). Nunca versionado (mesma regra do
+# outbox/conflicts, `runtime/.gitignore` = `*`).
+_JS_OUTCOMES_FILE="./.claude/cstk-jira/runtime/task-outcomes.tsv"
+_JS_OUTCOMES_HEADER='feature	task_id	outcome'
+
 # Sidecar de retry_after (FASE 12 tarefa 12.2.1, achado 12.2): NAO e um
 # campo novo de OutboxEvent (data-model.md nao ganha coluna — escopo
 # minimo, nenhum `cut -f`/header existente muda). So guarda, por
@@ -650,29 +667,47 @@ _js_build_task_description() {
 
 # _js_maybe_update_mapped_issue IO FEATURE LOCAL_KEY JIRA_KEY NEW_SUMMARY
 #   NEW_DESCRIPTION — feature cstk-jira FASE 10 tarefa 10.2 (FR-003), FASE 11
-# tarefa 11.3.1 (FR-011): item JA mapeado (`active`) cujo titulo/descricao
-# local pode ter mudado desde a ultima sync. Detecta divergencia contra o
-# SyncMarker com a MESMA logica de conflito de `_js_process_one_event`/4.2.3
-# (FR-011 — nunca sobrescrever silenciosamente): le titulo+status atuais da
-# issue (R3, `fields=summary,status` — mesma disciplina de data-model.md
-# "antes de toda escrita numa issue existente, le titulo + status atuais e o
-# SyncMarker") e o SyncMarker (R6); marker ausente (`marker_missing`) ou
-# titulo/status atuais divergentes do que o plugin gravou por ultimo
-# (`manual_edit`, sha256(titulo) != written_summary_sha256 OU status_atual !=
-# written_status — como os dois caminhos de drain ja fazem, `jira-sync.sh`
-# _js_process_one_event/_js_process_reconcile_event) -> ConflictRecord (mesmo
-# arquivo/fluxo de `resolve` da FASE 4.3), NUNCA escreve. Sem conflito e
-# NEW_SUMMARY == summary atual -> nada a fazer (no-op silencioso, comum:
-# maioria dos itens de uma re-conversao nao mudou; esta funcao nunca sincroniza
-# STATUS, so conteudo, entao um status manualmente movido sem titulo mudado
-# nao gera escrita aqui de qualquer forma — nada a proteger). Sem conflito e
-# NEW_SUMMARY != summary atual -> local venceu (a issue nao foi tocada
-# manualmente, nem no titulo nem no status): PUT R2 (fields.summary [+
-# fields.description]) e regrava o SyncMarker com o novo hash, preservando
-# written_status do marker anterior (esta funcao so muda conteudo, nunca
-# status). Falha de rede/permissao durante a checagem/escrita: diagnostico em
-# stderr, item pulado SEM abortar o `convert` inteiro (itens novos continuam
-# sendo criados normalmente).
+# tarefa 11.3.1 (FR-011), FASE 12 tarefa 12.5.1 (achado 12.5): item JA
+# mapeado (`active`) cujo titulo E/OU descricao local pode ter mudado desde
+# a ultima sync — ANTES de 12.5.1, uma mudanca SO de criticidade/
+# dependencias (NEW_DESCRIPTION muda, NEW_SUMMARY nao) nunca era detectada
+# (early-exit so olhava o summary), entao `fields.description` nunca era
+# atualizado sozinho. NEW_DESCRIPTION vazio (Epic/Sub-task, ou Task sem
+# criticidade/dependencias) desliga TODA a checagem de descricao — nenhuma
+# chamada extra de rede, mesmo comportamento de antes de 12.5.1. Quando
+# NEW_DESCRIPTION e nao-vazio, le tambem `fields.description` (R3
+# `fields=summary,status,description` — mesmo mecanismo generico de
+# `fields=` ja usado para summary/status, contracts/jira-rest.md R3) e
+# extrai o texto do UNICO paragrafo ADF que este plugin sempre compos
+# (`_js_build_task_description`, paragrafo unico sem formatacao — uma
+# descricao com estrutura ADF diferente, editada manualmente, simplesmente
+# nao bate o hash abaixo e vira conflito, nunca e mal-interpretada).
+# Detecta divergencia contra o SyncMarker com a MESMA logica de conflito de
+# `_js_process_one_event`/4.2.3 (FR-011 — nunca sobrescrever
+# silenciosamente): le titulo+status(+descricao) atuais da issue (R3) e o
+# SyncMarker (R6); marker ausente (`marker_missing`) ou titulo/status
+# atuais divergentes do que o plugin gravou por ultimo (`manual_edit`,
+# sha256(titulo) != written_summary_sha256 OU status_atual !=
+# written_status — como os dois caminhos de drain ja fazem) -> ConflictRecord
+# (mesmo arquivo/fluxo de `resolve` da FASE 4.3), NUNCA escreve. Quando ha
+# componente de descricao E o marker ja tem uma baseline
+# (`written_description_sha256` nao-vazio — markers antigos, de antes de
+# 12.5.1, ou Epic/Sub-task/Task sem descricao nunca tem essa chave), a
+# descricao ATUAL tambem precisa bater o hash gravado, senao vira
+# `manual_edit` (protege edicao manual da descricao no Jira, nao so do
+# titulo). Marker SEM baseline de descricao (chave ausente): nenhuma
+# checagem de conflito de descricao (bootstrap — a 1a atualizacao bem-
+# sucedida grava o hash para as proximas). Sem conflito e NEW_SUMMARY ==
+# summary atual E (sem componente de descricao OU NEW_DESCRIPTION == texto
+# atual) -> nada a fazer (no-op silencioso, comum: maioria dos itens de uma
+# re-conversao nao mudou; esta funcao nunca sincroniza STATUS, so conteudo).
+# Havendo qualquer divergencia de conteudo (summary E/OU description) sem
+# conflito -> local venceu: PUT R2 (fields.summary sempre + fields.description
+# quando NEW_DESCRIPTION nao-vazio) e regrava o SyncMarker com os novos
+# hashes, preservando written_status do marker anterior (esta funcao so
+# muda conteudo, nunca status). Falha de rede/permissao durante a
+# checagem/escrita: diagnostico em stderr, item pulado SEM abortar o
+# `convert` inteiro (itens novos continuam sendo criados normalmente).
 _js_maybe_update_mapped_issue() {
   _jsu_io="$1"
   _jsu_feature="$2"
@@ -681,7 +716,13 @@ _js_maybe_update_mapped_issue() {
   _jsu_new_summary="$5"
   _jsu_new_description="$6"
 
-  if _jsu_issue_resp=$("$_jsu_io" request GET "/rest/api/3/issue/$_jsu_jkey?fields=summary,status" --op R3 2>/dev/null); then
+  _jsu_has_desc="no"
+  [ -n "$_jsu_new_description" ] && _jsu_has_desc="yes"
+
+  _jsu_fields="summary,status"
+  [ "$_jsu_has_desc" = "yes" ] && _jsu_fields="summary,status,description"
+
+  if _jsu_issue_resp=$("$_jsu_io" request GET "/rest/api/3/issue/$_jsu_jkey?fields=$_jsu_fields" --op R3 2>/dev/null); then
     :
   else
     printf '%s: falha ao ler issue %s para checar atualizacao (FR-003) — item pulado, mapeamento/SyncMarker inalterados\n' \
@@ -690,13 +731,24 @@ _js_maybe_update_mapped_issue() {
   fi
   _jsu_cur_summary=$(printf '%s' "$_jsu_issue_resp" | "$_jsu_io" json-get '.fields.summary')
   _jsu_cur_status=$(printf '%s' "$_jsu_issue_resp" | "$_jsu_io" json-get '.fields.status.name')
+  _jsu_cur_description=""
+  if [ "$_jsu_has_desc" = "yes" ]; then
+    _jsu_cur_description=$(printf '%s' "$_jsu_issue_resp" | "$_jsu_io" json-get \
+      '.fields.description.content[0].content[0].text? // ""')
+  fi
 
-  # Nada mudou localmente (summary composto agora == summary atual do Jira)
-  # -> no-op, sem sequer ler o SyncMarker (economiza 1 chamada de rede por
-  # item inalterado — o caso comum de uma re-conversao). Esta funcao nunca
-  # escreve status, entao divergencia de status sozinha (sem titulo mudado)
-  # nao ha o que proteger aqui.
-  [ "$_jsu_cur_summary" = "$_jsu_new_summary" ] && return 0
+  # Nada mudou localmente (summary composto agora == summary atual do Jira
+  # E, quando ha componente de descricao, a descricao composta agora ==
+  # descricao atual do Jira) -> no-op, sem sequer ler o SyncMarker
+  # (economiza 1 chamada de rede por item inalterado — o caso comum de uma
+  # re-conversao). Esta funcao nunca escreve status, entao divergencia de
+  # status sozinha (sem conteudo mudado) nao ha o que proteger aqui.
+  _jsu_content_changed="no"
+  [ "$_jsu_cur_summary" != "$_jsu_new_summary" ] && _jsu_content_changed="yes"
+  if [ "$_jsu_has_desc" = "yes" ] && [ "$_jsu_cur_description" != "$_jsu_new_description" ]; then
+    _jsu_content_changed="yes"
+  fi
+  [ "$_jsu_content_changed" = "yes" ] || return 0
 
   _jsu_cur_sha=$(printf '%s' "$_jsu_cur_summary" | "$_jsu_io" sha256-stdin)
 
@@ -724,21 +776,39 @@ _js_maybe_update_mapped_issue() {
 
   _jsu_written_sha=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_summary_sha256')
   _jsu_written_status=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_status')
+  _jsu_conflict="no"
   if [ "$_jsu_cur_sha" != "$_jsu_written_sha" ] || [ "$_jsu_cur_status" != "$_jsu_written_status" ]; then
-    # FR-011 (11.3.1): o titulo E/OU o status no Jira ja divergem do que o
-    # plugin gravou por ultimo (edicao/transicao manual desde a ultima sync)
-    # -> conflito, NUNCA sobrescrever silenciosamente, mesmo que o titulo
-    # local tambem tenha mudado — mesma condicao (sha OU status) que os dois
-    # caminhos de drain ja aplicam (`_js_process_one_event`/
-    # `_js_process_reconcile_event`).
+    _jsu_conflict="yes"
+  fi
+  # 12.5.1: baseline de descricao SO existe em markers gravados por esta
+  # tarefa (bootstrap — marker antigo/sem componente de descricao nunca tem
+  # `written_description_sha256`, entao nao ha o que comparar ainda; a
+  # atualizacao segue pelo caminho normal e estabelece a baseline abaixo).
+  _jsu_written_desc_sha=""
+  if [ "$_jsu_has_desc" = "yes" ]; then
+    _jsu_written_desc_sha=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_description_sha256? // ""')
+    if [ -n "$_jsu_written_desc_sha" ]; then
+      _jsu_cur_desc_sha=$(printf '%s' "$_jsu_cur_description" | "$_jsu_io" sha256-stdin)
+      [ "$_jsu_cur_desc_sha" != "$_jsu_written_desc_sha" ] && _jsu_conflict="yes"
+    fi
+  fi
+  if [ "$_jsu_conflict" = "yes" ]; then
+    # FR-011 (11.3.1/12.5.1): titulo E/OU status E/OU descricao no Jira ja
+    # divergem do que o plugin gravou por ultimo (edicao/transicao manual
+    # desde a ultima sync) -> conflito, NUNCA sobrescrever silenciosamente,
+    # mesmo que o conteudo local tambem tenha mudado — mesma condicao (sha
+    # OU status) que os dois caminhos de drain ja aplicam
+    # (`_js_process_one_event`/`_js_process_reconcile_event`), estendida
+    # aqui ao hash da descricao quando ha baseline.
     _js_conflict_pending_exists "$_jsu_feature" "$_jsu_lkey" \
       || _js_append_conflict "$_jsu_feature" "$_jsu_lkey" "$_jsu_jkey" manual_edit
     return 0
   fi
 
-  # Seguro: titulo E status no Jira sao EXATAMENTE o que o plugin gravou por
-  # ultimo — a divergencia e so local -> local vence. R2 (so os campos que
-  # mudam).
+  # Seguro: titulo, status e (quando ha baseline) descricao no Jira sao
+  # EXATAMENTE o que o plugin gravou por ultimo — a divergencia e so local
+  # -> local vence. R2 (so os campos que mudam; description sempre que
+  # NEW_DESCRIPTION for nao-vazio, mesmo que so ELA tenha mudado).
   set -- issue-update --summary "$_jsu_new_summary"
   if [ -n "$_jsu_new_description" ]; then
     set -- "$@" --description "$_jsu_new_description"
@@ -758,16 +828,25 @@ _js_maybe_update_mapped_issue() {
     return 0
   fi
 
-  # Regravar o SyncMarker com o novo hash — written_status PRESERVADO (esta
-  # funcao nunca muda status, so conteudo; status e responsabilidade
-  # exclusiva de drain/_js_process_one_event). Mesma limitacao aceita de
-  # _js_process_one_event: se este PUT falhar apos o R2 ja aplicado, a
+  # Regravar o SyncMarker com o(s) novo(s) hash(es) — written_status
+  # PRESERVADO (esta funcao nunca muda status, so conteudo; status e
+  # responsabilidade exclusiva de drain/_js_process_one_event). 12.5.1:
+  # quando ha componente de descricao, grava tambem
+  # `written_description_sha256` do NOVO texto — estabelece/atualiza a
+  # baseline para a proxima checagem (bootstrap de markers antigos sem essa
+  # chave incluido: a partir daqui passam a te-la). Mesma limitacao aceita
+  # de _js_process_one_event: se este PUT falhar apos o R2 ja aplicado, a
   # proxima checagem pode reportar manual_edit indevido ate o operador
   # `resolve --choice keep_jira`.
   _jsu_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   _jsu_new_sha=$(printf '%s' "$_jsu_new_summary" | "$_jsu_io" sha256-stdin)
-  _jsu_marker_body=$("$_jsu_io" json-build marker --local-key "$_jsu_lkey" --feature "$_jsu_feature" \
-    --written-summary-sha256 "$_jsu_new_sha" --written-status "$_jsu_written_status" --written-at "$_jsu_now")
+  set -- --local-key "$_jsu_lkey" --feature "$_jsu_feature" \
+    --written-summary-sha256 "$_jsu_new_sha" --written-status "$_jsu_written_status" --written-at "$_jsu_now"
+  if [ -n "$_jsu_new_description" ]; then
+    _jsu_new_desc_sha=$(printf '%s' "$_jsu_new_description" | "$_jsu_io" sha256-stdin)
+    set -- "$@" --written-description-sha256 "$_jsu_new_desc_sha"
+  fi
+  _jsu_marker_body=$("$_jsu_io" json-build marker "$@")
   _jsu_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jsu_marker_body" > "$_jsu_marker_body_file"
@@ -782,28 +861,34 @@ _js_maybe_update_mapped_issue() {
   return 0
 }
 
-# _js_write_initial_marker IO FEATURE LOCAL_KEY JIRA_KEY SUMMARY — feature
-# cstk-jira FASE 11 tarefa 11.1.1 (FR-011, plan.md Fluxo 2 "Convert" grava
-# SyncMarker; data-model.md: "Gravado em cada issue sincronizada"). Sem
-# isto, o 1o `drain` de qualquer issue recem-criada lia R6=404 e virava
-# `marker_missing` (ConflictRecord) em vez de transicionar (converge FASE
-# 11 achado 11.1). `fields.summary`/`fields.status` de R1 (sucesso) so tem
-# `id`/`key`/`self` (contracts/jira-rest.md R1) — o status inicial NAO vem
-# da resposta de criacao, exige R3 dedicado (fields=status; o summary ja e
-# conhecido: e exatamente SUMMARY, o que este script acabou de enviar no
-# corpo de R1 — sem round-trip, mesma fonte que os R6 PUT de
+# _js_write_initial_marker IO FEATURE LOCAL_KEY JIRA_KEY SUMMARY
+#   [DESCRIPTION] — feature cstk-jira FASE 11 tarefa 11.1.1 (FR-011,
+# plan.md Fluxo 2 "Convert" grava SyncMarker; data-model.md: "Gravado em
+# cada issue sincronizada"). Sem isto, o 1o `drain` de qualquer issue
+# recem-criada lia R6=404 e virava `marker_missing` (ConflictRecord) em
+# vez de transicionar (converge FASE 11 achado 11.1). `fields.summary`/
+# `fields.status` de R1 (sucesso) so tem `id`/`key`/`self`
+# (contracts/jira-rest.md R1) — o status inicial NAO vem da resposta de
+# criacao, exige R3 dedicado (fields=status; o summary ja e conhecido: e
+# exatamente SUMMARY, o que este script acabou de enviar no corpo de R1 —
+# sem round-trip, mesma fonte que os R6 PUT de
 # `_js_process_one_event`/`_js_maybe_update_mapped_issue` usam para o
-# hash). Falha em R3 ou no R6 PUT: diagnostico em stderr, retorna 0 SEM
-# abortar `convert` nem desfazer a criacao (issue e jira-map.tsv ja
-# gravados) — a proxima `drain` detecta o SyncMarker ausente (404) e
-# reporta `marker_missing`, o mesmo efeito de um R6 PUT que tivesse
-# falhado aqui.
+# hash). DESCRIPTION (FASE 12 tarefa 12.5.1, opcional — so `kind=task` com
+# criticidade/dependencias): quando nao-vazio, grava tambem
+# `written_description_sha256` no marker, estabelecendo a baseline que
+# `_js_maybe_update_mapped_issue` compara depois; description ja foi
+# enviada tal-e-qual no corpo de R1 (mesma fonte, sem round-trip). Falha em
+# R3 ou no R6 PUT: diagnostico em stderr, retorna 0 SEM abortar `convert`
+# nem desfazer a criacao (issue e jira-map.tsv ja gravados) — a proxima
+# `drain` detecta o SyncMarker ausente (404) e reporta `marker_missing`, o
+# mesmo efeito de um R6 PUT que tivesse falhado aqui.
 _js_write_initial_marker() {
   _jwim_io="$1"
   _jwim_feature="$2"
   _jwim_lkey="$3"
   _jwim_jkey="$4"
   _jwim_summary="$5"
+  _jwim_description="${6:-}"
 
   if _jwim_issue_resp=$("$_jwim_io" request GET "/rest/api/3/issue/$_jwim_jkey?fields=status" --op R3 2>/dev/null); then
     :
@@ -816,8 +901,13 @@ _js_write_initial_marker() {
 
   _jwim_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   _jwim_sha=$(printf '%s' "$_jwim_summary" | "$_jwim_io" sha256-stdin)
-  _jwim_marker_body=$("$_jwim_io" json-build marker --local-key "$_jwim_lkey" --feature "$_jwim_feature" \
-    --written-summary-sha256 "$_jwim_sha" --written-status "$_jwim_status" --written-at "$_jwim_now")
+  set -- --local-key "$_jwim_lkey" --feature "$_jwim_feature" \
+    --written-summary-sha256 "$_jwim_sha" --written-status "$_jwim_status" --written-at "$_jwim_now"
+  if [ -n "$_jwim_description" ]; then
+    _jwim_desc_sha=$(printf '%s' "$_jwim_description" | "$_jwim_io" sha256-stdin)
+    set -- "$@" --written-description-sha256 "$_jwim_desc_sha"
+  fi
+  _jwim_marker_body=$("$_jwim_io" json-build marker "$@")
   _jwim_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jwim_marker_body" > "$_jwim_marker_body_file"
@@ -979,8 +1069,54 @@ _js_cmd_convert() {
 
     # 11.1.1 (FR-011): SyncMarker inicial — sem isto, o 1o drain desta issue
     # leria R6=404 e cairia em marker_missing.
-    _js_write_initial_marker "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_new_key" "$_jsc_summary"
+    _js_write_initial_marker "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_new_key" "$_jsc_summary" "$_jsc_description"
   done
+}
+
+# --- outcomes (FASE 12 tarefa 12.4.1) -------------------------------------
+
+# _js_set_task_outcome FEATURE TASK_ID OUTCOME — upsert (mesmo padrao
+# tmp+mv de `_js_set_retry_after`) da linha `feature\ttask_id\toutcome` no
+# sidecar `_JS_OUTCOMES_FILE`, substituindo qualquer linha anterior do
+# MESMO (feature, task_id) — so o outcome MAIS RECENTE importa (um
+# record_task posterior sempre vence).
+_js_set_task_outcome() {
+  _jsto_feature="$1"
+  _jsto_tid="$2"
+  _jsto_outcome="$3"
+  _jsto_dir=$(dirname -- "$_JS_OUTCOMES_FILE")
+  mkdir -p "$_jsto_dir" || _js_die "falha ao criar diretorio runtime: $_jsto_dir" 1
+  _jsto_tmp="$_JS_OUTCOMES_FILE.tmp.$$"
+  {
+    if [ -f "$_JS_OUTCOMES_FILE" ]; then
+      awk -F '\t' -v f="$_jsto_feature" -v t="$_jsto_tid" \
+        'NR == 1 || !($1 == f && $2 == t) { print }' "$_JS_OUTCOMES_FILE"
+    else
+      printf '%s\n' "$_JS_OUTCOMES_HEADER"
+    fi
+    printf '%s\t%s\t%s\n' "$_jsto_feature" "$_jsto_tid" "$_jsto_outcome"
+  } > "$_jsto_tmp"
+  mv -- "$_jsto_tmp" "$_JS_OUTCOMES_FILE"
+}
+
+# _js_outcomes_file_for_feature FEATURE -> imprime o path de um arquivo
+# temporario (formato TASK_ID\tOUTCOME, 2 colunas, sem cabecalho — o unico
+# formato que `jira-tasks.sh items --outcomes-file` exige) com as linhas do
+# sidecar global `_JS_OUTCOMES_FILE` filtradas para FEATURE. Sempre cria o
+# arquivo (mesmo vazio, quando a feature nao tem nenhum outcome persistido
+# ou o sidecar global ainda nao existe) para o chamador poder passar
+# `--outcomes-file` incondicionalmente, sem ramificar. Chamador MUST
+# remover o arquivo retornado apos o uso (mktemp, nunca limpo
+# automaticamente por esta funcao).
+_js_outcomes_file_for_feature() {
+  _jsoff_feature="$1"
+  _jsoff_tmp=$(mktemp "${TMPDIR:-/tmp}/jira-sync-outcomes.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  if [ -f "$_JS_OUTCOMES_FILE" ]; then
+    awk -F '\t' -v f="$_jsoff_feature" \
+      'NR > 1 && $1 == f { print $2 "\t" $3 }' "$_JS_OUTCOMES_FILE" > "$_jsoff_tmp"
+  fi
+  printf '%s\n' "$_jsoff_tmp"
 }
 
 # --- enqueue -----------------------------------------------------------
@@ -1057,6 +1193,17 @@ _js_cmd_enqueue() {
   } > "$_jse_tmp"
   mv -- "$_jse_tmp" "$_JS_OUTBOX_FILE"
 
+  # 12.4.1: outcome direto de record_task (pass/fail, local_key != '*')
+  # ganha precedencia sobre os checkboxes na PROXIMA reconciliacao
+  # (`_js_process_reconcile_event` filtra este sidecar via
+  # `_js_outcomes_file_for_feature`) — nunca para o evento `*`
+  # (reconciliacao inteira da feature, que nao carrega um task_id real).
+  case "$_jse_state" in
+    pass|fail)
+      [ "$_jse_key" = "*" ] || _js_set_task_outcome "$_jse_feature" "$_jse_key" "$_jse_state"
+      ;;
+  esac
+
   printf '%s\n' "$_jse_event_id"
 }
 
@@ -1099,16 +1246,31 @@ _js_cmd_enqueue() {
 # `_JSPE_BREAK`). Loop sobre um ARQUIVO (nao um pipe) para os itens — mesmo
 # motivo documentado em `_js_cmd_drain`: um `while read` num pipe roda em
 # subshell POSIX, o que perderia `_JSPE_BREAK`/`_jspr_had_deferred` ao
-# sair do loop.
+# sair do loop. FASE 12 tarefa 12.4.1: `jira-tasks.sh items` e chamado com
+# `--outcomes-file` (sidecar `_JS_OUTCOMES_FILE`, filtrado para
+# `$_jsd_feature` via `_js_outcomes_file_for_feature`) — o outcome mais
+# recente de `record_task` tem precedencia sobre os checkboxes agregados
+# (data-model.md LocalWorkItem outcome precedence), evitando que esta
+# reconciliacao desfizesse o outcome que o proprio record_task acabou de
+# levar ao Jira.
 _js_process_reconcile_event() {
   _jspr_eid="$1"
   _jspr_attempts="$2"
 
-  if ! _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" 2>/dev/null); then
+  # 12.4.1: outcome de record_task (sidecar `_JS_OUTCOMES_FILE`, filtrado
+  # para esta feature) tem precedencia sobre os checkboxes na derivacao de
+  # `local_state` (`jira-tasks.sh items --outcomes-file`, kind=task) — sem
+  # isto, esta reconciliacao podia desfazer o outcome que o proprio
+  # record_task acabou de levar ao Jira (achado 12.4).
+  _jspr_outcomes_file=$(_js_outcomes_file_for_feature "$_jsd_feature")
+  if ! _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
+      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null); then
+    rm -f "$_jspr_outcomes_file"
     printf '%s: jira-tasks.sh items falhou para %s — evento %s permanece na fila\n' \
       "$_JS_NAME" "$_jsd_feature" "$_jspr_eid" >&2
     return 0
   fi
+  rm -f "$_jspr_outcomes_file"
 
   _jspr_items_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-reconcile-items.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1

@@ -575,13 +575,17 @@ scenario_convert_idempotente_10x_3_criacoes_no_total() {
   # feature cstk-jira FASE 10 tarefa 10.2 — _js_maybe_update_mapped_issue
   # checa divergencia antes de decidir nao-criar); summary devolvido IDENTICO
   # ao composto na criacao -> no-op imediato, SEM leitura do SyncMarker (R6) e
-  # SEM nenhuma criacao.
+  # SEM nenhuma criacao. Task 1.1 (criticidade `[A]`) tambem devolve a
+  # description IDENTICA a composta ("Criticidade: A", FASE 12 tarefa
+  # 12.5.1) — sem isso, `_js_maybe_update_mapped_issue` veria a description
+  # atual como ausente (stub sem o campo) e detectaria drift falso a cada
+  # re-conversao, quebrando a idempotencia deste cenario.
   _i=2
   while [ "$_i" -le 10 ]; do
     _queue_push 200 '{"accountId":"acc-1"}'
     _queue_push 200 '{"id":"10000","key":"DEMO"}'
     _queue_push 200 '{"fields":{"summary":"demo"}}'
-    _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa"}}'
+    _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa","description":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Criticidade: A"}]}]}}}'
     _queue_push 200 '{"fields":{"summary":"Sub um"}}'
     _i=$((_i + 1))
   done
@@ -625,8 +629,10 @@ scenario_convert_task_nova_cria_somente_a_nova() {
   # FR-003 (feature cstk-jira FASE 10 tarefa 10.2): epic/task 1.1/sub 1.1.1 ja
   # mapeados -> _js_maybe_update_mapped_issue checa cada um (1 GET R3, summary
   # devolvido identico ao composto -> no-op) ANTES da task 1.2 (nova) ser criada.
+  # Task 1.1 tambem devolve a description IDENTICA a composta (FASE 12
+  # tarefa 12.5.1 — ver mesma nota em scenario_convert_idempotente_10x).
   _queue_push 200 '{"fields":{"summary":"demo"}}'
-  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa","description":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Criticidade: A"}]}]}}}'
   _queue_push 200 '{"fields":{"summary":"Sub um"}}'
   # task 1.2 (nova): create + R3 status + R6 PUT marker inicial (11.1.1)
   _queue_push 201 '{"id":"20004","key":"DEMO-4"}'
@@ -1974,6 +1980,79 @@ scenario_convert_status_divergente_vira_conflict_mesmo_com_titulo_batendo() {
   return 0
 }
 
+# _write_tasks_criticidade_mudada: FASE 1 / task 1.1 com o MESMO titulo de
+# `_write_tasks_1task_1sub` ("Titulo da tarefa") mas criticidade `[C]` em
+# vez de `[A]` — summary composto fica IDENTICO (a letra de criticidade
+# nunca entra no summary, so na description), so a description muda
+# ("Criticidade: C" em vez de "Criticidade: A"). Usada por SY-51 (FASE 12
+# tarefa 12.5.1, achado 12.5): mudanca SO de criticidade/dependencias.
+_write_tasks_criticidade_mudada() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[C]`
+EOF
+}
+
+# SY-51 (FASE 12 tarefa 12.5.1, achado 12.5, FR-003/FR-011): item ja
+# mapeado cujo summary NAO mudou mas a criticidade mudou (`[A]` -> `[C]`)
+# -> ANTES de 12.5.1, `_js_maybe_update_mapped_issue` retornava cedo (early
+# exit so olhava summary) e a description nunca era atualizada. Com
+# 12.5.1, a Task e lida com `fields=summary,status,description`; a
+# description atual ("Criticidade: A") diverge da composta agora
+# ("Criticidade: C") -> content_changed=yes mesmo com summary identico. O
+# SyncMarker ja tem `written_description_sha256` da baseline anterior
+# (simula uma sync bem-sucedida previa) e bate com a description atual ->
+# sem conflito -> R2 PUT (summary reenviado + NOVA description) e o
+# SyncMarker e regravado com o novo `written_description_sha256`,
+# `written_summary_sha256`/`written_status` preservados/reconfirmados.
+scenario_convert_criticidade_mudada_atualiza_description_via_r2_sem_conflito() {
+  _write_full_config
+  _write_tasks_criticidade_mudada
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _sha_summary=$(printf '%s' "[FASE 1] 1.1 Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _sha_desc_antiga=$(printf '%s' "Criticidade: A" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  # Epic: sem componente de descricao -> summary inalterado -> no-op imediato.
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  # Task 1.1: summary IGUAL, status "To Do", description ANTIGA "Criticidade: A".
+  _queue_push 200 "{\"fields\":{\"summary\":\"[FASE 1] 1.1 Titulo da tarefa\",\"status\":{\"name\":\"To Do\"},\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Criticidade: A\"}]}]}}}"
+  # SyncMarker: baseline completa (summary+status+description) bate com o
+  # atual -> sem conflito.
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"To Do\",\"written_description_sha256\":\"$_sha_desc_antiga\"}}"
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_post_issue_calls_count)" = "0" ] \
+    || { _fail "sy51_zero_creates" "esperado 0 POST /issue, obtido $(_queue_post_issue_calls_count)"; return 1; }
+  [ "$(_queue_calls_count)" = "7" ] \
+    || { _fail "sy51_calls_count" "esperado 7 chamadas (myself+project+R3epic+R3task+R6get+R2put+R6put), obtido $(_queue_calls_count)"; return 1; }
+
+  _r2_summary=$("$IO_SCRIPT" json-get '.fields.summary' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_r2_summary" = "[FASE 1] 1.1 Titulo da tarefa" ] \
+    || { _fail "sy51_r2_summary" "esperado summary inalterado, obtido '$_r2_summary'"; return 1; }
+  _r2_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_r2_desc" = "Criticidade: C" ] \
+    || { _fail "sy51_r2_description" "esperado 'Criticidade: C' (mudanca so de criticidade deveria propagar), obtido '$_r2_desc'"; return 1; }
+
+  _sha_desc_nova=$(printf '%s' "Criticidade: C" | "$IO_SCRIPT" sha256-stdin)
+  _marker_desc_sha=$("$IO_SCRIPT" json-get '.written_description_sha256' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_marker_desc_sha" = "$_sha_desc_nova" ] \
+    || { _fail "sy51_marker_desc_sha" "esperado hash da nova description no SyncMarker, obtido '$_marker_desc_sha'"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_marker_status" = "To Do" ] \
+    || { _fail "sy51_marker_status_preservado" "esperado written_status preservado 'To Do', obtido '$_marker_status'"; return 1; }
+  return 0
+}
+
 # SY-46 (FASE 11 tarefa 11.1.1, FR-011): end-to-end convert -> drain. Antes
 # de 11.1.1, `convert` nunca gravava o SyncMarker inicial das issues criadas
 # -> o 1o `drain` de qualquer issue recem-criada lia R6=404 e virava
@@ -2184,6 +2263,71 @@ EOF
     || { _fail "sy44_calls_count" "esperado exatamente 1 chamada (sem tocar a Task), obtido $(_queue_calls_count)"; return 1; }
   awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'auth_failed$' \
     || { _fail "sy44_auth_failed" "evento e1 (*) nao virou auth_failed: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# SY-50 (FASE 12 tarefa 12.4.1, data-model.md LocalWorkItem outcome
+# precedence / US3 cenarios 2-3): outcome `fail` de um `record_task`
+# persistido via `enqueue` MUST ter precedencia sobre os checkboxes
+# `[x]` (que sozinhos derivariam `pass`) na reconciliacao `local_key=*`
+# seguinte — sem `--outcomes-file` em `_js_process_reconcile_event`
+# (achado 12.4), a Task 1.1 (unico sub-item `[x]`) seria projetada `pass`
+# e transicionada para "Done" mesmo com o outcome `fail` ja registrado
+# pelo motor. O outbox gerado pelo `enqueue` de setup e sobrescrito na
+# sequencia (so o evento de reconciliacao) para isolar o teste ao
+# comportamento de `_js_process_reconcile_event`; o sidecar de outcomes
+# (`runtime/task-outcomes.tsv`) persiste independente do outbox. Sub-task
+# 1.1.1 fica deliberadamente SEM mapeamento (jira-map.tsv) para reduzir a
+# fila de rede — item nao mapeado e ignorado silenciosamente pela
+# reconciliacao.
+scenario_drain_reconcile_outcome_record_task_tem_precedencia_sobre_checkboxes() {
+  _write_full_config
+  _write_credential
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  assert_exit 0 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state fail --source manual >/dev/null || return 1
+  [ -f "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv" ] \
+    || { _fail "sy50_outcomes_file_missing" "enqueue --state fail nao gravou o sidecar de outcomes"; return 1; }
+  grep -q 'demo	1\.1	fail$' "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv" \
+    || { _fail "sy50_outcome_not_persisted" "outcome demo/1.1/fail ausente do sidecar: $(cat "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv")"; return 1; }
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo Qualquer" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): sem a precedencia de outcome seria "pass" (unica task
+  # 100% pass); COM a precedencia, a Task vira "fail" -> Epic cai para
+  # "pending" (nenhuma task pass/ativa) -> ja "To Do" -> idempotente.
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\"}}"
+  # Task 1.1 (DEMO-2): outcome fail -> alvo "Failed" (status_fail) -> "To
+  # Do" atual diverge -> transiciona (R5/R4/R6put).
+  _queue_push 200 '{"fields":{"summary":"Titulo Qualquer","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"31","to":{"name":"Failed"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "7" ] \
+    || { _fail "sy50_calls_count" "esperado 7 chamadas (2 epic idempotente + 5 task transicao), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy50_event_done" "evento e1 (*) nao foi marcado done: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  _task_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_task_trans" = "31" ] \
+    || { _fail "sy50_task_transition" "esperado transition.id=31 (Failed) para a Task, obtido $_task_trans — outcome fail nao teve precedencia sobre o checkbox pass"; return 1; }
+  _task_marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_task_marker_status" = "Failed" ] \
+    || { _fail "sy50_task_marker_status" "esperado written_status=Failed no SyncMarker regravado da Task, obtido '$_task_marker_status'"; return 1; }
   return 0
 }
 

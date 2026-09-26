@@ -310,11 +310,16 @@ USO:
   jira-io.sh json-build marker --local-key K --feature F
                               --written-summary-sha256 H --written-status S
                               --written-at T
+                              [--written-description-sha256 H2]
       Monta o VALOR CRU do SyncMarker (R6 PUT, sem envelope {key,value} —
       a chave ja vai na URL): {"schema":1,"local_key":K,"feature":F,
       "written_summary_sha256":H,"written_status":S,"written_at":T}.
       Todos os campos sao texto livre, escapados via jq --arg (local_key/
       status podem conter pontos/espacos, ex. "4.2.1"/"In Progress").
+      --written-description-sha256 e OPCIONAL (FASE 12 tarefa 12.5.1): se
+      informado, acrescenta "written_description_sha256":H2 ao corpo; se
+      omitido, a chave NAO aparece no JSON (Epic/Sub-task e Task sem
+      descricao composta nunca gravam este campo).
 
   jira-io.sh json-build issue-update --summary TEXT [--description TEXT]
       Monta o corpo de R2 (editar issue, FR-003): {"fields":{"summary":...}}
@@ -1138,19 +1143,28 @@ _ji_cmd_json_build_transition() {
 
 # _ji_cmd_json_build_marker --local-key K --feature F
 #                          --written-summary-sha256 H --written-status S
-#                          --written-at T — FASE 4.2.5 (dec-081): monta o
+#                          --written-at T
+#                          [--written-description-sha256 H2] — FASE 4.2.5
+# (dec-081), campo opcional acrescentado na FASE 12 tarefa 12.5.1: monta o
 # VALOR CRU do SyncMarker (R6 PUT — contracts/jira-rest.md R6 confirma que
 # o corpo e o `value` sem envelope, a chave ja vai na URL; data-model.md
 # Entity SyncMarker define os campos). `schema` e fixo em 1 (unica versao
-# ate agora). Todos os campos sao texto livre (local_key pode conter pontos,
-# ex. "4.2.1"; written_status pode conter espacos, ex. "In Progress") —
-# escapados via jq --arg, NUNCA concatenacao de string (SEC-3).
+# ate agora). `--written-description-sha256` e OPCIONAL (omitido = chave
+# ausente do JSON, nunca string vazia) — so os itens `kind=task` com
+# descricao composta (criticidade/dependencias) carregam este campo;
+# Epic/Sub-task e Task sem descricao NUNCA o gravam (data-model.md
+# LocalWorkItem: "Epic/Sub-task nunca carregam esses campos"). Todos os
+# campos sao texto livre (local_key pode conter pontos, ex. "4.2.1";
+# written_status pode conter espacos, ex. "In Progress") — escapados via
+# jq --arg, NUNCA concatenacao de string (SEC-3).
 _ji_cmd_json_build_marker() {
   _jbm_local_key=""
   _jbm_feature=""
   _jbm_sha=""
   _jbm_status=""
   _jbm_at=""
+  _jbm_desc_sha=""
+  _jbm_have_desc_sha="no"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --local-key)
@@ -1168,6 +1182,9 @@ _ji_cmd_json_build_marker() {
       --written-at)
         [ "$#" -ge 2 ] || _ji_die_usage "--written-at requer argumento"
         _jbm_at="$2"; shift 2 ;;
+      --written-description-sha256)
+        [ "$#" -ge 2 ] || _ji_die_usage "--written-description-sha256 requer argumento"
+        _jbm_desc_sha="$2"; _jbm_have_desc_sha="yes"; shift 2 ;;
       *)
         _ji_die_usage "json-build marker: argumento desconhecido: $1"
         ;;
@@ -1180,14 +1197,19 @@ _ji_cmd_json_build_marker() {
   [ -n "$_jbm_at" ] || _ji_die_usage "json-build marker requer --written-at"
 
   _ji_require_jq
+  _jbm_have_desc_sha_json="false"
+  [ "$_jbm_have_desc_sha" = "yes" ] && _jbm_have_desc_sha_json="true"
   jq -n --argjson schema 1 \
     --arg local_key "$_jbm_local_key" \
     --arg feature "$_jbm_feature" \
     --arg sha "$_jbm_sha" \
     --arg status "$_jbm_status" \
     --arg at "$_jbm_at" \
+    --arg desc_sha "$_jbm_desc_sha" \
+    --argjson have_desc_sha "$_jbm_have_desc_sha_json" \
     '{schema: $schema, local_key: $local_key, feature: $feature,
-      written_summary_sha256: $sha, written_status: $status, written_at: $at}'
+      written_summary_sha256: $sha, written_status: $status, written_at: $at}
+     | if $have_desc_sha then .written_description_sha256 = $desc_sha else . end'
 }
 
 # --- dispatcher ---------------------------------------------------------

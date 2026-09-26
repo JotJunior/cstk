@@ -1394,7 +1394,7 @@ remanescente). Completar e aditivo: persistir `task_id<TAB>outcome` no
 runtime quando o evento de `record_task` e enfileirado/processado e passar
 `--outcomes-file` na expansao da reconciliacao.
 
-- [ ] 12.4.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model LocalWorkItem outcome precedence / US3 cenarios 2-3`: outcome de `record_task` persistido e usado via `--outcomes-file` em `_js_process_reconcile_event`, com teste em `tests/cstk/test_jira-sync.sh` (record_task fail + checkboxes `[x]` -> reconcile NAO move para pass)
+- [x] 12.4.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model LocalWorkItem outcome precedence / US3 cenarios 2-3`: outcome de `record_task` persistido e usado via `--outcomes-file` em `_js_process_reconcile_event`, com teste em `tests/cstk/test_jira-sync.sh` (record_task fail + checkboxes `[x]` -> reconcile NAO move para pass)
 
 <!-- converge-key: 41370f6418f8 -->
 
@@ -1416,7 +1416,7 @@ atualizando data-model.md) OU, se a leitura de `description` via R3 nao
 tiver fonte em `contracts/jira-rest.md` (Principio VI), restringir
 explicitamente a documentacao (contrato + SKILL.md) a "summary-only".
 
-- [ ] 12.5.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-003 / task 10.2.1 description drift`: mudanca so de criticidade/dependencias propaga para a descricao da Task respeitando FR-011 (ou escopo summary-only documentado com fonte), com teste em `tests/cstk/test_jira-sync.sh`
+- [x] 12.5.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-003 / task 10.2.1 description drift`: mudanca so de criticidade/dependencias propaga para a descricao da Task respeitando FR-011 (ou escopo summary-only documentado com fonte), com teste em `tests/cstk/test_jira-sync.sh`
 
 <!-- converge-key: 3fb17fd6f483 -->
 
