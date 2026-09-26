@@ -56,9 +56,9 @@ Mapeamento de status HTTP (politica de design):
 | Subcomando | Descricao |
 |------------|-----------|
 | `get --feature F --local-key K` | linha do mapeamento ou exit 1 |
-| `put --feature F --local-key K --kind KIND --jira-id ID --jira-key KEY` | insere de forma atomica (tmp + `mv`); recusa `local_key` ja `active` (FR-013) |
-| `mark-orphans --feature F` | marca `orphan` as chaves ausentes de `jira-tasks.sh items`; imprime os orfaos |
-| `relink --feature F --local-key K --jira-key KEY` | religa um orfao por decisao humana |
+| `put --feature F --local-key K --kind KIND --jira-id ID --jira-key KEY` | insere de forma atomica (tmp + `mv`); recusa `local_key` ja existente em qualquer estado, `active` ou `orphan` (FR-013; data-model.md: criacao so para `local_key` ausente do arquivo) |
+| `mark-orphans --feature F` | marca `orphan` as chaves `active` ausentes de `jira-tasks.sh items`; imprime todos os orfaos; exit 6 se houver ao menos 1 (FR-012) |
+| `relink --feature F --local-key K --jira-key KEY` | religa um orfao por decisao humana; exige que `KEY` confira com o `jira_key` ja armazenado (confirmacao explicita de qual card) |
 
 ## `jira-sync.sh` — motor
 

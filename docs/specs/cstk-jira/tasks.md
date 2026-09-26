@@ -203,21 +203,32 @@ Ref: data-model.md Entity LocalWorkItem (derivacao de `local_state`).
 
 Ref: data-model.md Entity SyncMapping (jira-map.tsv, FR-013/FR-014).
 
-- [ ] 2.3.1 Subcomando `get --feature F --local-key K`: le linha do
-      mapeamento ou exit 1
-- [ ] 2.3.2 Subcomando `put --feature F --local-key K --kind KIND
+- [x] 2.3.1 Subcomando `get --feature F --local-key K`: le linha do
+      mapeamento ou exit 1 — implementado em
+      `plugins/cstk-jira/scripts/jira-map.sh`
+- [x] 2.3.2 Subcomando `put --feature F --local-key K --kind KIND
       --jira-id ID --jira-key KEY`: insercao atomica (arquivo temporario +
-      `mv`); recusa `local_key` ja `active` (idempotencia FR-013)
-- [ ] 2.3.3 Subcomando `mark-orphans --feature F`: compara contra
+      `mv`); recusa `local_key` ja `active` (idempotencia FR-013) — recusa
+      tambem `local_key` ja `orphan` (data-model.md: "criacao so para
+      local_key ausente do arquivo"; reativar e escopo exclusivo de `relink`)
+- [x] 2.3.3 Subcomando `mark-orphans --feature F`: compara contra
       `jira-tasks.sh items`, marca `orphan` as chaves ausentes do
-      `tasks.md`, imprime os orfaos; card Jira NUNCA e apagado (FR-012)
-- [ ] 2.3.4 Subcomando `relink --feature F --local-key K --jira-key KEY`:
-      religa um orfao por decisao humana (`orphan` -> `active`)
-- [ ] 2.3.5 Teste de idempotencia (SC-002): 10 chamadas de `put` seguidas
-      para o mesmo `local_key` resultam em 0 linhas novas apos a 1a
-- [ ] 2.3.6 Teste de renumeracao/orfao: `local_key` removido do `tasks.md`
+      `tasks.md`, imprime os orfaos; card Jira NUNCA e apagado (FR-012) —
+      exit 6 quando ha ao menos 1 orfao (contracts/plugin-scripts.md),
+      exit 0 caso contrario
+- [x] 2.3.4 Subcomando `relink --feature F --local-key K --jira-key KEY`:
+      religa um orfao por decisao humana (`orphan` -> `active`) — exige
+      que `KEY` confira exatamente com o `jira_key` armazenado (confirmacao
+      explicita de qual card esta sendo religado)
+- [x] 2.3.5 Teste de idempotencia (SC-002): 10 chamadas de `put` seguidas
+      para o mesmo `local_key` resultam em 0 linhas novas apos a 1a —
+      `scenario_idempotencia_10x_put_mesma_chave_zero_linhas_novas`
+- [x] 2.3.6 Teste de renumeracao/orfao: `local_key` removido do `tasks.md`
       vira `orphan` via `mark-orphans`; `relink` restaura `active` sem
-      nunca ter apagado a linha original
+      nunca ter apagado a linha original —
+      `scenario_mark_orphans_marca_e_nunca_apaga` +
+      `scenario_relink_sucesso_reativa_sem_apagar`; testes em
+      `tests/cstk/test_jira-map.sh` (16 cenarios, PASS)
 
 ---
 
