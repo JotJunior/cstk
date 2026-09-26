@@ -38,37 +38,50 @@ do operador (nunca produtivo).
 
 Ref: quickstart.md Cenario 6; contracts/jira-rest.md R1/R3/R4/R5/R8.
 
-- [ ] 0.1.1 Obter (do operador) um site Jira Cloud de teste + API token
+- [x] 0.1.1 Obter (do operador) um site Jira Cloud de teste + API token
       valido, seguindo a mesma disciplina de `data-model.md` Credential
-      (token nunca digitado no chat; coletado em terminal proprio)
-- [ ] 0.1.2 `GET /rest/api/3/issue/{issueIdOrKey}` sobre uma issue de teste e
+      (token nunca digitado no chat; coletado em terminal proprio) — resolvido
+      via block-008/dec-053 (novo token classico gerado pelo operador,
+      confirmado com `GET /myself` 200 na onda-011)
+- [x] 0.1.2 `GET /rest/api/3/issue/{issueIdOrKey}` sobre uma issue de teste e
       capturar a resposta REAL: comparar `fields.status`, `fields.issuetype`,
-      `fields.updated` contra o que `contracts/jira-rest.md` R3 descreve
-- [ ] 0.1.3 `POST /rest/api/3/issue` (criacao de uma issue de teste) e
+      `fields.updated` contra o que `contracts/jira-rest.md` R3 descreve —
+      feito contra `SCRUM-6` (onda-011); ver contracts/jira-rest.md secao R3
+- [x] 0.1.3 `POST /rest/api/3/issue` (criacao de uma issue de teste) e
       capturar o corpo aceito REAL: comparar `fields.project`,
       `fields.issuetype`, `fields.summary`, `fields.parent`,
-      `fields.description` (ADF) contra R1
-- [ ] 0.1.4 `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes`
+      `fields.description` (ADF) contra R1 — feito: Epic `SCRUM-5` + Story
+      `SCRUM-6` (filha via `fields.parent`) criadas no projeto `SCRUM`
+      (onda-011); ver contracts/jira-rest.md secao R1
+- [x] 0.1.4 `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes`
       sobre o projeto de teste e conferir se `hierarchyLevel` de Epic aparece
-      de fato na resposta (R8 — hoje NAO ENCONTRADO nas fontes estaticas)
-- [ ] 0.1.5 `GET /rest/api/3/issue/{issueIdOrKey}/transitions` e conferir o
-      elemento de `transitions` (`id`, `name`, `to.name`, `to.id`) contra R5
-- [ ] 0.1.6 Deletar/arquivar a issue de teste criada em 0.1.3 (via UI do
-      Jira, NUNCA via `deleteJiraIssue`/`DELETE` do plugin — FR-012)
+      de fato na resposta (R8 — hoje NAO ENCONTRADO nas fontes estaticas) —
+      confirmado: Epic=1, Task=0, Story=0, Subtask=-1 (onda-011)
+- [x] 0.1.5 `GET /rest/api/3/issue/{issueIdOrKey}/transitions` e conferir o
+      elemento de `transitions` (`id`, `name`, `to.name`, `to.id`) contra R5 —
+      feito contra `SCRUM-6` (onda-011); achou contradicao `looped`→`isLooped`
+      (dec-057), corrigida no contrato
+- [~] 0.1.6 Deletar/arquivar a issue de teste criada em 0.1.3 (via UI do
+      Jira, NUNCA via `deleteJiraIssue`/`DELETE` do plugin — FR-012) —
+      PENDENTE: exige UI do Jira (navegador), fora do alcance das ferramentas
+      deste orquestrador autonomo; `SCRUM-5` e `SCRUM-6` seguem no projeto
+      `SCRUM` (sandbox) ate o operador arquiva-las manualmente
 
 ### 0.2 Atualizar `contracts/jira-rest.md` com os achados `[C]`
 
 Ref: Principio VI (Zero Fabricacao) — nenhum campo confirmado por 0.1 pode
 ficar com o marcador antigo desatualizado.
 
-- [ ] 0.2.1 Para cada campo confirmado em 0.1, editar `contracts/jira-rest.md`
+- [x] 0.2.1 Para cada campo confirmado em 0.1, editar `contracts/jira-rest.md`
       trocando o marcador (`(exemplo)`/`RECONFERIR`/`NAO ENCONTRADO`) por
-      `CONFIRMADO (roundtrip onda-007/FASE 0)` com o valor observado
-- [ ] 0.2.2 Para campos que a chamada real contradisser o contrato, registrar
+      `CONFIRMADO (roundtrip onda-011)` com o valor observado — feito (data
+      real do teste, nao a estimativa antiga "onda-007", para nao registrar
+      proveniencia incorreta)
+- [x] 0.2.2 Para campos que a chamada real contradisser o contrato, registrar
       Decisao auditavel (`--score 3 --evidencia "<trecho literal da resposta
       observada>"`) e corrigir o contrato — nunca prosseguir com dado
-      divergente
-- [ ] 0.2.3 Teste: `grep` de auditoria confirmando que nenhuma linha usada
+      divergente — feito: dec-057 (`isLooped` vs `looped`)
+- [x] 0.2.3 Teste: `grep` de auditoria confirmando que nenhuma linha usada
       pelo motor (FASE 3/4) permanece com marcador `NAO ENCONTRADO` apos a
       edicao (exceto os itens explicitamente fora do contrato: changelog,
       `fields.project.key`, `statusCategory.key`, path de criacao de

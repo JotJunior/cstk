@@ -19,7 +19,7 @@ delas.
 |----|----------|---------------|-------|----------|
 | R1 | criar issue | `POST /rest/api/3/issue` | https://community.developer.atlassian.com/t/deprecation-of-the-epic-link-parent-link-and-other-related-fields-in-rest-apis-and-webhooks/54048 | citado (OpenAPI v3, secao onda-005) |
 | R2 | editar issue | `PUT /rest/api/3/issue/{issueIdOrKey}` | mesmo post + OpenAPI v3 (secao onda-005) | citado |
-| R3 | ler issue | `GET /rest/api/3/issue/{issueIdOrKey}` | https://support.atlassian.com/jira/kb/retrieve-data-with-jira-rest-api-in-automation-to-update-issue-fields/ + OpenAPI v3 (secao onda-005) | citado (`fields.status`/`fields.issuetype` RECONFERIR) |
+| R3 | ler issue | `GET /rest/api/3/issue/{issueIdOrKey}` | https://support.atlassian.com/jira/kb/retrieve-data-with-jira-rest-api-in-automation-to-update-issue-fields/ + OpenAPI v3 (secao onda-005) | citado (`fields.status`/`fields.issuetype`/`fields.updated` CONFIRMADO roundtrip onda-011) |
 | R4 | transicionar | `POST /rest/api/3/issue/{issueIdOrKey}/transitions` | https://developer.atlassian.com/cloud/jira/platform/change-notice-update-in-simultaneous-transitions-issue-api/ + OpenAPI v3 (secao onda-005) | citado |
 | R5 | listar transicoes | `GET /rest/api/3/issue/{issueIdOrKey}/transitions` | OpenAPI v3 (secao onda-005) | citado |
 | R6 | gravar/ler propriedade de issue | `PUT` / `GET /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` (max 32 KB) | https://developer.atlassian.com/cloud/jira/platform/jira-entity-properties/ | citado |
@@ -98,14 +98,14 @@ reconferi-los na primeira chamada observada (quickstart cenario 6).
 | Elemento | Valor | Path JSON |
 |----------|-------|-----------|
 | corpo | schema `IssueUpdateDetails` (propriedades `fields` objeto, `update`, `transition`, `properties`, `historyMetadata`; nenhuma obrigatoria no schema) | `P:./rest/api/3/issue.post.requestBody.content.application/json.schema` → `S:.IssueUpdateDetails` |
-| `fields.project` | `{"id": "<string>"}` **(exemplo)** — forma por `key` NAO ENCONTRADA no spec | `P:./rest/api/3/issue.post.requestBody.content.application/json.example.fields.project` |
-| `fields.issuetype` | `{"id": "<string>"}` **(exemplo)** | `...example.fields.issuetype` |
-| `fields.summary` | string **(exemplo)** | `...example.fields.summary` |
-| `fields.parent` | `{"key": "<chave>"}` **(exemplo)**; descricao: "`parent` must contain the ID or key of the parent issue." (subtask); "In a next-gen project any issue may be made a child providing that the parent and child are members of the same project." | `...example.fields.parent`; `P:./rest/api/3/issue.post.description` |
-| `fields.description` | Atlassian Document Format: `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"..."}]}]}` **(exemplo)**; descricao: "the `description`, `environment`, and any `textarea` type custom fields (multi-line text fields) take Atlassian Document Format content." | `...example.fields.description`; `P:./rest/api/3/issue.post.description` |
-| sub-task | "`issueType` must be set to a subtask issue type" + `parent` com ID ou key (SUPERA o `NAO ENCONTRADO` de "Sub-task usa `parent`") | `P:./rest/api/3/issue.post.description` |
+| `fields.project` | `{"id": "<string>"}` **CONFIRMADO (roundtrip onda-011)** — `{"id": "10000"}` aceito, `201` (issue `SCRUM-5`, projeto `SCRUM`/"CSTK Playground"); forma por `key` continua NAO TESTADA | `P:./rest/api/3/issue.post.requestBody.content.application/json.example.fields.project` |
+| `fields.issuetype` | `{"id": "<string>"}` **CONFIRMADO (roundtrip onda-011)** — `{"id": "10001"}` (Epic) e `{"id": "10004"}` (Story) aceitos | `...example.fields.issuetype` |
+| `fields.summary` | string **CONFIRMADO (roundtrip onda-011)** | `...example.fields.summary` |
+| `fields.parent` | `{"key": "<chave>"}` **CONFIRMADO (roundtrip onda-011)** — `{"key": "SCRUM-5"}` aceito ao criar a Story `SCRUM-6` (Epic→Story em projeto next-gen); descricao: "`parent` must contain the ID or key of the parent issue." (subtask); "In a next-gen project any issue may be made a child providing that the parent and child are members of the same project." | `...example.fields.parent`; `P:./rest/api/3/issue.post.description` |
+| `fields.description` | Atlassian Document Format: `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"..."}]}]}` **CONFIRMADO (roundtrip onda-011)** — aceito tal-e-qual nas duas issues de teste; descricao: "the `description`, `environment`, and any `textarea` type custom fields (multi-line text fields) take Atlassian Document Format content." | `...example.fields.description`; `P:./rest/api/3/issue.post.description` |
+| sub-task | "`issueType` must be set to a subtask issue type" + `parent` com ID ou key (SUPERA o `NAO ENCONTRADO` de "Sub-task usa `parent`"); o roundtrip onda-011 confirmou `parent` para Epic→Story — issuetype `subtask=true` dedicado (`Subtask`, id `10002`, `hierarchyLevel -1`) NAO foi exercitado nesta onda | `P:./rest/api/3/issue.post.description` |
 | query | `updateHistory` (boolean, default `false`) — nao usado pelo motor | `P:./rest/api/3/issue.post.parameters` |
-| sucesso | `201` → `CreatedIssue` com `id` (string), `key` (string), `self` (string) | `P:./rest/api/3/issue.post.responses.201` → `S:.CreatedIssue.properties` |
+| sucesso | `201` → `CreatedIssue` com `id` (string), `key` (string), `self` (string) — **CONFIRMADO (roundtrip onda-011)**: resposta real `{"id":"10004","key":"SCRUM-5","self":"https://cstk.atlassian.net/rest/api/3/issue/10004"}` bate exatamente com o schema | `P:./rest/api/3/issue.post.responses.201` → `S:.CreatedIssue.properties` |
 | erros | `400` (campos obrigatorios ausentes/invalidos, sem permissao, subtask em projeto diferente do pai...), `401` "authentication credentials are incorrect or missing", `403` "does not have the necessary permission", `422` "configuration problem" — corpo `ErrorCollection` (`errorMessages` string[], `errors` objeto string→string, `status` integer) | `P:./rest/api/3/issue.post.responses` ; `S:.ErrorCollection.properties` |
 
 Resolucao do `project.id` (necessario porque o spec so exemplifica `id`):
@@ -128,9 +128,9 @@ Situacao de R2 passa de RECONFERIR para citado.
 | query `fields` | array; "accepts a comma-separated list"; exemplo literal "`summary,comment` Returns only the summary and comments fields." | `P:./rest/api/3/issue/{issueIdOrKey}.get.parameters[name=fields]` |
 | sucesso | `200` → `IssueBean`: `id`, `key`, `self` (string), `fields` (objeto livre) | `...get.responses.200` → `S:.IssueBean.properties` |
 | `fields.summary` | string — tipado em `S:.Fields.properties.summary` (campos-chave de issue ligada) e id `summary` no exemplo de `GET /rest/api/3/field` | `S:.Fields.properties.summary`; `P:./rest/api/3/field.get.responses.200...example[].id` |
-| `fields.status` | `StatusDetails`: `id`, `name`, `statusCategory` (`StatusCategory`: `id` integer, `key` string, `name` string) — tipado em `S:.Fields.properties.status`; em `IssueBean.fields` o objeto e livre => RECONFERIR na 1a chamada observada | `S:.Fields.properties.status` → `S:.StatusDetails`, `S:.StatusCategory` |
-| `fields.issuetype` | `IssueTypeDetails` (`S:.Fields.properties.issuetype`) — mesma ressalva | idem |
-| `fields.updated` | nome presente no exemplo de `200` (valor de exemplo `1`, tipo NAO determinavel) **(exemplo)** — SUPERA o `NAO ENCONTRADO` do nome; tipo/formato continua RECONFERIR | `...get.responses.200.content.application/json.example.fields.updated` |
+| `fields.status` | `StatusDetails`: `id`, `name`, `statusCategory` (`StatusCategory`: `id` integer, `key` string, `name` string) — **CONFIRMADO (roundtrip onda-011)**: `SCRUM-6` retornou `{"id":"10000","name":"To Do","statusCategory":{"id":2,"key":"new","colorName":"blue-gray","name":"To Do"}, ...}` (shape bate; `colorName` extra nao documentado no schema mas presente na resposta real) | `S:.Fields.properties.status` → `S:.StatusDetails`, `S:.StatusCategory` |
+| `fields.issuetype` | `IssueTypeDetails` (`S:.Fields.properties.issuetype`) — **CONFIRMADO (roundtrip onda-011)**: `SCRUM-6` retornou `{"id":"10004","name":"Story","subtask":false,"hierarchyLevel":0, ...}` | idem |
+| `fields.updated` | nome presente no exemplo de `200` (valor de exemplo `1`, tipo NAO determinavel) **CONFIRMADO (roundtrip onda-011)** — tipo `string`, formato Jira datetime com milissegundos e offset de fuso: valor real observado `"2026-09-25T22:42:39.399-0300"` (`SCRUM-6`) | `...get.responses.200.content.application/json.example.fields.updated` |
 | erros | `401` (credencial), `404` (issue inexistente ou sem permissao de ver) | `...get.responses` |
 
 ### R4 — executar transicao: `POST /rest/api/3/issue/{issueIdOrKey}/transitions` (operationId `doTransition`)
@@ -150,9 +150,17 @@ o motor MUST tratar `400` e `409` desta operacao como candidatos a retry.
 | Elemento | Valor | Path JSON |
 |----------|-------|-----------|
 | sucesso | `200` → `Transitions` com `transitions` (array de `IssueTransition`) | `...transitions.get.responses.200` → `S:.Transitions.properties` |
-| elemento | `id` (string), `name` (string), `to` (`StatusDetails`: `id`, `name`, `statusCategory`), `isAvailable` (boolean), `hasScreen` (boolean), `isConditional`, `isGlobal`, `isInitial`, `looped` | `S:.IssueTransition.properties` (SUPERA o `NAO ENCONTRADO` do elemento) |
+| elemento | `id` (string), `name` (string), `to` (`StatusDetails`: `id`, `name`, `statusCategory`), `isAvailable` (boolean), `hasScreen` (boolean), `isConditional`, `isGlobal`, `isInitial`, **`isLooped`** (CORRIGIDO — ver nota abaixo) | `S:.IssueTransition.properties` (SUPERA o `NAO ENCONTRADO` do elemento) — **CONFIRMADO (roundtrip onda-011)** contra `GET /rest/api/3/issue/SCRUM-6/transitions` |
 | query | `transitionId`, `expand`, `includeUnavailableTransitions` (default `false`), `skipRemoteOnlyCondition`, `sortByOpsBarAndStatus` | `...transitions.get.parameters` |
 | erros | `401`, `404` | `...transitions.get.responses` |
+
+**CONTRADITO pelo roundtrip onda-011 (Principio VI, `--score 3`, ver Decisao
+dec-057 do state da execucao)**: o schema `S:.IssueTransition.properties`
+citado no OpenAPI (onda-005) foi lido como campo `looped`; a resposta REAL de
+`GET /rest/api/3/issue/SCRUM-6/transitions` traz o campo como `isLooped`
+(evidencia literal: `"isLooped": false` em todos os 4 elementos do array
+`transitions`, id `11`/`21`/`31`/`41`). O nome correto e `isLooped` — corrigido
+acima; o motor MUST usar `isLooped`, nunca `looped`.
 
 Valores de `statusCategory.key`: o schema NAO define enum
 (`S:.StatusCategory.properties.key` = string, "The key of the status
@@ -183,14 +191,26 @@ e descricao "Endpoint is currently being removed." — o motor NAO o usa.
 | erros | `400`, `401` | `...issuetypes.get.responses` |
 
 Qual das duas listas (`issueTypes` vs `createMetaIssueType`) vem preenchida
-na resposta real NAO e determinavel pelo schema => o motor le a que vier
-nao-vazia e a 1a chamada observada (quickstart cenario 6) fixa o comportamento.
-Identificacao de Epic/Task/Sub-task no setup: `subtask=true` => candidato a
-Sub-task (descricao do schema). Qual valor de `hierarchyLevel` corresponde a
-Epic NAO ENCONTRADO nas fontes (o spec nao traz exemplo com Epic; o post de R1
-so cita o intervalo -1/0/1) => o setup MUST listar os tipos (`id`, `name`,
-`hierarchyLevel`, `subtask`) e o OPERADOR confirma qual e Epic, Task e
-Sub-task antes de gravar `issue_type_*` [PROPOSTA — a validar na implementacao].
+na resposta real NAO e determinavel pelo schema — nesta onda a chamada real
+preencheu `issueTypes` (`createMetaIssueType` ausente do payload) => o motor
+le a que vier nao-vazia (comportamento confirmado no roundtrip onda-011,
+projeto `SCRUM`). Identificacao de Epic/Task/Sub-task no setup: `subtask=true`
+=> candidato a Sub-task (descricao do schema).
+
+**`hierarchyLevel` de Epic — CONFIRMADO (roundtrip onda-011)**: `GET
+/rest/api/3/issue/createmeta/SCRUM/issuetypes` no site de teste
+`cstk.atlassian.net` (projeto `SCRUM`/"CSTK Playground", esquema padrao de
+hierarquia do Jira Software Cloud) retornou 4 tipos com `hierarchyLevel`:
+`Epic`=`1`, `Subtask`=`-1`, `Task`=`0`, `Story`=`0` — bate com o intervalo
+-1/0/1 ja citado do post de R1, e neste site `hierarchyLevel=1` identificou
+exclusivamente o Epic. Este e o UNICO site testado; a PROPOSTA de o setup
+listar os tipos e o OPERADOR confirmar qual e Epic/Task/Sub-task antes de
+gravar `issue_type_*` permanece de pe (nao revogada por esta unica evidencia)
+— sites com esquemas de hierarquia customizados (planos Enterprise/Premium
+permitem niveis adicionais) podem nao seguir este mapeamento 1:1; a decisao de
+tornar a correspondencia determinista ou manter confirmacao manual e do
+`plan.md`/`data-model.md`, fora do escopo desta tarefa (0.1.4 so confere se o
+campo aparece na resposta real).
 
 ### Validacao de credencial (SUPERA `NAO ENCONTRADO`)
 
@@ -198,10 +218,52 @@ Sub-task antes de gravar `issue_type_*` [PROPOSTA — a validar na implementacao
 `User`; `401` "Returned if the authentication credentials are incorrect or
 missing." (`P:./rest/api/3/myself.get.responses`) — `401` => `auth_failed`.
 `403` em R1/R2 = "does not have the necessary permission" => erro de
-permissao, NAO de credencial.
+permissao, NAO de credencial. **CONFIRMADO end-to-end (roundtrip onda-011)**:
+Basic auth com email + API token classico contra `cstk.atlassian.net`
+retornou `200` com corpo `User` real (`accountId`, `accountType`,
+`emailAddress`, `displayName`, `active`, `timeZone`, `locale`, `groups`,
+`applicationRoles`); nas ondas anteriores (block-008) o mesmo endpoint
+retornara `401` duas vezes com um token que se revelou invalido — resolvido
+apos o operador gerar um novo token classico.
 
 ### Continua fora do contrato apos a onda-005
 
-Endpoint de changelog; tipo/formato de `fields.updated`; valores de
-`statusCategory.key`; forma `fields.project.key` em R1; path v3 de criacao de
-projeto.
+Endpoint de changelog; valores de `statusCategory.key` (a resposta real
+os revela em runtime — `new`/`indeterminate`/`done` observados no roundtrip
+onda-011 — mas o schema nao define enum normativo e o motor NAO decide por
+categoria, ver R5 acima); forma `fields.project.key` em R1 (so `id` foi
+testado); path v3 de criacao de projeto (nao exercitado — o roundtrip onda-011
+usou o projeto de teste ja existente `SCRUM`, ver secao seguinte).
+
+`tipo/formato de fields.updated` SAIU desta lista — CONFIRMADO na secao R3
+acima pelo roundtrip onda-011.
+
+## Roundtrip real onda-011 (FASE 0 task 0.1 — resolve block-008)
+
+Executado apos o operador gerar um novo API token classico (resposta ao
+block-008/dec-053). Site: `https://cstk.atlassian.net`. Credencial: Basic
+auth `jot@jot.com.br` + token novo (carregado via `.env`, nunca impresso).
+
+- `GET /rest/api/3/myself` → `200` (antes `401` x2 com o token antigo).
+- `GET /rest/api/3/project/search` → 1 projeto existente e adequado:
+  `key=SCRUM`, `name="CSTK Playground"`, `projectTypeKey=software`,
+  `style=next-gen` (`id=10000`) — reutilizado como projeto de teste (Decisao
+  dec-056 do state da execucao); nenhum projeto novo foi criado.
+- `POST /rest/api/3/issue` (Epic) → `201` `{"id":"10004","key":"SCRUM-5", ...}`.
+- `POST /rest/api/3/issue` (Story, `fields.parent={"key":"SCRUM-5"}`) → `201`
+  `{"id":"10005","key":"SCRUM-6", ...}`.
+- `GET /rest/api/3/issue/SCRUM-6?fields=summary,status,issuetype,updated,parent`
+  → `200` (evidencia usada nas linhas de R3 acima).
+- `GET /rest/api/3/issue/SCRUM-6/transitions` → `200`, 4 transicoes
+  (`To Do`/`In Progress`/`In Review`/`Done`) — evidencia usada em R5 acima
+  (achou o campo real `isLooped`, corrigindo o `looped` citado do OpenAPI).
+- `GET /rest/api/3/issue/createmeta/SCRUM/issuetypes` → `200`, 4 tipos
+  (evidencia usada em R8 acima).
+
+**Pendente (0.1.6, fora do escopo de execucao autonoma)**: as issues de teste
+`SCRUM-5` (Epic) e `SCRUM-6` (Story) NAO foram arquivadas/deletadas — FR-012
+proibe `DELETE` pelo motor, e arquivar exige a UI do Jira (este orquestrador
+nao tem ferramenta de navegador). Acao manual do operador: arquivar `SCRUM-5`
+e `SCRUM-6` no projeto `SCRUM` via UI do Jira quando conveniente; nenhuma
+credencial nem dado sensivel fica exposto por deixa-las como estao (issues de
+teste vazias, sem dados reais, em projeto de sandbox).
