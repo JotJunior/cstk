@@ -719,8 +719,17 @@ _js_process_one_event() {
       ;;
   esac
 
-  # R3 — titulo + status atuais.
-  if ! _jspe_issue_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey?fields=summary,status" --op R3 2>/dev/null); then
+  # R3 — titulo + status atuais. Mesmo padrao de R1/R4/R6 (comentario acima,
+  # "sem negacao"): sob 'set -eu', a condicao de um 'if' (com ou sem '!') e
+  # sempre isenta de errexit, mas "if ! var=$(cmd)" faz `$?` refletir o NOT
+  # logico do pipeline (sempre 0 ao entrar no 'then'), nunca o exit code
+  # real de jira-io.sh — bug que impedia auth_failed (401/403) de ser
+  # detectado aqui, degradando sempre para `deferred` (achado 8.3.1/8.3.2,
+  # onda-032). `if CMD; then ok; else _ec=$?; ...` (sem negacao) preserva o
+  # exit code genuino no primeiro comando do 'else'.
+  if _jspe_issue_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey?fields=summary,status" --op R3 2>/dev/null); then
+    :
+  else
     _jspe_ec=$?
     if [ "$_jspe_ec" -eq 4 ]; then
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"
@@ -789,8 +798,13 @@ _js_process_one_event() {
 
   # R5 — resolver transition.id cujo to.name bate o status alvo. Filtro FIXO
   # (nenhum texto livre entra no programa jq — SEC-3); o alvo e comparado
-  # depois, em awk, via -v (dado, nao programa).
-  if ! _jspe_trans_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey/transitions" --op R5 2>/dev/null); then
+  # depois, em awk, via -v (dado, nao programa). Captura de $? sem negacao
+  # (mesmo bug/fix de R3 acima — onda-032, 8.3.1/8.3.2): a condicao de um
+  # 'if' e isenta de 'set -eu' com ou sem '!', mas so a forma sem negacao
+  # preserva o exit code genuino no 'else'.
+  if _jspe_trans_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspe_jkey/transitions" --op R5 2>/dev/null); then
+    :
+  else
     _jspe_ec=$?
     if [ "$_jspe_ec" -eq 4 ]; then
       _js_set_event_status "$_jspe_eid" auth_failed "$((_jspe_attempts + 1))"

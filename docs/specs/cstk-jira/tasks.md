@@ -844,8 +844,8 @@ Ref: plan.md Test Strategy "Contrato"; checklists/api.md CHK001/CHK002.
 
 Ref: plan.md Test Strategy "Idempotencia"; quickstart.md Cenario 4.
 
-- [ ] 8.2.1 Stub com estado persistente entre chamadas simulando o Jira
-- [ ] 8.2.2 10 execucoes de `jira-sync.sh convert` seguidas para a mesma
+- [x] 8.2.1 Stub com estado persistente entre chamadas simulando o Jira
+- [x] 8.2.2 10 execucoes de `jira-sync.sh convert` seguidas para a mesma
       feature => 0 criacoes apos a 1a (end-to-end, nao so unit de
       `jira-map.sh` — complementa 2.3.5/4.1.5)
 
@@ -853,12 +853,16 @@ Ref: plan.md Test Strategy "Idempotencia"; quickstart.md Cenario 4.
 
 Ref: plan.md Test Strategy "Falha"; checklists/api.md CHK009.
 
-- [ ] 8.3.1 `401` (qualquer operacao) => `auth_failed` sem retry
-- [ ] 8.3.2 `403` em R1/R2 => `permission_denied`; `403` nas demais
+- [x] 8.3.1 `401` (qualquer operacao) => `auth_failed` sem retry
+- [x] 8.3.2 `403` em R1/R2 => `permission_denied`; `403` nas demais
       operacoes => `auth_failed`
-- [ ] 8.3.3 `429` => `deferred`, respeitando `Retry-After`
-- [ ] 8.3.4 Host divergente/redirect => recusa sem requisicao
-- [ ] 8.3.5 Dependencias ausentes (`jq`/cliente HTTP) => exit 5, com PATH
+- [x] 8.3.3 `429` => `deferred`, respeitando `Retry-After`
+- [x] 8.3.4 Host divergente/redirect => recusa sem requisicao (coberto por
+      3.1.6/`scenario_request_redirect_3xx_recusado_sem_nova_requisicao` em
+      test_jira-io.sh — guarda vive 100% em `jira-io.sh request`, sem logica
+      propria em jira-sync.sh; E2E via convert/drain seria wrapper redundante
+      da mesma guarda. Mutation dedicada em 8.4.1)
+- [x] 8.3.5 Dependencias ausentes (`jq`/cliente HTTP) => exit 5, com PATH
       minimo explicito controlado no teste inteiro (nao so prefixar um
       diretorio)
 

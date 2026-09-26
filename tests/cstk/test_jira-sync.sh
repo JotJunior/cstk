@@ -54,9 +54,39 @@
 #   SY-11 convert (SC-002): 10 execucoes seguidas da MESMA feature -> exatas
 #         3 chamadas POST /rest/api/3/issue no total (todas na 1a execucao);
 #         das 9 reexecucoes seguintes, 0 criacoes (jira-map.tsv inalterado)
+#   SY-30 convert (SC-002, 8.2.1/8.2.2): fixture com 2 FEATURES e multiplas
+#         tasks/sub-tasks cada, stub com ESTADO PERSISTENTE (aloca id/key de
+#         issue incrementalmente a cada POST, em vez de fila pre-roteirizada
+#         por indice de chamada — mais fiel a um servidor Jira real e escala
+#         sem precisar pre-computar N respostas por chamada) -> 10 execucoes
+#         de `convert` por feature resultam em exatamente 1 POST/issue por
+#         item local (8 no total: 4+4), zero criacoes nas 9 reexecucoes
+#         seguintes de cada feature
 #   SY-12 convert (US1 cenario 2): task nova acrescentada ao tasks.md apos
 #         conversao anterior -> convert cria SOMENTE a task nova associada
 #         ao Epic ja existente (nenhuma chamada para os itens ja mapeados)
+#
+# convert/drain (falha, 8.3 — end-to-end; classificacao fina 401/403/429 ja
+# exaustivamente coberta em test_jira-io.sh JI-33..JI-47; aqui so a
+# PROPAGACAO ate jira-sync.sh e verificada, sem duplicar a classificacao):
+#   SY-31 drain: 401 em R3 (qualquer operacao) -> evento vira `auth_failed`
+#         com EXATAMENTE 1 chamada de rede (sem retry; drain interrompe o
+#         processamento do evento, `_JSPE_BREAK`)
+#   SY-32 convert: 403 na criacao de issue (--op R1) -> exit 7
+#         (permission_denied, jira-io.sh JI-34), EXATAMENTE 3 chamadas
+#         (myself+project+create, a que falha, sem retry), jira-map.tsv
+#         NUNCA ganha a linha do item que falhou
+#   SY-33 drain: 403 em R3 (fora de R1/R2, "demais operacoes") -> mesma
+#         classificacao de SY-31 (`auth_failed`, default conservador
+#         JI-36/JI-37), EXATAMENTE 1 chamada
+#   SY-34 drain: 429 com header `Retry-After` em R3 -> evento vira
+#         `deferred` (nunca `auth_failed`/`conflict`/`done`), EXATAMENTE 1
+#         chamada (sem retry — 429 nao entra no loop de backoff de 5xx/rede)
+#   SY-35 convert: dependencias ausentes (jq E cliente HTTP) -> exit 5,
+#         PATH minimo explicito controlado NA CHAMADA INTEIRA do script sob
+#         teste (substituicao total contendo so `dirname`, o UNICO binario
+#         externo exercitado antes de `jira-io.sh deps-check` abortar —
+#         "Verificar" 8.3.5), mensagem cita jq e curl
 #
 # enqueue/drain (FASE 4.2 COMPLETA — 4.2.1-4.2.8/4.2.10/4.2.11; deteccao de
 # conflito/transicao real via R4/R6 fechada na onda-022, dec-081):
@@ -208,11 +238,13 @@ _url=""
 _out=""
 _method="GET"
 _bodyfile=""
+_dfile=""
 _prev=""
 for _a in "\$@"; do
   case "\$_prev" in
     -o) _out="\$_a" ;;
     -X) _method="\$_a" ;;
+    -D) _dfile="\$_a" ;;
   esac
   case "\$_a" in
     https://*) _url="\$_a" ;;
@@ -228,6 +260,14 @@ if [ -n "\$_bodyfile" ] && [ -f "\$_bodyfile" ]; then
   cp -- "\$_bodyfile" "$TMPDIR_TEST/queue-curl-body-\$_n.json" 2>/dev/null
 fi
 printf '%s %s\n' "\$_method" "\$_url" >> "\$_callsfile"
+if [ -n "\$_dfile" ]; then
+  _hfile="$TMPDIR_TEST/queue-curl-headers-\$_n.txt"
+  if [ -f "\$_hfile" ]; then
+    cat -- "\$_hfile" > "\$_dfile"
+  else
+    : > "\$_dfile"
+  fi
+fi
 _line=\$(sed -n "\${_n}p" "\$_qfile")
 if [ -z "\$_line" ]; then
   exit 22
@@ -240,6 +280,14 @@ exit 0
 STUB
   chmod +x "$_stub_dir/curl"
   printf '%s' "$_stub_dir"
+}
+
+# _queue_set_headers N CONTENT -> grava CONTENT (ex.: 'Retry-After: 30') no
+# arquivo que o stub de _init_queue_stub copia para o destino de `-D` na
+# chamada de numero N (1-based) — simula headers de resposta reais (mesmo
+# padrao de _make_headers_curl_stub em test_jira-io.sh, adaptado a fila).
+_queue_set_headers() {
+  printf '%s\n' "$2" > "$TMPDIR_TEST/queue-curl-headers-$1.txt"
 }
 
 # _queue_push CODE BODY -> acrescenta uma resposta ao fim da fila.
@@ -914,6 +962,260 @@ EOF
     || { _fail "resolve_overwrite_new_event" "nenhum evento novo foi enfileirado: $(cat "$(_outbox_file)")"; return 1; }
   printf '%s\n' "$_novo" | grep -q '	demo	1\.1	fail	manual	0	queued$' \
     || { _fail "resolve_overwrite_new_event_fields" "evento novo com campos inesperados: $_novo"; return 1; }
+  return 0
+}
+
+# =========================== convert: idempotencia (8.2, estado) ===========
+
+# _init_stateful_stub: curl fake com ESTADO PERSISTENTE entre chamadas
+# (8.2.1) — em vez de consumir uma fila pre-roteirizada por indice (como
+# _init_queue_stub), aloca id/key de issue de forma incremental a cada POST
+# /issue (contador em arquivo), simulando um servidor Jira real que atribui
+# numeracao sequencial. GET /myself e GET /project/{KEY} respondem de forma
+# estavel e determinada pela URL (nao pela ordem de chamada), o que permite
+# rodar fixtures ricas (multiplas features/tasks) e repeticoes (10x) sem
+# precisar pre-computar N respostas manualmente. Loga "METHOD URL" em
+# stateful-calls.log e preserva o corpo de cada POST /issue em
+# stateful-body-<id>.json para inspecao posterior.
+_init_stateful_stub() {
+  _stst_dir="$TMPDIR_TEST/bin-stateful"
+  mkdir -p "$_stst_dir"
+  : > "$TMPDIR_TEST/stateful-calls.log"
+  printf '20000' > "$TMPDIR_TEST/stateful-next-id"
+  cat > "$_stst_dir/curl" <<STUB
+#!/bin/sh
+_url=""
+_out=""
+_method="GET"
+_bodyfile=""
+_prev=""
+for _a in "\$@"; do
+  case "\$_prev" in
+    -o) _out="\$_a" ;;
+    -X) _method="\$_a" ;;
+  esac
+  case "\$_a" in
+    https://*) _url="\$_a" ;;
+    @*) _bodyfile="\${_a#@}" ;;
+  esac
+  _prev="\$_a"
+done
+printf '%s %s\n' "\$_method" "\$_url" >> "$TMPDIR_TEST/stateful-calls.log"
+case "\$_url" in
+  */rest/api/3/myself)
+    _code=200
+    _resp='{"accountId":"acc-1"}'
+    ;;
+  */rest/api/3/project/*)
+    _key=\${_url##*/rest/api/3/project/}
+    _code=200
+    _resp="{\\"id\\":\\"10000\\",\\"key\\":\\"\$_key\\"}"
+    ;;
+  */rest/api/3/issue)
+    _idfile="$TMPDIR_TEST/stateful-next-id"
+    _cur=\$(cat "\$_idfile")
+    _cur=\$((_cur + 1))
+    printf '%s' "\$_cur" > "\$_idfile"
+    _off=\$((_cur - 20000))
+    _code=201
+    _resp="{\\"id\\":\\"\$_cur\\",\\"key\\":\\"DEMO-\$_off\\"}"
+    if [ -n "\$_bodyfile" ] && [ -f "\$_bodyfile" ]; then
+      cp -- "\$_bodyfile" "$TMPDIR_TEST/stateful-body-\$_cur.json" 2>/dev/null
+    fi
+    ;;
+  *)
+    _code=404
+    _resp='{}'
+    ;;
+esac
+[ -n "\$_out" ] && printf '%s' "\$_resp" > "\$_out"
+printf '%s' "\$_code"
+exit 0
+STUB
+  chmod +x "$_stst_dir/curl"
+  printf '%s' "$_stst_dir"
+}
+
+_stateful_post_issue_calls_count() {
+  [ -f "$TMPDIR_TEST/stateful-calls.log" ] || { printf '0'; return; }
+  grep -c 'POST .*api/3/issue$' "$TMPDIR_TEST/stateful-calls.log" 2>/dev/null || printf '0'
+}
+
+# _write_tasks_rich FEATURE: docs/specs/<FEATURE>/tasks.md com 2 tasks na
+# FASE 1 (1.1 com 1 sub-task, 1.2 sem sub-task) — fixture mais rica que
+# _write_tasks_1task_1sub (usada por SY-11/SY-12), para exercitar 8.2.2 com
+# multiplos itens locais por feature.
+_write_tasks_rich() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/$1"
+  cat > "$TMPDIR_TEST/docs/specs/$1/tasks.md" <<EOF
+## FASE 1 - Sincronizacao \`[A]\`
+
+### 1.1 Primeira tarefa \`[A]\`
+
+- [ ] 1.1.1 Sub um
+
+### 1.2 Segunda tarefa \`[A]\`
+EOF
+}
+
+# scenario_convert_idempotente_10x_multi_feature_stub_com_estado — SY-30
+# (8.2.1 stub com estado + 8.2.2 fixture rica multi-feature). Duas features
+# ("alpha", "beta"), 3 itens locais cada (epic+2 tasks+1 sub-task = 4 itens
+# por feature via _write_tasks_rich). Convert roda 10x POR feature; total de
+# POST /issue esperado = 8 (4+4), estavel apos a 1a rodada de cada uma.
+scenario_convert_idempotente_10x_multi_feature_stub_com_estado() {
+  _write_full_config
+  _write_tasks_rich alpha
+  _write_tasks_rich beta
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_stateful_stub)"
+
+  for _feature in alpha beta; do
+    _i=1
+    while [ "$_i" -le 10 ]; do
+      PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature "$_feature" || return 1
+      _i=$((_i + 1))
+    done
+  done
+
+  [ "$(_stateful_post_issue_calls_count)" = "8" ] \
+    || { _fail "convert_multi_feature_idempotent_8_total" "esperado 8 POST /issue no total (4 alpha + 4 beta) apos 10x cada, obtido $(_stateful_post_issue_calls_count)"; return 1; }
+
+  _rows_alpha=$(awk -F '\t' 'NR>1' "$TMPDIR_TEST/docs/specs/alpha/jira-map.tsv" | wc -l | tr -d ' ')
+  [ "$_rows_alpha" = "4" ] || { _fail "convert_multi_feature_alpha_rows" "esperado 4 linhas em jira-map.tsv de alpha, obtido $_rows_alpha"; return 1; }
+  _rows_beta=$(awk -F '\t' 'NR>1' "$TMPDIR_TEST/docs/specs/beta/jira-map.tsv" | wc -l | tr -d ' ')
+  [ "$_rows_beta" = "4" ] || { _fail "convert_multi_feature_beta_rows" "esperado 4 linhas em jira-map.tsv de beta, obtido $_rows_beta"; return 1; }
+  return 0
+}
+
+# =========================== falha (8.3, end-to-end) ========================
+#
+# Classificacao fina de status HTTP (401/403 R1-R2-vs-demais/429/5xx/rede) ja
+# e exaustivamente coberta em test_jira-io.sh (JI-33..JI-47) no nivel de
+# `jira-io.sh request`. Os cenarios abaixo verificam so a PROPAGACAO dessa
+# classificacao ATE jira-sync.sh (convert/drain) — nao duplicam a bateria de
+# classificacao, so confirmam que o motor de sincronizacao reage certo a
+# cada exit code que jira-io.sh pode devolver.
+
+# SY-31: drain, 401 na 1a chamada de rede do evento (R3) -> `auth_failed`
+# (jira-io.sh exit 4), EXATAMENTE 1 chamada (sem retry — 401 nao entra no
+# loop de backoff de 5xx/rede).
+scenario_drain_401_em_r3_vira_auth_failed_sem_retry() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 401 '{"errorMessages":["not authenticated"]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "drain_401_calls" "esperado exatamente 1 chamada (sem retry), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'auth_failed$' \
+    || { _fail "drain_401_auth_failed" "evento e1 nao virou auth_failed: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# SY-32: convert, 403 na criacao da issue (--op R1) -> exit 7
+# (permission_denied, JI-34), EXATAMENTE 3 chamadas no total (myself +
+# project + create — a que falha, sem retry), jira-map.tsv NUNCA ganha a
+# linha do item que falhou.
+scenario_convert_403_na_criacao_vira_permission_denied_exit7() {
+  _write_full_config
+  _write_tasks_1task_1sub
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 403 '{"errorMessages":["permission denied"]}'
+  PATH="$_bin:$PATH" assert_exit 7 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "convert_403_calls" "esperado exatamente 3 chamadas (sem retry), obtido $(_queue_calls_count)"; return 1; }
+  if [ -f "$(_map_file)" ] && grep -q '^demo	epic' "$(_map_file)"; then
+    _fail "convert_403_no_map_row" "jira-map.tsv nao deveria ganhar linha para o item que falhou"
+    return 1
+  fi
+  return 0
+}
+
+# SY-33: drain, 403 em R3 (fora de R1/R2 — "demais operacoes") -> mesma
+# classificacao de SY-31 (`auth_failed`, default conservador JI-36/JI-37),
+# EXATAMENTE 1 chamada.
+scenario_drain_403_fora_de_r1_r2_vira_auth_failed() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 403 '{"errorMessages":["forbidden"]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "drain_403_calls" "esperado exatamente 1 chamada (sem retry), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'auth_failed$' \
+    || { _fail "drain_403_auth_failed" "evento e1 nao virou auth_failed: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# SY-34: drain, 429 com header Retry-After em R3 -> `deferred` (nunca
+# `auth_failed`/`conflict`/`done`), EXATAMENTE 1 chamada (429 nao entra no
+# loop de backoff de 5xx/rede). `_queue_set_headers` simula o header real.
+scenario_drain_429_vira_deferred_respeitando_retry_after() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 429 '{"errorMessages":["rate limit"]}'
+  _queue_set_headers 1 'Retry-After: 30'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "drain_429_calls" "esperado exatamente 1 chamada (sem retry), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'deferred$' \
+    || { _fail "drain_429_deferred" "evento e1 nao virou deferred: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# SY-35: convert, dependencias ausentes (jq E cliente HTTP) -> exit 5
+# (jira-io.sh JI-1), PATH minimo explicito EM TODA a chamada do script sob
+# teste (substituicao total — nunca prefixo, mesma licao ja registrada no
+# repo de que um stub prefixado nao esconde um binario real em /usr/bin).
+# So `dirname` entra no PATH: e o UNICO binario externo que `jira-sync.sh
+# convert` invoca (via `_js_script_dir`) antes de `jira-io.sh deps-check`
+# abortar — deps-check em si so usa `command -v` (builtin do `sh`).
+scenario_convert_deps_ausentes_exit5_path_minimo() {
+  cd "$TMPDIR_TEST" || return 1
+  _dn=$(command -v dirname 2>/dev/null) || { _error "sem_dirname_no_host" "dirname indisponivel no ambiente de teste"; return 2; }
+  _bin="$TMPDIR_TEST/bin-nodeps"
+  mkdir -p "$_bin"
+  ln -sf "$_dn" "$_bin/dirname"
+  assert_exit 5 env PATH="$_bin" "$SCRIPT" convert --feature demo || return 1
+  assert_stderr_contains "jq" || return 1
+  assert_stderr_contains "curl" || return 1
   return 0
 }
 
