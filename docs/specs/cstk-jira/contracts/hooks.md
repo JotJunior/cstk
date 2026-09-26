@@ -63,12 +63,18 @@ condicao b: so `scripts/jira-io.sh` referencia essas ferramentas).
    conflito detectado) e anexado a `runtime/hook.log` (nao descartado) —
    FASE 12 tarefa 12.7.1.
 5.bis **Resumo** (`data-model.md` Entity ConflictRecord — "consumido ...
-   pelo resumo emitido pelo hook no fechamento de onda"): apos o drain, um
-   `scripts/jira-sync.sh status --feature <f>` (100% LOCAL, sem rede/titulo
-   do Jira) alimenta uma linha de resumo em `runtime/hook.log` quando
-   `conflict`/`auth_failed`/`deferred` do outbox nao estao todos zerados —
-   sinaliza credencial expirada ou conflito pendente sem exigir `jira-sync
-   status` manual.
+   pelo resumo emitido pelo hook no fechamento de onda"; task 13.4.1): apos
+   o drain, um `scripts/jira-sync.sh status --feature <f>` (100% LOCAL, sem
+   rede/titulo do Jira) alimenta uma linha de resumo em `runtime/hook.log`
+   quando `deferred`/`auth_failed` do outbox OU `pending` de ConflictRecords
+   nao estao todos zerados. A contagem de conflito (`conflict=N` na linha
+   de resumo) vem do `pending=N` de ConflictRecords PENDENTES
+   (`runtime/conflicts.tsv`, exposto por `jira-sync.sh status`), NUNCA do
+   `conflict=` do outbox: esse `pending=N` cobre TODA origem de conflito
+   (drain direto, reconcile via `close_wave`, `convert`) e nunca acusa um
+   conflito ja fechado por `resolve` (qualquer `--choice`) so porque um
+   evento outbox `conflict` remanescente ainda existe. Sinaliza credencial
+   expirada ou conflito pendente sem exigir `jira-sync status` manual.
 6. **Fail-open absoluto**: qualquer falha => exit 0. O hook NUNCA bloqueia,
    atrasa ou falha a tool do orquestrador e NUNCA escreve no state da execucao
    (mesma politica de `posttooluse-tool-call-tick.sh`, que documenta a corrida

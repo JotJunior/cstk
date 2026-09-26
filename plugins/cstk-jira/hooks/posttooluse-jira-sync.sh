@@ -95,18 +95,25 @@ _pjs_log() {
 # _pjs_resolve_canonical_project PROJECT_DIR -> canonical_project derivado
 # (mesma derivacao do orquestrador: .execution.canonical_project com
 # fallback basename(target_project_path)) — READ-ONLY, nunca escreve. Ramo
-# state.db (task 13.1.1 / Constitution II carve-out 1.1.0): este hook NUNCA
-# chama `sqlite3` diretamente — delega ao UNICO ponto do plugin que le
-# campos de state.db, o subcomando `resolve-state-field` de `jira-sync.sh`
-# (`$_PJS_ENGINE`, ja resolvido acima), que por sua vez so consome o
-# `state-rw.sh` do runtime `agente-00c-runtime` quando localizavel.
+# state.json: `canonical_project` vive ANINHADO sob `.execution` no schema
+# real (nunca top-level — `_pjs_json_str` casa a chave em qualquer nivel do
+# JSON achatado, entao o nome da chave folha basta). Ramo state.db (task
+# 13.1.1 / Constitution II carve-out 1.1.0, campo corrigido pela 14.1.1):
+# este hook NUNCA chama `sqlite3` diretamente — delega ao UNICO ponto do
+# plugin que le campos de state.db, o subcomando `resolve-state-field` de
+# `jira-sync.sh` (`$_PJS_ENGINE`, ja resolvido acima), passando o caminho
+# pontuado `execution.canonical_project` (o subcomando so lia campo
+# top-level ate a 14.1.1 — `.canonical_project` e sempre null no schema
+# real, o hook caia sempre no fallback basename sob state.db). Este ultimo,
+# por sua vez, so consome o `state-rw.sh` do runtime `agente-00c-runtime`
+# quando localizavel.
 _pjs_resolve_canonical_project() {
   _pjs_rc_dir="$1/.claude/agente-00c-state"
   _pjs_rc_val=""
   if [ -f "$_pjs_rc_dir/state.json" ]; then
     _pjs_rc_val=$(_pjs_json_str "$(cat "$_pjs_rc_dir/state.json" 2>/dev/null)" canonical_project 2>/dev/null) || _pjs_rc_val=""
   elif [ -f "$_pjs_rc_dir/state.db" ]; then
-    _pjs_rc_val=$("$_PJS_ENGINE" resolve-state-field --dir "$_pjs_rc_dir" --field canonical_project 2>/dev/null) || _pjs_rc_val=""
+    _pjs_rc_val=$("$_PJS_ENGINE" resolve-state-field --dir "$_pjs_rc_dir" --field execution.canonical_project 2>/dev/null) || _pjs_rc_val=""
   fi
   if [ -z "$_pjs_rc_val" ] || [ "$_pjs_rc_val" = "null" ]; then
     basename -- "$1"

@@ -210,14 +210,18 @@ USO:
       sem eventos auth_failed, imprime contagem 0 e sai exit 0.
 
   jira-sync.sh resolve-state-field --dir D --field F
-      Le o campo top-level F de D/state.json (grep/sed puro) ou, so D/
-      state.db existir, delega ao `state-rw.sh` do runtime
-      agente-00c-runtime quando localizavel (CSTK_LIB ou
-      ~/.claude/skills/agente-00c-runtime/scripts) — UNICO ponto do plugin
-      que le um campo de estado; nunca invoca sqlite3 diretamente
-      (Constitution II carve-out 1.1.0, task 13.1.1). Reusado pelo hook
-      `posttooluse-jira-sync.sh` para `canonical_project`. String vazia
-      (exit 0) sem state.json/state.db ou sem runtime localizavel.
+      Le o campo F (top-level ou caminho pontuado, ex:
+      "execution.canonical_project") de D/state.json (grep/sed puro, pela
+      chave folha do caminho) ou, se D/state.db existir, delega ao
+      `state-rw.sh` do runtime agente-00c-runtime quando localizavel
+      (CSTK_LIB ou ~/.claude/skills/agente-00c-runtime/scripts) — UNICO
+      ponto do plugin que le um campo de estado; nunca invoca sqlite3
+      diretamente (Constitution II carve-out 1.1.0, task 13.1.1). `--field`
+      passa por allowlist dedicada ([A-Za-z0-9_.], sem "." inicial/final
+      nem ".." consecutivo) ANTES de qualquer leitura — recusa exit 2 sem
+      tocar disco (task 14.1.1). Reusado pelo hook
+      `posttooluse-jira-sync.sh` para `execution.canonical_project`. String
+      vazia (exit 0) sem state.json/state.db ou sem runtime localizavel.
 
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
@@ -263,6 +267,27 @@ _js_is_safe_field() {
   esac
   case "$1" in
     *"$_JS_NL"*) return 1 ;;
+  esac
+  return 0
+}
+
+# _js_is_valid_field_path VALUE -> allowlist DEDICADA do `--field` de
+# `resolve-state-field` (task 14.1.1): so aceita `[A-Za-z0-9_.]`, sem `.`
+# inicial/final e sem `..` consecutivo — mais restrita que
+# `_js_is_safe_field` (que so barra TAB/newline; permanece em uso nas
+# chaves de outbox/conflicts, cujo charset e mais permissivo por design).
+# Aceita caminho pontuado (`execution.canonical_project`) para leitura
+# aninhada nos dois backends de `_js_resolve_state_field`. Recusa sem
+# tocar disco (o dispatcher chama isto ANTES de qualquer leitura).
+_js_is_valid_field_path() {
+  case "$1" in
+    '') return 1 ;;
+  esac
+  case "$1" in
+    *[!A-Za-z0-9_.]*) return 1 ;;
+  esac
+  case "$1" in
+    .*|*.|*..*) return 1 ;;
   esac
   return 0
 }
@@ -348,11 +373,17 @@ _js_runtime_state_rw() {
   return 0
 }
 
-# _js_resolve_state_field DIR FIELD -> valor de um campo top-level de
-# DIR/state.json (grep/sed puro via `_js_json_str`, sem dependencia nova)
-# ou, quando so DIR/state.db existir, delegado ao `state-rw.sh` do runtime
-# (`_js_runtime_state_rw`) QUANDO localizavel — UNICO ponto do plugin
-# (task 13.1.1) que resolve um campo de estado a partir de qualquer um dos
+# _js_resolve_state_field DIR FIELD -> valor de um campo (top-level ou
+# caminho pontuado, ex: "execution.canonical_project") de DIR/state.json
+# (grep/sed puro via `_js_json_str`, sem dependencia nova — a leitura nao
+# rastreia nesting, entao usa so o ULTIMO SEGMENTO do caminho como chave de
+# busca dentro do objeto pai, ver comentario abaixo) ou, quando so
+# DIR/state.db existir, delegado ao `state-rw.sh` do runtime
+# (`_js_runtime_state_rw`) QUANDO localizavel — este passa o caminho
+# pontuado INTEIRO (`.$_jsrsf_field`), que o `state-rw.sh get` ja resolve
+# nativamente contra qualquer nivel de aninhamento — UNICO ponto do plugin
+# (task 13.1.1, corrigido pela 14.1.1 para aceitar caminho pontuado nos
+# DOIS backends) que resolve um campo de estado a partir de qualquer um dos
 # dois backends; `_js_resolve_stage` (abaixo) e o hook
 # `posttooluse-jira-sync.sh` (via subcomando `resolve-state-field`)
 # reutilizam esta funcao/subcomando em vez de duplicar a logica. Sem
@@ -363,7 +394,17 @@ _js_resolve_state_field() {
   _jsrsf_dir="$1"
   _jsrsf_field="$2"
   if [ -f "$_jsrsf_dir/state.json" ]; then
-    _js_json_str "$(cat "$_jsrsf_dir/state.json" 2>/dev/null)" "$_jsrsf_field" 2>/dev/null
+    # Ultimo segmento do caminho pontuado: `_js_json_str` casa a chave em
+    # QUALQUER nivel do JSON flat (sem rastrear o objeto pai), entao um
+    # caminho como "execution.canonical_project" so precisa da chave folha
+    # "canonical_project" para achar o valor correto (achado 14.1.1: o bug
+    # real era passar o campo top-level errado ao state.db, nao o parsing
+    # do state.json em si).
+    case "$_jsrsf_field" in
+      *.*) _jsrsf_leaf=${_jsrsf_field##*.} ;;
+      *)   _jsrsf_leaf=$_jsrsf_field ;;
+    esac
+    _js_json_str "$(cat "$_jsrsf_dir/state.json" 2>/dev/null)" "$_jsrsf_leaf" 2>/dev/null
     return 0
   fi
   [ -f "$_jsrsf_dir/state.db" ] || return 0
@@ -2340,11 +2381,15 @@ _js_cmd_requeue_auth_failed() {
 # _js_cmd_resolve_state_field --dir DIR --field FIELD — task 13.1.1
 # (Constitution II carve-out 1.1.0): subcomando fino sobre
 # `_js_resolve_state_field`, para que QUALQUER call-site do plugin que
-# precise ler um campo top-level de um state.json/state.db (hoje: o hook
-# `posttooluse-jira-sync.sh`, para `canonical_project`) delegue a este
-# UNICO ponto em vez de reimplementar a leitura (e, no ramo state.db,
-# reimplementar `sqlite3`). Imprime string vazia (exit 0) quando o campo
-# nao existe/o runtime nao esta localizavel — nunca falha o chamador.
+# precise ler um campo (top-level ou aninhado, ex: "execution.
+# canonical_project") de um state.json/state.db (hoje: o hook
+# `posttooluse-jira-sync.sh`, para `execution.canonical_project` — 14.1.1)
+# delegue a este UNICO ponto em vez de reimplementar a leitura (e, no ramo
+# state.db, reimplementar `sqlite3`). `--field` passa por allowlist DEDICADA
+# (`_js_is_valid_field_path`, task 14.1.1: `[A-Za-z0-9_.]`, sem `.`
+# inicial/final/`..` consecutivo) ANTES de qualquer leitura — recusa exit 2
+# sem tocar disco. Imprime string vazia (exit 0) quando o campo nao existe/
+# o runtime nao esta localizavel — nunca falha o chamador nesse caso.
 _js_cmd_resolve_state_field() {
   _jsrsf_cmd_dir=""
   _jsrsf_cmd_field=""
@@ -2357,8 +2402,8 @@ _js_cmd_resolve_state_field() {
   done
   _js_is_safe_field "$_jsrsf_cmd_dir" \
     || _js_die_usage "resolve-state-field: --dir obrigatorio e sem TAB/newline"
-  _js_is_safe_field "$_jsrsf_cmd_field" \
-    || _js_die_usage "resolve-state-field: --field obrigatorio e sem TAB/newline"
+  _js_is_valid_field_path "$_jsrsf_cmd_field" \
+    || _js_die_usage "resolve-state-field: --field obrigatorio, charset [A-Za-z0-9_.], sem '.' inicial/final nem '..' consecutivo"
   _js_resolve_state_field "$_jsrsf_cmd_dir" "$_jsrsf_cmd_field"
   return 0
 }

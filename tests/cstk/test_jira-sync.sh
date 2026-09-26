@@ -2738,4 +2738,83 @@ EOF
   return 0
 }
 
+# SY-66 (task 14.1.1, regressao da 13.1.1): subcomando `resolve-state-field`
+# no ramo state.json aceita caminho pontuado (`execution.canonical_project`)
+# — a leitura grep/sed nao rastreia nesting, entao a chave FOLHA basta para
+# achar o valor no schema real (canonical_project vive sob `.execution`,
+# nunca top-level). A allowlist dedicada de `--field`
+# (`_js_is_valid_field_path`) recusa charset fora de `[A-Za-z0-9_.]`, `.`
+# inicial/final e `..` consecutivo com exit 2, SEM tocar disco (--dir nem
+# precisa existir para os casos de recusa).
+scenario_resolve_state_field_json_caminho_pontuado_e_allowlist() {
+  mkdir -p "$TMPDIR_TEST/statedir"
+  cat > "$TMPDIR_TEST/statedir/state.json" <<'EOF'
+{"schema_version":"1.0.0","execution":{"id":"x","canonical_project":"cstk"}}
+EOF
+  _out=$("$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field execution.canonical_project)
+  [ "$_out" = "cstk" ] \
+    || { _fail "sy66_json_dotted" "esperado 'cstk' via caminho pontuado no state.json, obtido '$_out'"; return 1; }
+
+  assert_exit 2 "$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field 'execution;rm' || return 1
+  assert_exit 2 "$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field 'execution..canonical_project' || return 1
+  assert_exit 2 "$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field 'has space' || return 1
+  assert_exit 2 "$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field '.execution' || return 1
+  assert_exit 2 "$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field 'execution.' || return 1
+  return 0
+}
+
+# _install_state_rw_stub_field FIELD_DOTTED VALUE -> stub de `state-rw.sh`
+# que so responde ao caminho pontuado EXATO `.FIELD_DOTTED` (task 14.1.1):
+# distinto de `_install_state_rw_stub` (que so casa `.current_stage`),
+# prova que `_js_resolve_state_field` delega ao runtime o caminho INTEIRO
+# (nao so o ultimo segmento) no ramo state.db — um stub tolerante a
+# qualquer --field mascararia a regressao 13.1.1 (campo top-level errado
+# `.canonical_project` continuaria "funcionando" por acidente).
+_install_state_rw_stub_field() {
+  _isrsf_field="$1"
+  _isrsf_val="$2"
+  _isrsf_scripts_dir="$TMPDIR_TEST/stubroot-field/skills/agente-00c-runtime/scripts"
+  mkdir -p "$TMPDIR_TEST/stubroot-field/lib" "$_isrsf_scripts_dir"
+  cat > "$_isrsf_scripts_dir/state-rw.sh" <<EOF
+#!/bin/sh
+[ "\$1" = "get" ] || exit 2
+shift
+_dir=""
+_field=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    --state-dir) _dir=\$2; shift 2 ;;
+    --field) _field=\$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -f "\$_dir/state.db" ] || exit 1
+[ "\$_field" = ".$_isrsf_field" ] || exit 1
+printf '%s\n' "$_isrsf_val"
+EOF
+  chmod +x "$_isrsf_scripts_dir/state-rw.sh"
+  export CSTK_LIB="$TMPDIR_TEST/stubroot-field/lib"
+}
+
+# SY-67 (task 14.1.1, regressao da 13.1.1): subcomando `resolve-state-field`
+# no ramo state.db delega o caminho pontuado INTEIRO ao `state-rw.sh` do
+# runtime — com um stub que so responde a ".execution.canonical_project",
+# pedir esse campo devolve o valor real; pedir o campo TOP-LEVEL
+# ".canonical_project" (o que o hook fazia antes da 14.1.1) nao casa com o
+# stub e devolve vazio, nunca um fallback inventado (Principio VI).
+scenario_resolve_state_field_state_db_caminho_pontuado_via_stub() {
+  mkdir -p "$TMPDIR_TEST/statedir"
+  : > "$TMPDIR_TEST/statedir/state.db"
+  _install_state_rw_stub_field "execution.canonical_project" "cstk"
+
+  _out=$("$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field execution.canonical_project)
+  [ "$_out" = "cstk" ] \
+    || { _fail "sy67_db_dotted" "esperado 'cstk' via stub restrito ao caminho pontuado, obtido '$_out'"; return 1; }
+
+  _out2=$("$SCRIPT" resolve-state-field --dir "$TMPDIR_TEST/statedir" --field canonical_project)
+  [ -z "$_out2" ] \
+    || { _fail "sy67_db_toplevel_empty" "campo top-level (regressao 13.1.1) deveria ser vazio — stub so responde ao pontuado — obtido '$_out2'"; return 1; }
+  return 0
+}
+
 run_all_scenarios

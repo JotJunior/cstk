@@ -248,6 +248,21 @@ mecanismo de 12.5.1) — nunca deixa a chave desatualizada apos um
 `resolve`. `ignored` NUNCA rebaselineia (so fecha o registro, nenhuma
 escrita na issue).
 
+**Preservacao de `written_description_sha256` nas transicoes do `drain`
+(task 13.2.1)**: toda transicao de status aplicada pelo `drain` — evento
+DIRETO (`_js_process_one_event`) ou evento de reconciliacao
+`local_key=*` (`_js_process_reconcile_event`) — le o marker atual ANTES de
+transicionar (R6 GET, ja necessario para a deteccao de conflito) e, ao
+regravar o marker no R6 PUT pos-transicao, CARREGA ADIANTE o
+`written_description_sha256` lido (quando presente), junto do novo
+`written_summary_sha256`/`written_status`/`written_at`. O R6 PUT substitui
+o VALOR INTEIRO da entity property (`contracts/jira-rest.md` R6) — omitir a
+chave apagaria a baseline de protecao da descricao, reabrindo a janela de
+sobrescrita silenciosa que a deteccao de conflito de descricao (paragrafo
+acima) existe para fechar. Marker sem a chave (sem baseline previa) segue
+sem gravar `written_description_sha256` na transicao — nada a carregar
+adiante.
+
 ## Entity: OutboxEvent (fila local de sync)
 
 `<projeto>/.claude/cstk-jira/runtime/outbox.tsv`, append-only com compactacao

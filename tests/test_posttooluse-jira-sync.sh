@@ -357,4 +357,63 @@ EOF
   return 0
 }
 
+# _install_state_rw_stub_field FIELD_DOTTED VALUE -> stub de `state-rw.sh`
+# (runtime agente-00c-runtime) que so responde ao caminho pontuado EXATO
+# `.FIELD_DOTTED` — duplicado de tests/cstk/test_jira-sync.sh (SY-67)
+# porque harness.sh nao compartilha helpers entre arquivos de teste. Um
+# stub tolerante a qualquer --field mascararia a regressao 13.1.1 (o hook
+# pedindo o campo top-level errado continuaria "funcionando" por acidente).
+_install_state_rw_stub_field() {
+  _field="$1"
+  _val="$2"
+  _scripts_dir="$TMPDIR_TEST/stubroot-hook/skills/agente-00c-runtime/scripts"
+  mkdir -p "$TMPDIR_TEST/stubroot-hook/lib" "$_scripts_dir"
+  cat > "$_scripts_dir/state-rw.sh" <<EOF
+#!/bin/sh
+[ "\$1" = "get" ] || exit 2
+shift
+_dir=""
+_f=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    --state-dir) _dir=\$2; shift 2 ;;
+    --field) _f=\$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -f "\$_dir/state.db" ] || exit 1
+[ "\$_f" = ".$_field" ] || exit 1
+printf '%s\n' "$_val"
+EOF
+  chmod +x "$_scripts_dir/state-rw.sh"
+  export CSTK_LIB="$TMPDIR_TEST/stubroot-hook/lib"
+}
+
+# HS-18 (task 14.1.1, regressao da 13.1.1): agente-00c sob backend state.db,
+# em worktree cujo basename() DIFERE do canonical_project real. Antes da
+# 14.1.1, `_pjs_resolve_canonical_project` pedia
+# `resolve-state-field --field canonical_project` (campo top-level, sempre
+# null sob state.db) e caia SEMPRE no fallback basename(cwd) — que nao tem
+# `jira-map.tsv`, entao o sync autonomo virava no-op silencioso. Com o
+# campo corrigido (`execution.canonical_project`) e um stub que so responde
+# a esse caminho pontuado exato, o feature resolvido e o CANONICO (tem
+# jira-map.tsv) e o outbox e enfileirado normalmente.
+scenario_state_db_agente00c_canonical_project_diferente_do_basename_nao_vira_noop() {
+  _config_on "$TMPDIR_TEST"
+  mkdir -p "$TMPDIR_TEST/.claude/agente-00c-state/.lock"
+  : > "$TMPDIR_TEST/.claude/agente-00c-state/state.db"
+  _install_state_rw_stub_field "execution.canonical_project" "cstk-jira-canon"
+  # basename($TMPDIR_TEST) e o path aleatorio do mktemp — nunca
+  # "cstk-jira-canon"; jira-map.tsv so existe sob o nome canonico.
+  _jira_map "$TMPDIR_TEST" "cstk-jira-canon"
+  _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  [ -f "$(_outbox "$TMPDIR_TEST")" ] \
+    || { _fail "hs18_outbox_missing" "outbox nao foi criado — hook provavelmente caiu no basename (regressao 13.1.1) e nao achou jira-map.tsv"; return 1; }
+  _line=$(awk -F '\t' 'NR==2' "$(_outbox "$TMPDIR_TEST")")
+  printf '%s' "$_line" | grep -q '	cstk-jira-canon	5.1	pass	hook-record-task	0	queued$' \
+    || { _fail "hs18_outbox_line" "linha gravada incorreta (esperado feature=cstk-jira-canon): $_line"; return 1; }
+  return 0
+}
+
 run_all_scenarios

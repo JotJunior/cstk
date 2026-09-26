@@ -1744,7 +1744,7 @@ correto, e validar `--field` por allowlist `[A-Za-z0-9_.]` antes de
 interpola-lo no filtro repassado ao `state-rw.sh` (hoje so rejeita
 TAB/newline, linha 2360).
 
-- [ ] 14.1.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `contracts/hooks.md passo 2 canonical_project / task 13.1.1`: resolver `.execution.canonical_project` no ramo `state.db` (via `jira-sync.sh resolve-state-field` com caminho pontuado + allowlist de `--field`), com teste em `tests/test_posttooluse-jira-sync.sh` (agente-00c com `state.db` + stub de `state-rw.sh` que so responde `.execution.canonical_project` => feature = nome canonico, NAO o basename) e teste direto do subcomando `resolve-state-field` em `tests/cstk/test_jira-sync.sh` (campo pontuado nos 2 backends; `--field` com caractere fora da allowlist => exit 2)
+- [x] 14.1.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `contracts/hooks.md passo 2 canonical_project / task 13.1.1`: resolver `.execution.canonical_project` no ramo `state.db` (via `jira-sync.sh resolve-state-field` com caminho pontuado + allowlist de `--field`), com teste em `tests/test_posttooluse-jira-sync.sh` (agente-00c com `state.db` + stub de `state-rw.sh` que so responde `.execution.canonical_project` => feature = nome canonico, NAO o basename) e teste direto do subcomando `resolve-state-field` em `tests/cstk/test_jira-sync.sh` (campo pontuado nos 2 backends; `--field` com caractere fora da allowlist => exit 2)
 
 <!-- converge-key: 410b9f657931 -->
 
@@ -1766,6 +1766,6 @@ preservacao. Cosmetico no mesmo lote: o usage de `jira-sync.sh`
 (`resolve-state-field`, linha 214) diz "ou, so D/state.db existir". Completar
 e aditivo (documentacao, sem mudar comportamento).
 
-- [ ] 14.2.1 Implementar/corrigir `docs/specs/cstk-jira/contracts/hooks.md` conforme `contracts/hooks.md 5.bis + data-model SyncMarker / tasks 13.2.1 13.4.1`: 5.bis descreve a fonte `pending=N` (ConflictRecords pendentes) + `deferred`/`auth_failed` do outbox; `data-model.md` (SyncMarker) e a linha `drain` de `contracts/plugin-scripts.md` documentam a preservacao de `written_description_sha256` nas transicoes do drain; corrigir o typo do usage de `resolve-state-field`; validar com `tests/cstk/test_jira-contract.sh` e `tests/test_doc-subcommands.sh`
+- [x] 14.2.1 Implementar/corrigir `docs/specs/cstk-jira/contracts/hooks.md` conforme `contracts/hooks.md 5.bis + data-model SyncMarker / tasks 13.2.1 13.4.1`: 5.bis descreve a fonte `pending=N` (ConflictRecords pendentes) + `deferred`/`auth_failed` do outbox; `data-model.md` (SyncMarker) e a linha `drain` de `contracts/plugin-scripts.md` documentam a preservacao de `written_description_sha256` nas transicoes do drain; corrigir o typo do usage de `resolve-state-field`; validar com `tests/cstk/test_jira-contract.sh` e `tests/test_doc-subcommands.sh`
 
 <!-- converge-key: 253a7d7fb318 -->
