@@ -147,19 +147,19 @@ contracts/plugin-scripts.md `jira-config.sh`/`jira-tasks.sh`/`jira-map.sh`.
 Ref: data-model.md Entity ProjectConfig; contracts/plugin-scripts.md
 `jira-config.sh`.
 
-- [ ] 2.1.1 Subcomando `get KEY`: le `ProjectConfig` (`key=value`, `#`
+- [x] 2.1.1 Subcomando `get KEY`: le `ProjectConfig` (`key=value`, `#`
       comenta); exit 3 se arquivo ausente (FR-017 — plugin inativo)
-- [ ] 2.1.2 Subcomando `validate`: campos obrigatorios presentes;
+- [x] 2.1.2 Subcomando `validate`: campos obrigatorios presentes;
       `site_host` valido como hostname puro (sem esquema/path/porta/
       userinfo); `status_fail != status_pass` (recusa com diagnostico
       instruindo o admin a criar um status distinto no workflow)
-- [ ] 2.1.3 Subcomando `credential-check`: confere existencia + permissao
+- [x] 2.1.3 Subcomando `credential-check`: confere existencia + permissao
       `0600` do arquivo de credencial para `site_host`, sem imprimir
       nenhum valor (data-model.md "Regras de seguranca")
-- [ ] 2.1.4 Teste unit: fixtures de `ProjectConfig` validas/invalidas
+- [x] 2.1.4 Teste unit: fixtures de `ProjectConfig` validas/invalidas
       (`status_fail == status_pass`, `site_host` com esquema/porta,
       arquivo ausente) cobrindo os 3 subcomandos
-- [ ] 2.1.5 Teste: `credential-check` recusa arquivo com permissao mais
+- [x] 2.1.5 Teste: `credential-check` recusa arquivo com permissao mais
       aberta que `0600` sem nunca imprimir o conteudo
 
 ### 2.2 `jira-tasks.sh` `[A]`

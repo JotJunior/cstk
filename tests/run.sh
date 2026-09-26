@@ -151,10 +151,13 @@ _find_test_files() {
 # Imprime caminho absoluto de cada .sh sob teste:
 #   - plugins/cstk/skills/<any>/scripts/*.sh  (existente desde a v1)
 #   - cli/lib/*.sh                       (FASE 9.3 — extensao da CLI cstk)
+#   - plugins/cstk-jira/scripts/*.sh     (cstk-jira FASE 2 — plugin novo,
+#     mesma convencao de teste do cli/lib: tests/cstk/test_<nome>.sh)
 _find_scripts() {
   {
     find "$REPO_ROOT/plugins/cstk/skills" -type f -path '*/scripts/*.sh' 2>/dev/null
     find "$REPO_ROOT/cli/lib" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
+    find "$REPO_ROOT/plugins/cstk-jira/scripts" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
   } | sort
 }
 
@@ -166,6 +169,7 @@ _expected_test_for_script() {
   case "$_ets_script" in
     */plugins/cstk/skills/*/scripts/*) printf '%s\n' "$TESTS_ROOT/test_$_ets_base.sh" ;;
     */cli/lib/*)                 printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
+    */plugins/cstk-jira/scripts/*) printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
     *)                           printf '\n' ;;  # categoria nao esperada
   esac
 }
