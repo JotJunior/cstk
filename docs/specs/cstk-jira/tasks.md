@@ -993,12 +993,55 @@ fora desta pipeline SDD — as 3 entradas permanecem em 10.7.0 ate la.
 
 Ref: quickstart.md (todos os cenarios).
 
-- [ ] 9.3.1 Percorrer manualmente os Cenarios 1-5 do `quickstart.md`
+- [x] 9.3.1 Percorrer manualmente os Cenarios 1-5 do `quickstart.md`
       (instalacao, inatividade, setup, idempotencia, conflito/orfao)
-      contra o plugin implementado
-- [ ] 9.3.2 Confirmar que o Cenario 6 (roundtrip real) permanece
+      contra o plugin implementado <!-- onda-035. Exercitado DE FATO (execucao
+      real, ambiente isolado HOME/XDG_CONFIG_HOME em tmp, sem rede real, sem
+      tocar .env): Cenario 2 (posttooluse-jira-sync.sh task sem
+      .claude/cstk-jira/config -> exit 0, sem stdout, .claude/ nunca criado
+      — Expected batido literalmente); Cenario 3 parte offline
+      (jira-credential-setup.sh com email/token FIXTURE nao-reais via stdin
+      -> credentials 0600, dir cstk-jira 0700, 3 chaves gravadas; em seguida
+      `jira-config.sh credential-check` exit 0 contra o arquivo gravado).
+      Validado via as 14 suites-gate da FASE 9 rodadas integralmente nesta
+      onda (`sh tests/run.sh <arquivo>` individual, nunca padrao "jira"
+      amplo): jira-config 12 PASS, jira-tasks 16 PASS, jira-map 16 PASS,
+      jira-io 82 PASS (JIRA_IO_BACKOFF_SECONDS=0), jira-sync+
+      posttooluse-jira-sync 49 PASS, jira-setup 10 PASS, jira-title 10 PASS,
+      jira-convert-parity 1 PASS, jira-conflict-view 8 PASS, jira-contract 8
+      PASS, jira-mutation 5 PASS, cstk-jira-plugin-manifest 3 PASS,
+      pretooluse-jira-deny-destructive 5 PASS — 0 FAIL/0 ERROR em todas;
+      essas suites exercitam via stub de rede por fila os MESMOS passos do
+      Cenario 4 (convert cria Epic/Task/Sub-task; 9 reexecucoes = 0 criacoes
+      SY-11; task nova acrescentada = so ela e criada SY-12) e do Cenario 5
+      (outcome pass/fail drena para status_pass/status_fail SY-*, conflito
+      5a nao sobrescreve SY-19, auth_failed 5b SY-31, deferred/429 5c SY-34,
+      orphan 5d via jira-map mark-orphans). Validado ESTATICAMENTE (sem
+      execucao — exige o harness real do Claude Code, nao reproduzivel em
+      ambiente isolado): Cenario 1 (`/plugin marketplace add` + `/plugin
+      install` reais, disparo automatico de hooks pelo harness) — conferido
+      via test_cstk-jira-plugin-manifest.sh (plugin.json/marketplace.json
+      coerentes) + hooks.json listando os 3 matchers + skills jira-setup/
+      jira-convert/jira-sync presentes em plugins/cstk-jira/skills/.
+      Exige o OPERADOR (nao simulavel, nao bloqueante para esta tarefa):
+      Cenario 3 passos 2-5 (token API real do proprio site Jira, MCP Rovo
+      interativo, confirmacao humana do mapeamento de tipos de issue —
+      ja documentado como MUST nunca-inferir em quickstart.md); Cenario 5
+      passo 2 "observar o board" a olho contra um site Jira Cloud real.
+      Nenhuma divergencia entre quickstart.md e o comportamento real do
+      codigo foi encontrada — quickstart.md nao precisou de correcao. -->
+- [x] 9.3.2 Confirmar que o Cenario 6 (roundtrip real) permanece
       documentado como validacao ja executada na FASE 0, sem
-      re-executar contra producao
+      re-executar contra producao <!-- onda-035. Confirmado por leitura: 0.1
+      (Roundtrip real contra Jira Cloud de teste [C]) esta [x] com evidencia
+      onda-011 (Epic SCRUM-5 + Story SCRUM-6 no projeto SCRUM) e a FASE 4.2.3
+      complementou com roundtrip onda-022 contra R6 (SyncMarker via PUT/GET
+      property, resolve dec-079). `contracts/jira-rest.md` secao "Roundtrip
+      real onda-011" + linhas R1/R3/R4/R5/R6/R8 citam respostas reais
+      literais (ids/keys/timestamps observados). `quickstart.md` Cenario 6
+      ja documenta o procedimento sem reivindicar reexecucao. NAO
+      re-executado contra producao nesta onda (dado factual — nenhuma nova
+      chamada de rede real feita). -->
 
 ---
 
