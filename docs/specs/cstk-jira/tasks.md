@@ -298,17 +298,41 @@ Ref: plan.md SEC-1; checklists/security.md CHK001/CHK002.
 
 Ref: plan.md SEC-4; checklists/security.md CHK006/CHK007.
 
-- [ ] 3.3.1 Gerar arquivo de config temporario do cliente HTTP (carrega o
+- [x] 3.3.1 Gerar arquivo de config temporario do cliente HTTP (carrega o
       header de autenticacao) com `umask 077`, em diretorio privado
-- [ ] 3.3.2 `trap` em `EXIT`/`INT`/`TERM` removendo o arquivo temporario —
+- [x] 3.3.2 `trap` em `EXIT`/`INT`/`TERM` removendo o arquivo temporario —
       nunca so o caso feliz de saida normal
-- [ ] 3.3.3 Credencial nunca passada por argv/linha de comando do cliente
+- [x] 3.3.3 Credencial nunca passada por argv/linha de comando do cliente
       HTTP (so por arquivo/stdin de config) nem aparece em log
-- [ ] 3.3.4 Teste: modo do arquivo temporario e exatamente `0600` durante a
+- [x] 3.3.4 Teste: modo do arquivo temporario e exatamente `0600` durante a
       execucao
-- [ ] 3.3.5 Teste (mutation): matar o processo com `SIGTERM`/`SIGINT`
+- [x] 3.3.5 Teste (mutation): matar o processo com `SIGTERM`/`SIGINT`
       simulado a meio de uma chamada e confirmar que o arquivo temporario
       foi removido mesmo assim
+
+      Implementado em `plugins/cstk-jira/scripts/jira-io.sh`: `request`
+      agora confere `jira-config.sh credential-check` (existencia + modo
+      0600 do arquivo global de Credential) e le `email`/`api_token` de
+      `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials` (formato
+      `key=value` ja estabelecido pelos testes de `jira-config.sh`
+      credential-check, tarefa 2.1); grava um arquivo de config temporario
+      do cliente HTTP com a diretiva `user = "email:token"` (o cliente HTTP
+      converte para o header `Authorization` internamente — a credencial
+      NUNCA aparece em argv) num diretorio privado, ambos criados sob
+      `umask 077` (elimina a janela de corrida entre criar-e-restringir,
+      CWE-377); passado via `-K`. Trap "split" (mesmo padrao de
+      `cli/lib/00c-bootstrap.sh` `_00c_release_lock`): EXIT roda a limpeza
+      (`_ji_cred_cleanup`), INT/TERM chamam `exit 130`/`exit 143`
+      explicitos, que entao disparam o EXIT trap em sequencia. Testes em
+      `tests/cstk/test_jira-io.sh` (32 cenarios JI-1..JI-32, PASS; os 26
+      de 3.1/3.2 continuam verdes — JI-5/6/12 ganharam fixture de
+      credencial isolada via `XDG_CONFIG_HOME`). Mutation tests JI-31/JI-32
+      usam um stub de cliente HTTP que se auto-sinaliza (`kill -TERM`/
+      `-INT $PPID`) a meio da chamada, evitando a pegadinha POSIX ja
+      documentada no repo de jobs assincronos herdarem SIGINT como SIG_IGN
+      (backgrounding externo do processo sob teste nao seria confiavel
+      para o caso SIGINT). `sh tests/run.sh jira-io`: 32/32 PASS; `sh
+      tests/run.sh --check-coverage`: zero orfaos.
 
 ### 3.4 Mapeamento de status HTTP e classificacao de falha `[C]`
 

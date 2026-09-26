@@ -10,18 +10,33 @@
 #      docs/specs/cstk-jira/data-model.md Entity ProjectConfig/Credential;
 #      tasks.md FASE 3 tarefa 3.1.
 #
-# ESCOPO ATE AGORA (3.1 `deps-check`+`request` com host unico/SEC-5, e 3.2
-# allowlist de charset em PATH/SEC-1). NAO implementado aqui (fica para as
-# proximas tarefas da FASE 3, cada uma com seus proprios testes):
-#   - 3.3 credencial (SEC-4) — esta versao de `request` NAO envia header
-#     `Authorization` nenhum (o cliente HTTP roda sem config de credencial);
+# ESCOPO ATE AGORA (3.1 `deps-check`+`request` com host unico/SEC-5, 3.2
+# allowlist de charset em PATH/SEC-1, e 3.3 credencial temporaria segura/
+# SEC-4). NAO implementado aqui (fica para as proximas tarefas da FASE 3,
+# cada uma com seus proprios testes):
 #   - 3.4 classificacao fina de status HTTP (auth_failed/deferred/retry) —
 #     esta versao so distingue "requisicao OK, corpo em stdout" (qualquer
 #     status exceto 3xx) de erro mecanico (3xx, DELETE, host/METHOD/PATH
-#     invalidos, dependencia ausente);
+#     invalidos, dependencia ausente, credencial ausente/incompleta);
 #   - 3.5 `json-get`/`json-build` (SEC-3) — subcomandos ainda nao existem
 #     neste dispatcher. A JQL de FASE 7 (SEC-3) MUST reusar `validate-segment`
 #     (abaixo) para cada valor interpolado — nenhum texto livre entra em JQL.
+#
+# SEC-4 (tarefa 3.3): `request` agora envia autenticacao Basic (email + API
+# token — data-model.md Entity Credential, `contracts/jira-rest.md` linha 5)
+# via arquivo de config temporario do cliente HTTP (`-K`, diretiva `user =
+# "email:token"`, que o cliente HTTP converte no header `Authorization`
+# internamente — a credencial em si NUNCA aparece em argv). Arquivo + o
+# diretorio privado que o contem sao criados com `umask 077` (elimina a
+# janela de corrida entre "criar" e "restringir permissao", CWE-377) e
+# removidos por `trap` em EXIT/INT/TERM — mesmo padrao "trap split" de
+# `cli/lib/00c-bootstrap.sh` `_00c_release_lock` (EXIT roda a limpeza; INT/
+# TERM chamam `exit` explicito, que entao dispara o EXIT trap em sequencia;
+# sem o `exit` explicito, POSIX nao garante que o processo de fato termine
+# so por ter um trap instalado no sinal). A credencial em si vem do arquivo
+# global `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials` (mesmo
+# path de `jira-config.sh` `_JC_CRED_FILE`; existencia/permissao 0600
+# conferidas via `jira-config.sh credential-check` ANTES de ler o conteudo).
 #
 # Subcomandos (contrato final documentado em plugin-scripts.md; os tres
 # abaixo existem nesta tarefa):
@@ -56,6 +71,13 @@
 #         => erro imediato, SEM disparar segunda requisicao — nao ha
 #         caminhada manual de `Location` como em `cli/lib/http.sh`, porque
 #         `jira-io.sh` so fala com UM host (`site_host`) por design.
+#         SEC-4: ANTES de disparar a requisicao, confere `jira-config.sh
+#         credential-check` (existencia + modo 0600) e le `email`/
+#         `api_token` do arquivo de Credential; grava um arquivo de config
+#         temporario do cliente HTTP (`umask 077`, diretorio privado,
+#         removido por `trap` em EXIT/INT/TERM) com a diretiva `user =
+#         "email:token"` e o passa via `-K` — a credencial NUNCA aparece em
+#         argv/linha de comando do cliente HTTP nem em log.
 #         Corpo da resposta em stdout; `http_status=<codigo>` na 1a linha
 #         de stderr.
 #
@@ -76,6 +98,8 @@
 #   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, PATH/
 #     segmento fora da allowlist SEC-1, args)
 #   3 ProjectConfig ausente/inacessivel (propagado de jira-config.sh get)
+#   4 credencial ausente/permissao insegura (propagado de jira-config.sh
+#     credential-check) ou incompleta (falta `email`/`api_token` no arquivo)
 #   5 dependencia ausente (`jq` ou cliente HTTP fora do PATH)
 #
 # Convencoes (Principio II / contracts/plugin-scripts.md):
@@ -101,6 +125,8 @@ USO:
       Requisicao HTTPS contra <site_host><PATH>. METHOD em GET/POST/PUT
       (DELETE nunca existe como opcao valida). PATH deve comecar com /rest/
       e nao pode conter .. // \ @ # espaco CR/LF/controle (SEC-1).
+      Autenticacao Basic (email + API token de Credential) enviada via
+      arquivo de config temporario do cliente HTTP (SEC-4) — nunca em argv.
 
   jira-io.sh validate-segment VALUE [VALUE...]
       Valida cada VALUE contra a allowlist [A-Za-z0-9_-] (SEC-1), a usar
@@ -109,7 +135,8 @@ USO:
 
 EXIT CODES:
   0 sucesso   1 erro geral/requisicao   2 uso incorreto
-  3 ProjectConfig ausente   5 dependencia ausente
+  3 ProjectConfig ausente   4 credencial ausente/incompleta
+  5 dependencia ausente
 HELP
 }
 
@@ -125,6 +152,71 @@ _ji_script_dir() {
 # script); jira-io.sh NUNCA duplica a leitura/validacao de ProjectConfig.
 _ji_config_get() {
   "$(_ji_script_dir)/jira-config.sh" get "$1"
+}
+
+# --- Credential (SEC-4, tarefa 3.3) -------------------------------------
+#
+# Path identico a `_JC_CRED_FILE` de jira-config.sh (data-model.md Entity
+# Credential: arquivo GLOBAL unico por maquina, fora do repo). jira-io.sh
+# NAO duplica a checagem de existencia/permissao (delega a `jira-config.sh
+# credential-check`, que ja e a dona dessa validacao) — so LE o conteudo
+# (email/api_token) apos essa checagem passar.
+_JI_CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials"
+
+# _ji_cred_check — delega a jira-config.sh credential-check (existencia +
+# modo 0600 exato do arquivo de Credential). Nunca imprime conteudo.
+_ji_cred_check() {
+  "$(_ji_script_dir)/jira-config.sh" credential-check
+}
+
+# _ji_cred_read KEY — imprime o valor de KEY (`email`|`api_token`) em
+# $_JI_CRED_FILE; exit 1 se a chave nao existir. Mesmo parse de
+# `_jc_read_raw` em jira-config.sh (linha a linha, split no PRIMEIRO '=',
+# '#'/branco ignorados) — deliberadamente NAO extraido para um helper
+# compartilhado (cada script mantem sua propria copia minima, sem
+# acoplamento entre os dois arquivos alem do path do arquivo e do
+# subcomando `credential-check`).
+_ji_cred_read() {
+  _jicr_key="$1"
+  _jicr_found="no"
+  while IFS= read -r _jicr_line || [ -n "$_jicr_line" ]; do
+    case "$_jicr_line" in
+      ''|'#'*)
+        : # linha em branco ou comentario — ignorada
+        ;;
+      *=*)
+        _jicr_k=${_jicr_line%%=*}
+        _jicr_v=${_jicr_line#*=}
+        if [ "$_jicr_k" = "$_jicr_key" ]; then
+          printf '%s\n' "$_jicr_v"
+          _jicr_found="yes"
+        fi
+        ;;
+    esac
+  done < "$_JI_CRED_FILE"
+  [ "$_jicr_found" = "yes" ]
+}
+
+# _ji_curlrc_escape VALUE — escapa `\` e `"` para uso dentro de um valor
+# entre aspas duplas na diretiva `user = "..."` de um arquivo `-K` do
+# cliente HTTP (sintaxe de config: valores entre aspas suportam escape de
+# `\`/`"` — defesa contra api_token/email com esses bytes, ainda que raro).
+_ji_curlrc_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+# _ji_cred_cleanup — acao do trap EXIT de `request`: remove o arquivo de
+# config temporario de credencial + o arquivo de resposta, depois o
+# diretorio privado (so remove se ja estiver vazio — `rmdir` com `|| :`
+# porque, sob `set -eu`, uma falha de `rmdir` sendo o ULTIMO comando de um
+# `&&`/`if` NAO e isenta de errexit). Variaveis podem estar vazias (sinal
+# chegou antes de qualquer recurso existir) — `rm -f`/o guard `[ -n ... ]`
+# cobrem esse caso sem diagnostico de erro.
+_ji_cred_cleanup() {
+  rm -f -- "$_jir_cred_file" "$_jir_tmp_out" 2>/dev/null
+  if [ -n "$_jir_cred_dir" ]; then
+    rmdir -- "$_jir_cred_dir" 2>/dev/null || :
+  fi
 }
 
 _ji_cmd_deps_check() {
@@ -240,17 +332,58 @@ _ji_cmd_request() {
     _ji_die "host divergente detectado antes da requisicao (esperado '$_jir_site_host', obtido '$_jir_url_host') — abortado sem requisicao" 1
   fi
 
+  # SEC-4 (tarefa 3.3): declarar os recursos temporarios ANTES de instalar
+  # o trap unico — cobre EXIT/INT/TERM mesmo que um sinal chegue antes de
+  # qualquer recurso existir. Trap "split" (mesmo padrao de
+  # cli/lib/00c-bootstrap.sh `_00c_release_lock`): EXIT roda a limpeza;
+  # INT/TERM chamam `exit` explicito, que entao dispara o EXIT trap em
+  # sequencia — sem o `exit` explicito, um sinal fatal por convencao (INT/
+  # TERM) NAO teria garantia de terminar so por ter a acao instalada.
+  _jir_cred_dir=""
+  _jir_cred_file=""
+  _jir_tmp_out=""
+  trap '_ji_cred_cleanup' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  _ji_cred_check \
+    || _ji_die "credencial rejeitada (ausente ou permissao insegura) — rode 'jira-config.sh credential-check' para diagnostico" 4
+
+  _jir_email=$(_ji_cred_read email) \
+    || _ji_die "credencial incompleta: campo 'email' ausente em $_JI_CRED_FILE" 4
+  _jir_api_token=$(_ji_cred_read api_token) \
+    || _ji_die "credencial incompleta: campo 'api_token' ausente em $_JI_CRED_FILE" 4
+  [ -n "$_jir_email" ] \
+    || _ji_die "credencial incompleta: campo 'email' vazio em $_JI_CRED_FILE" 4
+  [ -n "$_jir_api_token" ] \
+    || _ji_die "credencial incompleta: campo 'api_token' vazio em $_JI_CRED_FILE" 4
+
+  # `umask 077` ANTES de criar diretorio E arquivo — elimina a janela de
+  # corrida entre "criar" e "restringir permissao" (CWE-377/SEC-4).
+  # `mktemp -d` ja cria com 0700 nos dois lados (GNU/BSD); o umask garante
+  # o mesmo para o ARQUIVO criado logo abaixo por redirecionamento simples.
+  _jir_orig_umask=$(umask)
+  umask 077
+  _jir_cred_dir=$(mktemp -d "${TMPDIR:-/tmp}/jira-io-cred.XXXXXX") \
+    || _ji_die "falha ao criar diretorio temporario de credencial" 1
+  _jir_cred_file="$_jir_cred_dir/curlrc"
+  _jir_email_esc=$(_ji_curlrc_escape "$_jir_email")
+  _jir_token_esc=$(_ji_curlrc_escape "$_jir_api_token")
+  printf 'user = "%s:%s"\n' "$_jir_email_esc" "$_jir_token_esc" > "$_jir_cred_file"
+  umask "$_jir_orig_umask"
+
   _jir_tmp_out=$(mktemp "${TMPDIR:-/tmp}/jira-io.XXXXXX") \
     || _ji_die "falha ao criar arquivo temporario de resposta" 1
-  trap 'rm -f -- "$_jir_tmp_out"' EXIT INT TERM
 
   # Sem `-L` (SEC-5: nunca seguir redirect) e sem `-k`/`--insecure` (TLS
   # sempre verificado — nao ha flag neste script para desativar). Um unico
   # disparo por chamada: nao ha caminhada de `Location` (diferente de
-  # cli/lib/http.sh), porque este script so fala com `site_host`.
+  # cli/lib/http.sh), porque este script so fala com `site_host`. `-K`
+  # carrega a credencial (SEC-4) — NUNCA aparece como argv literal.
   _jir_ec=0
   if [ -n "$_jir_body_file" ]; then
     _jir_status=$(curl -sS --connect-timeout 10 --max-time 60 \
+      -K "$_jir_cred_file" \
       -X "$_jir_method" \
       -H 'Accept: application/json' -H 'Content-Type: application/json' \
       --data-binary "@${_jir_body_file}" \
@@ -258,6 +391,7 @@ _ji_cmd_request() {
       -- "$_jir_url") || _jir_ec=$?
   else
     _jir_status=$(curl -sS --connect-timeout 10 --max-time 60 \
+      -K "$_jir_cred_file" \
       -X "$_jir_method" \
       -H 'Accept: application/json' \
       -o "$_jir_tmp_out" -w '%{http_code}' \
