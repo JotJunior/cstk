@@ -142,6 +142,22 @@
 #   SY-27 resolve --choice overwrite: fecha o registro (resolution=
 #         overwrite) E reenfileira (novo OutboxEvent status=queued) com o
 #         MESMO desired_state do evento `conflict` original
+#
+# drain (FASE 10 tarefa 10.3, FR-004 — reconciliacao local_key=*):
+#   SY-42 drain: evento `reconcile`/local_key=* expandido via
+#         `jira-tasks.sh items` em Epic + Task + Sub-task -> Epic e Sub-task
+#         (status atual diverge do alvo) transicionam via R5/R4/R6-PUT; Task
+#         (ja no status alvo, SyncMarker batendo) fica idempotente (SOMENTE
+#         R3+R6-GET, sem R5/R4) — evento `*` fecha `done`; 2a chamada de
+#         `drain` compacta o evento (some do outbox.tsv)
+#   SY-43 drain: reconciliacao com 2 itens, Epic com conflito (manual_edit,
+#         ConflictRecord gravado) e Task transicionando normalmente -> o
+#         conflito de UM item NUNCA impede o outro (FR-011 por item); evento
+#         `*` fecha `done` (nao `conflict` — o veredito e por item)
+#   SY-44 drain: 401 na 1a chamada de rede (R3 do 1o item, Epic) -> evento
+#         `*` vira `auth_failed` (mesmo gate FR-016 de um evento direto) e a
+#         reconciliacao para IMEDIATAMENTE — o 2o item (Task) nunca e
+#         tocado (exatamente 1 chamada de rede)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -1494,6 +1510,165 @@ scenario_convert_manual_edit_vira_conflict_sem_sobrescrever() {
     || { _fail "sy41_calls_count" "esperado 5 chamadas (nenhuma escrita apos detectar manual_edit), obtido $(_queue_calls_count)"; return 1; }
   grep -q 'demo	1\.1	DEMO-2	manual_edit	pending$' "$(_conflicts_file)" \
     || { _fail "sy41_conflict_record" "ConflictRecord manual_edit ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# =============== drain: reconciliacao local_key=* (FASE 10 tarefa 10.3) ====
+
+# _write_tasks_epic_task_sub_todos_pass: Epic > Task 1.1 > Sub-task 1.1.1,
+# sub-task `[x]` (pass) -> Task 1.1 tambem projeta pass (unico sub-item, 100%
+# pass) -> Epic tambem projeta pass (unica task, 100% pass). Os 3 itens tem
+# o MESMO desired_state (pass) para simplificar a fixture; SY-42 varia o
+# status ATUAL de cada issue no Jira (via stub) para cobrir transicao E
+# idempotencia com um unico tasks.md.
+_write_tasks_epic_task_sub_todos_pass() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+}
+
+# SY-42 drain (FR-004, US3 cenario 1/US2 cenario 1): evento local_key=*
+# expandido em 3 itens (Epic/Task/Sub-task, todos desired_state=pass) —
+# Epic e Sub-task tem status ATUAL divergente do alvo (transicionam via
+# R5/R4/R6-PUT); Task ja esta no status alvo COM SyncMarker batendo
+# (idempotente: SOMENTE R3+R6-GET, nenhuma chamada de escrita/transicao).
+# Evento `*` fecha `done`; uma 2a chamada de `drain` compacta o evento (some
+# do outbox.tsv, 4.2.8).
+scenario_drain_reconcile_expande_itens_transiciona_e_idempotente() {
+  _write_full_config
+  _write_credential
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  _write_map_row "1.1.1" subtask 20003 DEMO-3 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo Qualquer" | "$IO_SCRIPT" sha256-stdin)
+  _sha_sub=$(printf '%s' "Sub Titulo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): "To Do" -> "Done" (transiciona: R3,R6get,R5,R4,R6put).
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"21","to":{"name":"To Do"}},{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  # Task 1.1 (DEMO-2): ja "Done" com marker batendo -> idempotente (R3,R6get).
+  _queue_push 200 '{"fields":{"summary":"Titulo Qualquer","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\"}}"
+  # Sub-task 1.1.1 (DEMO-3): "In Progress" -> "Done" (transiciona).
+  _queue_push 200 '{"fields":{"summary":"Sub Titulo","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_sub\",\"written_status\":\"In Progress\"}}"
+  _queue_push 200 '{"transitions":[{"id":"55","to":{"name":"In Progress"}},{"id":"66","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "12" ] \
+    || { _fail "sy42_calls_count" "esperado 12 chamadas (5 epic + 2 task idempotente + 5 subtask), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy42_event_done" "evento e1 (*) nao foi marcado done: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+
+  _epic_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_epic_trans" = "31" ] || { _fail "sy42_epic_transition" "esperado transition.id=31 para o Epic, obtido $_epic_trans"; return 1; }
+  _epic_marker_lkey=$("$IO_SCRIPT" json-get '.local_key' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_epic_marker_lkey" = "demo" ] || { _fail "sy42_epic_marker_lkey" "esperado local_key=demo no marker do Epic, obtido $_epic_marker_lkey"; return 1; }
+
+  [ -f "$TMPDIR_TEST/queue-curl-body-6.json" ] \
+    && { _fail "sy42_task_no_write" "Task 1.1 (idempotente) NAO deveria gerar nenhum corpo de escrita entre as chamadas 6-7"; return 1; }
+
+  _sub_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-11.json")
+  [ "$_sub_trans" = "66" ] || { _fail "sy42_sub_transition" "esperado transition.id=66 para a Sub-task, obtido $_sub_trans"; return 1; }
+  _sub_marker_lkey=$("$IO_SCRIPT" json-get '.local_key' < "$TMPDIR_TEST/queue-curl-body-12.json")
+  [ "$_sub_marker_lkey" = "1.1.1" ] || { _fail "sy42_sub_marker_lkey" "esperado local_key=1.1.1 no marker da Sub-task, obtido $_sub_marker_lkey"; return 1; }
+
+  # 2a chamada de drain: sem eventos queued novos, so compactacao (4.2.8) —
+  # o evento `*` (agora done) deve sumir do outbox.tsv.
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q . \
+    && { _fail "sy42_compacted" "evento e1 deveria ter sido compactado (removido) na 2a chamada de drain"; return 1; }
+  return 0
+}
+
+# SY-43 drain (FR-011/FR-004): reconciliacao com 2 itens — Epic com
+# conflito (manual_edit, ConflictRecord gravado) e Task transicionando
+# normalmente. O conflito de UM item NUNCA impede o processamento dos
+# demais; o evento `*` fecha `done` (o veredito de conflito e por-item via
+# ConflictRecord, nao propagado ao status do evento de reconciliacao).
+scenario_drain_reconcile_conflito_em_um_item_nao_bloqueia_os_demais() {
+  _write_full_config
+  _write_credential
+  _write_tasks_1task_1sub
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  # tasks.md so tem 1.1 sem sub-task marcada -> Task 1.1 = pending (0 subs),
+  # Epic = pending (nenhuma task pass/ativa) -> ambos desired_state=pending.
+  _sha_epic_original=$(printf '%s' "Titulo Original" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Task Titulo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): titulo atual diverge do sha256 gravado -> manual_edit.
+  _queue_push 200 '{"fields":{"summary":"Titulo Mudou Manualmente","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic_original\",\"written_status\":\"To Do\"}}"
+  # Task 1.1 (DEMO-2): sem conflito, transiciona normalmente para "To Do".
+  _queue_push 200 '{"fields":{"summary":"Task Titulo","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"In Progress\"}}"
+  _queue_push 200 '{"transitions":[{"id":"71","to":{"name":"To Do"}},{"id":"81","to":{"name":"In Progress"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "7" ] \
+    || { _fail "sy43_calls_count" "esperado 7 chamadas (2 epic conflito + 5 task transicao), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy43_event_done" "evento e1 (*) deveria fechar done mesmo com conflito num item: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  grep -q 'demo	demo	DEMO-1	manual_edit	pending$' "$(_conflicts_file)" \
+    || { _fail "sy43_conflict_record" "ConflictRecord do Epic ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  _task_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_task_trans" = "71" ] || { _fail "sy43_task_transition" "esperado transition.id=71 (To Do) para a Task, obtido $_task_trans"; return 1; }
+  return 0
+}
+
+# SY-44 drain (FR-016): 401 na 1a chamada de rede (R3 do 1o item, Epic) ->
+# evento `*` vira `auth_failed` (mesmo gate de um evento direto) e a
+# reconciliacao para IMEDIATAMENTE — a Task (2o item) nunca e tocada.
+scenario_drain_reconcile_401_no_primeiro_item_aborta_e_vira_auth_failed() {
+  _write_full_config
+  _write_credential
+  _write_tasks_1task_1sub
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 401 '{"errorMessages":["not authenticated"]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "sy44_calls_count" "esperado exatamente 1 chamada (sem tocar a Task), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'auth_failed$' \
+    || { _fail "sy44_auth_failed" "evento e1 (*) nao virou auth_failed: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
   return 0
 }
 

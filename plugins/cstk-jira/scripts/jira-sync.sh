@@ -52,6 +52,21 @@
 # por-issue. 4.4.1 (`mark-orphans` como parte do drain) tambem esta
 # integrado aqui — ver `_js_cmd_drain`.
 #
+# Reconciliacao da feature inteira (`local_key=*`, FR-004, feature cstk-jira
+# FASE 10 tarefa 10.3): o hook `posttooluse-jira-sync.sh` (modo `wave`)
+# enfileira um evento `local_key=* desired_state=reconcile` a cada
+# `close_wave`. `_js_process_reconcile_event` expande esse evento em UM item
+# por `jira-tasks.sh items --feature F` (Epic + Tasks + Sub-tasks,
+# `local_state` ja derivado dos checkboxes/agregacao) e processa cada item
+# ja mapeado (`active`) pelo MESMO fluxo R3/R6-GET/conflito/R5/R4/R6-PUT de
+# um evento direto — item ainda nao convertido (sem `jira-map.tsv`) e
+# ignorado. Conflito em um item NUNCA impede os demais (`ConflictRecord` por
+# item, FR-011); `auth_failed` em qualquer chamada interrompe a
+# reconciliacao inteira (mesmo gate FR-016 de um evento direto). Sem
+# `auth_failed`/`deferred` em nenhum item, o evento `*` vira `done`
+# (compactado no PROXIMO `drain` — a proxima reconciliacao nasce de um NOVO
+# evento `*`, sempre com o estado local mais recente).
+#
 # Subcomandos:
 #
 #   jira-sync.sh plan --feature F
@@ -865,6 +880,209 @@ _js_cmd_enqueue() {
 # `_JSPE_BREAK`) `yes` quando o chamador MUST parar de processar novos
 # eventos nesta chamada de drain (auth_failed — credencial invalida para
 # TODAS as chamadas subsequentes, nao so para este evento).
+# _js_process_reconcile_event EID ATTEMPTS — FASE 10 tarefa 10.3 (FR-004,
+# US3 cenario 1): expande um OutboxEvent `local_key=*` (reconciliacao da
+# feature inteira, enfileirado pelo hook a cada `close_wave`) num item por
+# LocalWorkItem (`jira-tasks.sh items --feature F`, `local_state` ja
+# derivado — Epic + Tasks + Sub-tasks) e processa CADA item ja mapeado
+# (`active` em `jira-map.tsv`) pelo mesmo nucleo R3/R6-GET/conflito/R5/R4/
+# R6-PUT usado por um evento direto (duplicado aqui de proposito, prefixo
+# `_jspr_`, em vez de refatorar `_js_process_one_event` — reduz o raio de
+# regressao sobre os cenarios ja cobertos de evento direto). Item sem
+# mapeamento (ainda nao convertido) e item mapeado `orphan` sao tratados
+# como em `_js_process_one_event` (orphan vira ConflictRecord). Idempotente:
+# item ja no status alvo nao gera R4. Conflito em um item NUNCA impede o
+# processamento dos demais (ConflictRecord por item, FR-011) — so
+# `auth_failed` interrompe TODA a reconciliacao (mesmo gate FR-016,
+# `_JSPE_BREAK`). Loop sobre um ARQUIVO (nao um pipe) para os itens — mesmo
+# motivo documentado em `_js_cmd_drain`: um `while read` num pipe roda em
+# subshell POSIX, o que perderia `_JSPE_BREAK`/`_jspr_had_deferred` ao
+# sair do loop.
+_js_process_reconcile_event() {
+  _jspr_eid="$1"
+  _jspr_attempts="$2"
+
+  if ! _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" 2>/dev/null); then
+    printf '%s: jira-tasks.sh items falhou para %s — evento %s permanece na fila\n' \
+      "$_JS_NAME" "$_jsd_feature" "$_jspr_eid" >&2
+    return 0
+  fi
+
+  _jspr_items_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-reconcile-items.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s\n' "$_jspr_items" > "$_jspr_items_file"
+
+  _jspr_had_deferred="no"
+
+  while IFS= read -r _jspr_line; do
+    [ -n "$_jspr_line" ] || continue
+    _jspr_lkey=$(printf '%s' "$_jspr_line" | cut -f1)
+    _jspr_lstate=$(printf '%s' "$_jspr_line" | cut -f5)
+
+    # Item sem mapeamento (ainda nao convertido): nada a reconciliar no
+    # Jira, ignorado silenciosamente (so itens `active` tem issue criada).
+    if ! _jspr_mline=$("$_jsd_map" get --feature "$_jsd_feature" --local-key "$_jspr_lkey" 2>/dev/null); then
+      continue
+    fi
+    _jspr_jkey=$(printf '%s' "$_jspr_mline" | cut -f4)
+    _jspr_mstate=$(printf '%s' "$_jspr_mline" | cut -f5)
+
+    # 4.4 (FR-012): orfao nunca e sobrescrito — vira ConflictRecord, mas
+    # NUNCA interrompe os demais itens (FR-011 e por item, nao global).
+    if [ "$_jspr_mstate" = "orphan" ]; then
+      _js_conflict_pending_exists "$_jsd_feature" "$_jspr_lkey" \
+        || _js_append_conflict "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" orphan
+      continue
+    fi
+
+    case "$_jspr_lstate" in
+      pending)     _jspr_target="$_jsd_status_pending" ;;
+      in_progress) _jspr_target="$_jsd_status_in_progress" ;;
+      pass)        _jspr_target="$_jsd_status_pass" ;;
+      fail)        _jspr_target="$_jsd_status_fail" ;;
+      *)
+        continue
+        ;;
+    esac
+
+    # R3 — titulo + status atuais (mesma disciplina de captura de $? sem
+    # negacao de _js_process_one_event/8.3.1-8.3.2: "if CMD; then ok; else
+    # _ec=$?; ..." preserva o exit code genuino de jira-io.sh).
+    if _jspr_issue_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspr_jkey?fields=summary,status" --op R3 2>/dev/null); then
+      :
+    else
+      _jspr_ec=$?
+      if [ "$_jspr_ec" -eq 4 ]; then
+        _JSPE_BREAK="yes"
+        break
+      fi
+      _jspr_had_deferred="yes"
+      continue
+    fi
+    _jspr_cur_summary=$(printf '%s' "$_jspr_issue_resp" | "$_jsd_io" json-get '.fields.summary')
+    _jspr_cur_status=$(printf '%s' "$_jspr_issue_resp" | "$_jsd_io" json-get '.fields.status.name')
+    _jspr_cur_sha=$(printf '%s' "$_jspr_cur_summary" | "$_jsd_io" sha256-stdin)
+
+    # R6 GET — SyncMarker (mesmo padrao de http_status via stderr: 404 puro
+    # e sucesso do ponto de vista de jira-io.sh, so o http_status distingue).
+    _jspr_err_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6err.XXXXXX") \
+      || _js_die "falha ao criar arquivo temporario" 1
+    if _jspr_prop_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspr_jkey/properties/$_JS_MARKER_PROPERTY_KEY" --op R6 2>"$_jspr_err_file"); then
+      _jspr_prop_ec=0
+    else
+      _jspr_prop_ec=$?
+    fi
+    _jspr_prop_status=$(grep '^http_status=' "$_jspr_err_file" | tail -n 1 | cut -d= -f2)
+    rm -f "$_jspr_err_file"
+
+    if [ "$_jspr_prop_ec" -ne 0 ]; then
+      if [ "$_jspr_prop_ec" -eq 4 ]; then
+        _JSPE_BREAK="yes"
+        break
+      fi
+      _jspr_had_deferred="yes"
+      continue
+    fi
+
+    _jspr_conflict="no"
+    _jspr_conflict_reason=""
+    if [ "$_jspr_prop_status" = "404" ]; then
+      _jspr_conflict="yes"
+      _jspr_conflict_reason="marker_missing"
+    else
+      _jspr_written_sha=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_summary_sha256')
+      _jspr_written_status=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_status')
+      if [ "$_jspr_cur_sha" != "$_jspr_written_sha" ] || [ "$_jspr_cur_status" != "$_jspr_written_status" ]; then
+        _jspr_conflict="yes"
+        _jspr_conflict_reason="manual_edit"
+      fi
+    fi
+
+    if [ "$_jspr_conflict" = "yes" ]; then
+      _js_conflict_pending_exists "$_jsd_feature" "$_jspr_lkey" \
+        || _js_append_conflict "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" "$_jspr_conflict_reason"
+      continue
+    fi
+
+    # Idempotencia (FR-004/10.3): ja no status alvo -> no-op, sem R5/R4.
+    if [ "$_jspr_cur_status" = "$_jspr_target" ]; then
+      continue
+    fi
+
+    # R5 — resolver transition.id cujo to.name bate o status alvo.
+    if _jspr_trans_resp=$("$_jsd_io" request GET "/rest/api/3/issue/$_jspr_jkey/transitions" --op R5 2>/dev/null); then
+      :
+    else
+      _jspr_ec=$?
+      if [ "$_jspr_ec" -eq 4 ]; then
+        _JSPE_BREAK="yes"
+        break
+      fi
+      _jspr_had_deferred="yes"
+      continue
+    fi
+    _jspr_trans_tsv=$(printf '%s' "$_jspr_trans_resp" | "$_jsd_io" json-get '.transitions[] | [.id, .to.name] | @tsv')
+    _jspr_trans_id=$(printf '%s\n' "$_jspr_trans_tsv" | awk -F '\t' -v want="$_jspr_target" '$2 == want { print $1; exit }')
+    if [ -z "$_jspr_trans_id" ]; then
+      printf '%s: nenhuma transicao disponivel para o status alvo "%s" na issue %s (item %s) — reconciliacao segue para os demais itens\n' \
+        "$_JS_NAME" "$_jspr_target" "$_jspr_jkey" "$_jspr_lkey" >&2
+      continue
+    fi
+
+    # R4 — executar a transicao.
+    _jspr_trans_body=$("$_jsd_io" json-build transition --transition-id "$_jspr_trans_id")
+    _jspr_trans_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r4body.XXXXXX") \
+      || _js_die "falha ao criar arquivo temporario" 1
+    printf '%s' "$_jspr_trans_body" > "$_jspr_trans_body_file"
+    if "$_jsd_io" request POST "/rest/api/3/issue/$_jspr_jkey/transitions" \
+        --body-file "$_jspr_trans_body_file" --op R4 >/dev/null 2>/dev/null; then
+      rm -f "$_jspr_trans_body_file"
+    else
+      _jspr_ec=$?
+      rm -f "$_jspr_trans_body_file"
+      if [ "$_jspr_ec" -eq 4 ]; then
+        _JSPE_BREAK="yes"
+        break
+      fi
+      _jspr_had_deferred="yes"
+      continue
+    fi
+
+    # R6 PUT — regravar o SyncMarker com o novo written_status/sha256.
+    _jspr_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    _jspr_marker_body=$("$_jsd_io" json-build marker --local-key "$_jspr_lkey" --feature "$_jsd_feature" \
+      --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_target" --written-at "$_jspr_now")
+    _jspr_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
+      || _js_die "falha ao criar arquivo temporario" 1
+    printf '%s' "$_jspr_marker_body" > "$_jspr_marker_body_file"
+    if "$_jsd_io" request PUT "/rest/api/3/issue/$_jspr_jkey/properties/$_JS_MARKER_PROPERTY_KEY" \
+        --body-file "$_jspr_marker_body_file" --op R6 >/dev/null 2>/dev/null; then
+      rm -f "$_jspr_marker_body_file"
+    else
+      _jspr_ec=$?
+      rm -f "$_jspr_marker_body_file"
+      if [ "$_jspr_ec" -eq 4 ]; then
+        _JSPE_BREAK="yes"
+        break
+      fi
+      _jspr_had_deferred="yes"
+    fi
+  done < "$_jspr_items_file"
+  rm -f "$_jspr_items_file"
+
+  if [ "$_JSPE_BREAK" = "yes" ]; then
+    _js_set_event_status "$_jspr_eid" auth_failed "$((_jspr_attempts + 1))"
+    return 0
+  fi
+
+  if [ "$_jspr_had_deferred" = "yes" ]; then
+    _js_set_event_status "$_jspr_eid" deferred "$((_jspr_attempts + 1))"
+  else
+    _js_set_event_status "$_jspr_eid" "done" "$((_jspr_attempts + 1))"
+  fi
+  return 0
+}
+
 _js_process_one_event() {
   _jspe_row="$1"
   _JSPE_BREAK="no"
@@ -875,8 +1093,7 @@ _js_process_one_event() {
   _jspe_attempts=$(printf '%s' "$_jspe_row" | cut -f7)
 
   if [ "$_jspe_lkey" = "*" ]; then
-    printf '%s: reconciliacao de feature inteira (local_key=*) ainda nao implementada (FASE 4.2, fora desta tarefa) — evento %s permanece na fila\n' \
-      "$_JS_NAME" "$_jspe_eid" >&2
+    _js_process_reconcile_event "$_jspe_eid" "$_jspe_attempts"
     return 0
   fi
 
@@ -1087,6 +1304,7 @@ _js_cmd_drain() {
   _jsd_config="$_jsd_dir/jira-config.sh"
   _jsd_map="$_jsd_dir/jira-map.sh"
   _jsd_io="$_jsd_dir/jira-io.sh"
+  _jsd_tasks="$_jsd_dir/jira-tasks.sh"
   _jsd_map_file="./docs/specs/$_jsd_feature/jira-map.tsv"
 
   _jsd_lock_parent=$(dirname -- "$_JS_DRAIN_LOCK_DIR")
