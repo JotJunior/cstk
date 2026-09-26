@@ -49,7 +49,7 @@ Mapeamento de status HTTP (politica de design):
 
 | Subcomando | Saida (TSV) |
 |------------|-------------|
-| `items --feature F` | `local_key  kind  phase  criticality  local_state  title` para Epic + tasks + subtasks do `tasks.md` (regras de `data-model.md` §LocalWorkItem) |
+| `items --feature F [--outcomes-file FILE] [--stage STAGE]` | `local_key  kind  phase  criticality  local_state  title` para Epic + tasks + subtasks de `docs/specs/F/tasks.md` (+ titulo do Epic de `docs/specs/F/spec.md`), regras de `data-model.md` §LocalWorkItem. `--outcomes-file FILE`: TSV `task_id<TAB>outcome` (`pass`/`fail`) — fonte do outcome de `record_task`/`record-task` que tem precedencia sobre os checkboxes na derivacao da task (quem grava esse arquivo fica a cargo de `jira-sync.sh`/hooks, fora desta tarefa). `--stage STAGE`: consulta `jira-config.sh get "stage_status.STAGE"` para o `local_state` do Epic; config/chave ausente = cai na agregacao por tasks |
 
 ## `jira-map.sh` (POSIX)
 

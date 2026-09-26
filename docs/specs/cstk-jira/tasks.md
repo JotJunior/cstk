@@ -166,24 +166,38 @@ Ref: data-model.md Entity ProjectConfig; contracts/plugin-scripts.md
 
 Ref: data-model.md Entity LocalWorkItem (derivacao de `local_state`).
 
-- [ ] 2.2.1 Subcomando `items --feature F`: parse de
+- [x] 2.2.1 Subcomando `items --feature F`: parse de
       `docs/specs/<feature>/tasks.md` no formato do template canonico
       (`plugins/cstk/skills/create-tasks/templates/tasks.md`) emitindo TSV
-      `local_key kind phase criticality local_state title`
-- [ ] 2.2.2 Derivacao de `local_state` para `subtask` (`[ ]`->`pending`,
+      `local_key kind phase criticality local_state title` — implementado
+      em `plugins/cstk-jira/scripts/jira-tasks.sh` (awk single-pass,
+      `--outcomes-file`/`--stage` adicionados e documentados em
+      `contracts/plugin-scripts.md` para servir 2.2.3/2.2.4)
+- [x] 2.2.2 Derivacao de `local_state` para `subtask` (`[ ]`->`pending`,
       `[~]`->`in_progress`, `[x]`->`pass`, `[!]`->`fail`)
-- [ ] 2.2.3 Derivacao de `local_state` para `task` (outcome de
+- [x] 2.2.3 Derivacao de `local_state` para `task` (outcome de
       `record_task`/`record-task` tem precedencia sobre os checkboxes;
       sem outcome: alguma subtask `[!]`->`fail`; todas `[x]`->`pass`;
-      mistura/`[~]`->`in_progress`; senao `pending`)
-- [ ] 2.2.4 Derivacao de `local_state` para `epic` (`stage_status.<stage>`
+      mistura/`[~]`->`in_progress`; senao `pending`) — outcome lido via
+      `--outcomes-file` (TSV `task_id<TAB>outcome`; quem grava o arquivo e
+      FASE 4/5, fora do escopo desta tarefa)
+- [x] 2.2.4 Derivacao de `local_state` para `epic` (`stage_status.<stage>`
       quando configurado; senao agregacao das tasks — data-model.md regra)
-- [ ] 2.2.5 Titulo do Epic prefixado por fase (`[FASE N] N.M <titulo>`);
+      — `--stage STAGE` delega a `jira-config.sh get "stage_status.STAGE"`
+- [x] 2.2.5 Titulo do Epic prefixado por fase (`[FASE N] N.M <titulo>`);
       dependencias/criticidade entram na descricao da Task (nao viram
-      hierarquia Jira extra — data-model.md)
-- [ ] 2.2.6 Teste unit: fixtures de `tasks.md` cobrindo cada combinacao de
+      hierarquia Jira extra — data-model.md) — reconciliado: o padrao
+      `[FASE N] N.M <titulo>` so se aplica a uma TASK (tem N.M; Epic nao
+      tem), conforme o restante do proprio enunciado ("descricao da
+      Task") e a definicao de `title` em data-model.md (texto puro, sem
+      prefixo); `jira-tasks.sh` ja expoe phase+local_key+title como
+      colunas separadas — a composicao da string final do
+      `fields.summary` fica para quem monta o corpo REST (FASE
+      3.5.2/4.1.3), nao para esta projecao local
+- [x] 2.2.6 Teste unit: fixtures de `tasks.md` cobrindo cada combinacao de
       `local_state` (Epic/Task/Subtask) das subtarefas 2.2.2-2.2.4,
-      incluindo o caso "task sem nenhuma subtask ainda" (`pending`)
+      incluindo o caso "task sem nenhuma subtask ainda" (`pending`) —
+      `tests/cstk/test_jira-tasks.sh` (16 cenarios, PASS)
 
 ### 2.3 `jira-map.sh` `[A]`
 
