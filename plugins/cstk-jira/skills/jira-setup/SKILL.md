@@ -120,6 +120,16 @@ Exit 1 => apresentar o diagnostico de stderr TAL COMO VEIO ao operador —
 ele ja lista os status disponiveis descobertos no mesmo fluxo (ux CHK004,
 `[Gap]` fechado por esta tarefa). Pedir novo mapeamento e repetir.
 
+**Este e o UNICO ponto que define coluna<->estagio no board (tasks.md 7.2,
+ux CHK008)**: o board (ETAPA 6) nao tem configuracao propria de
+coluna-por-estagio no cstk-jira — a correspondencia coluna do board <->
+estagio SDD local (`pending`/`in_progress`/`pass`/`fail`) e inteiramente
+derivada do mapeamento `status_*` respondido aqui. O Jira ja posiciona o
+card na coluna certa a partir do `status` da issue (configuracao NATIVA do
+board kanban, feita pelo operador na UI do Jira); o plugin nunca infere
+nem nomeia coluna — so transiciona o STATUS via R4/R5
+(`plugins/cstk-jira/scripts/jira-sync.sh` `_js_process_one_event`).
+
 ## ETAPA 5: Confirmacao de tipos de issue (Epic/Task/Sub-task)
 
 Listar os tipos retornados por R8 (`id`, `name`, `hierarchyLevel`,

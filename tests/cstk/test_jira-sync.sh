@@ -85,6 +85,15 @@
 #   SY-21 drain (4.4.1): `jira-map.sh mark-orphans` roda como parte do
 #         drain (pura leitura local, sem rede) — local_key ausente de
 #         tasks.md vira `orphan`; NENHUMA linha e removida (4.4.2)
+#   SY-28 drain (7.2.3, mapeamento coluna<->status, ux CHK008): desired_state
+#         `in_progress` -> R5/R4 resolvem e executam SOMENTE a transicao cujo
+#         `to.name` bate `status_in_progress` do ProjectConfig, mesmo com
+#         outra transicao disponivel para um status diferente na resposta
+#   SY-29 drain (7.2.3, idem SY-28 para `fail`): desired_state `fail` ->
+#         R5/R4 resolvem e executam SOMENTE a transicao cujo `to.name` bate
+#         `status_fail` — nenhuma coluna/nome de coluna e lido ou inferido
+#         pelo cstk-jira; a issue so muda de STATUS (a coluna e resultado da
+#         configuracao NATIVA do board no Jira, fora do escopo do plugin)
 #
 # status/resolve (FASE 4.3, resolucao SEMPRE humana, nenhum cenario toca
 # rede — status/resolve nunca invocam jira-io.sh):
@@ -604,6 +613,78 @@ EOF
   [ "$_marker_status" = "Done" ] || { _fail "drain_ok_marker_status" "esperado written_status=Done, obtido $_marker_status"; return 1; }
   _marker_lkey=$("$IO_SCRIPT" json-get '.local_key' < "$TMPDIR_TEST/queue-curl-body-5.json")
   [ "$_marker_lkey" = "1.1" ] || { _fail "drain_ok_marker_local_key" "esperado local_key=1.1, obtido $_marker_lkey"; return 1; }
+  return 0
+}
+
+# SY-28 drain (tasks.md 7.2.1/7.2.3, ux CHK008): desired_state=in_progress
+# com status atual "To Do" (status_pending) e DUAS transicoes disponiveis na
+# resposta de R5 (uma para "Failed", outra para "In Progress") -> R4 MUST
+# escolher exatamente a transicao cujo `to.name` bate `status_in_progress`
+# do ProjectConfig ("In Progress"), nunca a primeira da lista nem a de
+# `status_fail`. Prova que a "coluna" (derivada pelo Jira a partir do
+# STATUS) segue o mapeamento configurado, sem nenhuma inferencia de nome de
+# coluna pelo cstk-jira (nenhum literal "coluna" aparece no motor).
+scenario_drain_transicao_in_progress_usa_status_mapeado() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.2" task 20004 DEMO-4 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.2	in_progress	manual	0	queued
+EOF
+  _sha=$(printf '%s' "Titulo Atual" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo Atual","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"41","to":{"name":"Failed"}},{"id":"5","to":{"name":"In Progress"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "drain_in_progress_marks_done" "evento e1 nao foi marcado done: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  _trans_id=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_trans_id" = "5" ] || { _fail "drain_in_progress_transition_id" "esperado transition.id=5 (In Progress), obtido $_trans_id"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_marker_status" = "In Progress" ] || { _fail "drain_in_progress_marker_status" "esperado written_status='In Progress', obtido $_marker_status"; return 1; }
+  return 0
+}
+
+# SY-29 drain (tasks.md 7.2.1/7.2.3, ux CHK008): desired_state=fail, status
+# atual "In Progress", com transicoes disponiveis para "Done" e "Failed" ->
+# R4 MUST escolher a transicao cujo `to.name` bate `status_fail` ("Failed"),
+# nunca `status_pass` ("Done"). Mesmo par (pass/fail) que SY-18 ja cobre em
+# ordem inversa — aqui fecha a combinacao restante (fail com pass presente
+# na mesma resposta de R5).
+scenario_drain_transicao_fail_usa_status_mapeado() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.3" task 20005 DEMO-5 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.3	fail	manual	0	queued
+EOF
+  _sha=$(printf '%s' "Titulo Atual" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo Atual","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha\",\"written_status\":\"In Progress\"}}"
+  _queue_push 200 '{"transitions":[{"id":"11","to":{"name":"Done"}},{"id":"61","to":{"name":"Failed"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "drain_fail_marks_done" "evento e1 nao foi marcado done: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  _trans_id=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_trans_id" = "61" ] || { _fail "drain_fail_transition_id" "esperado transition.id=61 (Failed), obtido $_trans_id"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_marker_status" = "Failed" ] || { _fail "drain_fail_marker_status" "esperado written_status=Failed, obtido $_marker_status"; return 1; }
   return 0
 }
 

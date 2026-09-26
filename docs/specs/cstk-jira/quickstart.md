@@ -81,6 +81,13 @@ qualquer criacao; `jira-map.tsv` nao e criado.
 `pass` vai para `status_pass` e `fail` para `status_fail` ate o fim da mesma
 onda (drain obrigatorio no fechamento); o orquestrador nunca espera pelo Jira.
 
+**Correspondencia coluna<->estagio (US2, ux CHK008)**: a coluna do board em
+que o card aparece e sempre a que o Jira ja associa ao `status_*`
+configurado no Cenario 3 passo 3 — o cstk-jira nunca infere nem nomeia
+coluna (`plugins/cstk-jira/skills/jira-setup/references/board-setup.md`
+§4.bis); mover o card de coluna e so consequencia da transicao de status
+feita por `jira-sync drain`.
+
 **Error case 5a** (FR-011): mover um card manualmente no Jira e depois
 registrar outcome da task => card NAO e sobrescrito; `jira-sync status` lista o
 conflito.

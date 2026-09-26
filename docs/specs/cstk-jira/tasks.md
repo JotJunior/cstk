@@ -795,13 +795,32 @@ Ref: contracts/jira-rest.md R9/R10/R11; contracts/rovo-mcp.md
 Ref: checklists/ux.md CHK008; data-model.md ProjectConfig
 `status_pending`/`status_in_progress`/`status_pass`/`status_fail`.
 
-- [ ] 7.2.1 Coluna do board corresponde ao `status_*` configurado no setup
-      (FASE 6.1.4) — nenhuma inferencia adicional de nome de coluna
-- [ ] 7.2.2 Documentar no `quickstart.md`/`SKILL.md` do board que a
+- [x] 7.2.1 Coluna do board corresponde ao `status_*` configurado no setup
+      (FASE 6.1.4) — nenhuma inferencia adicional de nome de coluna <!--
+      ja era o desenho de `_js_process_one_event` (jira-sync.sh, R4/R5)
+      desde a onda-022: a transicao alvo vem SOMENTE de
+      `status_pending`/`status_in_progress`/`status_pass`/`status_fail` de
+      ProjectConfig, nunca de um nome/id de coluna. Documentado
+      explicitamente em `skills/jira-setup/references/board-setup.md` §4.bis
+      (nova) — o Jira posiciona o card via configuracao NATIVA do board
+      (Column Management), fora do escopo do plugin -->
+- [x] 7.2.2 Documentar no `quickstart.md`/`SKILL.md` do board que a
       correspondencia coluna<->estagio SDD e definida pelo mapeamento do
-      operador, evitando ambiguidade (CHK008)
-- [ ] 7.2.3 Teste: transicao de status local (FASE 4.2.5) move o card para
-      a coluna correta correspondente ao `status_*` mapeado
+      operador, evitando ambiguidade (CHK008) <!-- nota adicionada em
+      `skills/jira-setup/SKILL.md` ETAPA 4 (ponto de coleta do mapeamento) +
+      `quickstart.md` Cenario 5 (onde o operador observa o board) -->
+- [x] 7.2.3 Teste: transicao de status local (FASE 4.2.5) move o card para
+      a coluna correta correspondente ao `status_*` mapeado <!--
+      test_jira-sync.sh SY-28 (in_progress) + SY-29 (fail) — cada um com 2
+      transicoes candidatas na resposta de R5, provando que R4 executa
+      SOMENTE a que bate o status_* configurado (SY-18 ja cobria pass); 45
+      scenarios (31 em test_jira-sync.sh) verdes -->
+
+      Fonte da decisao de design (nenhuma nova): `plan.md` fluxo 4 "Board —
+      colunas = status do workflow; o plugin move cards so por transicao de
+      status" (ja escrito na FASE 0). 7.2 nao exigiu mudanca de codigo — so
+      fechou a documentacao/teste explicitos que a checklist `ux.md` CHK008
+      ja dava como satisfeitos.
 
 ---
 

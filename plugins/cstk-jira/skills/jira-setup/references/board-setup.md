@@ -74,6 +74,27 @@ campo `board_id` de `ProjectConfig` — gravado SO na gravacao atomica final
 `board_id` isoladamente antes disso (mesma regra do Gotcha "Nunca gravar
 ProjectConfig incrementalmente").
 
+## 4.bis Coluna do board <-> status do workflow (tasks.md 7.2.1, ux CHK008)
+
+O cstk-jira **nunca** configura nem infere qual coluna do board corresponde
+a qual estagio SDD — essa correspondencia e 100% delegada ao Jira: um board
+kanban ja posiciona cada card na coluna cujo(s) status(es) de origem
+incluem o `status` atual da issue (configuracao NATIVA de "Column
+Management" do board, feita pelo operador na UI do Jira, fora do escopo
+deste plugin). O plugin so garante que o STATUS da issue reflita o estagio
+local (`pending`/`in_progress`/`pass`/`fail`) via a transicao R4/R5 —
+plan.md fluxo 4: "colunas = status do workflow; o plugin move cards so por
+transicao de status".
+
+A UNICA fonte de correspondencia coluna<->estagio e o mapeamento
+`status_pending`/`status_in_progress`/`status_pass`/`status_fail` de
+`ProjectConfig`, coletado na ETAPA 4 do `SKILL.md` (nao aqui na ETAPA 6):
+se o operador quer que a coluna "Em andamento" do board reflita o estagio
+`in_progress`, ele MUST mapear `status_in_progress` para o status Jira que
+essa coluna do board realmente contem — nenhum nome de coluna e lido,
+comparado ou gravado pelo cstk-jira em momento algum (data-model.md
+Entity ProjectConfig so tem `status_*`, nunca `column_*`).
+
 ## 5. Caminho MCP equivalente (Rovo)
 
 Se as tools `mcp__*__listJiraBoards`/`mcp__*__listJiraFilters`/
