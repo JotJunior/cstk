@@ -1,17 +1,22 @@
 #!/bin/sh
 # test_jira-io.sh — cobre plugins/cstk-jira/scripts/jira-io.sh, tarefas
-# 3.1-3.3 (cstk-jira, FASE 3 "Cliente REST Seguro").
+# 3.1-3.4 (cstk-jira, FASE 3 "Cliente REST Seguro").
 #
-# Ref: docs/specs/cstk-jira/plan.md SEC-1, SEC-4, SEC-5; docs/specs/
-#      cstk-jira/contracts/plugin-scripts.md `jira-io.sh`; tasks.md
-#      3.1.1-3.1.7, 3.2.1-3.2.5, 3.3.1-3.3.5.
+# Ref: docs/specs/cstk-jira/plan.md SEC-1, SEC-4, SEC-5, Test Strategy
+#      "Falha"; docs/specs/cstk-jira/contracts/plugin-scripts.md `jira-io.sh`;
+#      contracts/jira-rest.md (R1/R2/R4); checklists/api.md CHK009; tasks.md
+#      3.1.1-3.1.7, 3.2.1-3.2.5, 3.3.1-3.3.5, 3.4.1-3.4.7; dec-073.
 #
 # Escopo desta suite (mesmo escopo do script ate esta tarefa): `deps-check`
 # + `request` (host unico, allowlist de METHOD, recusa de redirect, allowlist
-# de charset em PATH/SEC-1, e desde a tarefa 3.3 tambem credencial temporaria
-# segura/SEC-4) + o subcomando `validate-segment`. NAO cobre classificacao
-# fina de status HTTP (3.4) nem json-get/json-build (3.5) — cada uma ganha
-# sua propria suite quando a tarefa correspondente rodar.
+# de charset em PATH/SEC-1, credencial temporaria segura/SEC-4, e desde a
+# tarefa 3.4 tambem classificacao fina de status HTTP: `401`/`403`(`--op`
+# R1/R2 vs demais)/`429`(`Retry-After`)/`5xx`-e-rede-com-backoff/`400`-`409`-
+# em-R4) + o subcomando `validate-segment`. NAO cobre `json-get`/`json-build`
+# (3.5) — ganha sua propria suite quando a tarefa correspondente rodar.
+#
+# JI-33..JI-47 (tarefa 3.4): ver bloco de comentarios proprio logo antes dos
+# cenarios correspondentes, mais abaixo neste arquivo.
 #
 # A partir da tarefa 3.3, TODO cenario que alcanca o disparo real de `curl`
 # (JI-5, JI-6, JI-12 e os novos JI-27+) precisa de uma credencial valida —
@@ -292,6 +297,94 @@ done
 printf '%s' "\$_kfile" > "$TMPDIR_TEST/io-curl-kfile-path"
 kill -$_sig \$PPID
 exit 0
+STUB
+  chmod +x "$_stub_dir/curl"
+  printf '%s' "$_stub_dir"
+}
+
+# _make_headers_curl_stub CODE [HEADERS] [BODY] — 3.4.4: stub que, ao
+# receber `-D PATH`, grava HEADERS (conteudo literal, ex.: uma linha
+# `Retry-After: 30`) nesse arquivo — simulando os headers de resposta reais
+# — e responde CODE/BODY normalmente. Usado para JI-38/JI-39 (429 sem/com
+# `Retry-After`).
+_make_headers_curl_stub() {
+  _stub_dir="$TMPDIR_TEST/bin-headers"
+  mkdir -p "$_stub_dir"
+  _code="$1"
+  printf '%s' "${2:-}" > "$TMPDIR_TEST/io-curl-headers-content"
+  printf '%s' "${3:-}" > "$TMPDIR_TEST/io-curl-headers-body"
+  : > "$TMPDIR_TEST/io-curl-calls.log"
+  cat > "$_stub_dir/curl" <<STUB
+#!/bin/sh
+_out=""
+_dfile=""
+_prev=""
+for _a in "\$@"; do
+  case "\$_prev" in
+    -o) _out="\$_a" ;;
+    -D) _dfile="\$_a" ;;
+  esac
+  _prev="\$_a"
+done
+printf 'CALL\n' >> "$TMPDIR_TEST/io-curl-calls.log"
+[ -n "\$_dfile" ] && cat -- "$TMPDIR_TEST/io-curl-headers-content" > "\$_dfile"
+[ -n "\$_out" ] && cat -- "$TMPDIR_TEST/io-curl-headers-body" > "\$_out"
+printf '%s' "$_code"
+exit 0
+STUB
+  chmod +x "$_stub_dir/curl"
+  printf '%s' "$_stub_dir"
+}
+
+# _make_flaky_curl_stub CODES [BODY] — 3.4.5: stub cujo status varia por
+# TENTATIVA (nao por URL): a Na chamada recebe o Na token de CODES
+# (separado por espaco); esgotados os tokens, repete o ULTIMO. BODY
+# (opcional) e sempre escrito em `-o` (so importa quando o attempt final
+# classificar como sucesso). Loga cada chamada em io-curl-calls.log (mesma
+# convencao de `_curl_call_count`) — a PROVA do numero de tentativas.
+_make_flaky_curl_stub() {
+  _stub_dir="$TMPDIR_TEST/bin-flaky"
+  mkdir -p "$_stub_dir"
+  : > "$TMPDIR_TEST/io-curl-calls.log"
+  : > "$TMPDIR_TEST/io-curl-flaky-count"
+  printf '%s\n' "$1" | tr ' ' '\n' > "$TMPDIR_TEST/io-curl-flaky-codes"
+  printf '%s' "${2:-}" > "$TMPDIR_TEST/io-curl-flaky-body"
+  cat > "$_stub_dir/curl" <<STUB
+#!/bin/sh
+_out=""
+_prev=""
+for _a in "\$@"; do
+  case "\$_prev" in
+    -o) _out="\$_a" ;;
+  esac
+  _prev="\$_a"
+done
+printf 'CALL\n' >> "$TMPDIR_TEST/io-curl-calls.log"
+_n=\$(( \$(wc -l < "$TMPDIR_TEST/io-curl-flaky-count" | tr -d ' ') + 1 ))
+printf 'x\n' >> "$TMPDIR_TEST/io-curl-flaky-count"
+_total=\$(wc -l < "$TMPDIR_TEST/io-curl-flaky-codes" | tr -d ' ')
+[ "\$_n" -le "\$_total" ] || _n="\$_total"
+_code=\$(sed -n "\${_n}p" "$TMPDIR_TEST/io-curl-flaky-codes")
+[ -n "\$_out" ] && cat -- "$TMPDIR_TEST/io-curl-flaky-body" > "\$_out"
+printf '%s' "\$_code"
+exit 0
+STUB
+  chmod +x "$_stub_dir/curl"
+  printf '%s' "$_stub_dir"
+}
+
+# _make_networkfail_curl_stub — 3.4.5: stub que SEMPRE falha como o cliente
+# HTTP falharia por erro de rede real (sem tocar rede) — `exit 7` e o codigo
+# real de curl para "Failed to connect to host". Usado para JI-45 (erro de
+# rede esgota as tentativas).
+_make_networkfail_curl_stub() {
+  _stub_dir="$TMPDIR_TEST/bin-netfail"
+  mkdir -p "$_stub_dir"
+  : > "$TMPDIR_TEST/io-curl-calls.log"
+  cat > "$_stub_dir/curl" <<STUB
+#!/bin/sh
+printf 'CALL\n' >> "$TMPDIR_TEST/io-curl-calls.log"
+exit 7
 STUB
   chmod +x "$_stub_dir/curl"
   printf '%s' "$_stub_dir"
@@ -588,6 +681,237 @@ scenario_request_mutation_sigterm_remove_credencial_temp() {
 
 scenario_request_mutation_sigint_remove_credencial_temp() {
   _assert_mutation_signal_remove_credencial INT 130
+}
+
+# ==== JI-33..JI-47 (tarefa 3.4, dec-073): classificacao de status HTTP ====
+#
+# Todos os cenarios abaixo exportam `JIRA_IO_BACKOFF_SECONDS=0` (override de
+# 3.4.5) para o backoff entre tentativas nao atrasar a suite — o VALOR do
+# backoff nao e o que estes testes verificam, so a CONTAGEM de tentativas.
+#
+#   JI-33 401 (sem --op)              -> exit 4, classification=auth_failed
+#   JI-34 403 --op R1                 -> exit 7, classification=permission_denied
+#   JI-35 403 --op R2                 -> exit 7, classification=permission_denied
+#   JI-36 403 sem --op                -> exit 4, classification=auth_failed (default conservador)
+#   JI-37 403 --op R3 (fora de R1/R2) -> exit 4, classification=auth_failed
+#   JI-38 429 sem header Retry-After  -> exit 1, classification=deferred, SEM retry_after=
+#   JI-39 429 com header Retry-After  -> exit 1, classification=deferred, retry_after=<n> correto
+#   JI-40 400 --op R4                 -> exit 1, classification=deferred
+#   JI-41 409 --op R4                 -> exit 1, classification=deferred
+#   JI-42 400 sem --op R4 (fora do escopo 3.4) -> exit 0, passthrough (comportamento pre-3.4 preservado)
+#   JI-43 5xx esgota as 3 tentativas   -> exit 1, classification=deferred, EXATAMENTE 3 chamadas
+#   JI-44 5xx then 200 (recupera na 2a tentativa) -> exit 0, corpo relayed, EXATAMENTE 2 chamadas
+#   JI-45 erro de rede esgota as 3 tentativas -> exit 1, classification=deferred, EXATAMENTE 3 chamadas
+#   JI-46 --op invalido               -> exit 2 (uso incorreto), 0 chamadas
+#   JI-47 teste de contrato dedicado (3.4.7): 401 vs 403 R1/R2 vs 403 demais
+#         vs 429 — os 4 casos SEM colisao no mesmo tratamento (CHK009)
+
+scenario_request_401_auth_failed() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|401|{}')
+  assert_exit 4 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "http_status=401" || return 1
+  assert_stderr_contains "classification=auth_failed" || return 1
+  [ "$(_curl_call_count)" = "1" ] || { _fail "401 calls" "esperado 1, obtido $(_curl_call_count)"; return 1; }
+}
+
+scenario_request_403_op_r1_permission_denied() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue|403|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue --op R1 || return 1
+  assert_stderr_contains "classification=permission_denied" || return 1
+}
+
+scenario_request_403_op_r2_permission_denied() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|403|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request PUT /rest/api/3/issue/CSTK-1 --op R2 || return 1
+  assert_stderr_contains "classification=permission_denied" || return 1
+}
+
+scenario_request_403_sem_op_auth_failed_default() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|403|{}')
+  assert_exit 4 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "classification=auth_failed" || return 1
+}
+
+scenario_request_403_op_fora_de_r1_r2_auth_failed() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1/transitions|403|{}')
+  assert_exit 4 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue/CSTK-1/transitions --op R4 || return 1
+  assert_stderr_contains "classification=auth_failed" || return 1
+}
+
+scenario_request_429_sem_retry_after() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_headers_curl_stub 429)
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+  case "${_CAPTURED_STDERR:-}" in
+    *retry_after=*)
+      _fail "retry_after_indevido" "429 sem header Retry-After nao deveria emitir retry_after="
+      return 1
+      ;;
+  esac
+}
+
+scenario_request_429_com_retry_after() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_headers_curl_stub 429 "$(printf 'HTTP/1.1 429 Too Many Requests\r\nRetry-After: 30\r\n')")
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+  assert_stderr_contains "retry_after=30" || return 1
+}
+
+scenario_request_400_op_r4_deferred() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1/transitions|400|{}')
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue/CSTK-1/transitions --op R4 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+}
+
+scenario_request_409_op_r4_deferred() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1/transitions|409|{}')
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue/CSTK-1/transitions --op R4 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+}
+
+scenario_request_400_sem_op_r4_passthrough_sucesso() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue|400|{"errorMessages":["campo obrigatorio ausente"]}')
+  # Fora do escopo 3.4 (sem --op R4): comportamento pre-3.4 preservado —
+  # passthrough como sucesso (exit 0, corpo relayed) — nao inventar
+  # classificacao alem do que plan.md/contracts/jira-rest.md exigem.
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue || return 1
+  assert_stdout_contains "campo obrigatorio ausente" || return 1
+}
+
+scenario_request_5xx_esgota_tentativas_deferred() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_flaky_curl_stub "500 502 503")
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "5xx tentativas" "esperado exatamente 3 tentativas, obtido $(_curl_call_count)"; return 1; }
+}
+
+scenario_request_5xx_recupera_na_segunda_tentativa() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_flaky_curl_stub "500 200" '{"key":"CSTK-1"}')
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stdout_contains '"key":"CSTK-1"' || return 1
+  [ "$(_curl_call_count)" = "2" ] \
+    || { _fail "5xx recupera tentativas" "esperado exatamente 2 tentativas, obtido $(_curl_call_count)"; return 1; }
+}
+
+scenario_request_erro_rede_esgota_tentativas_deferred() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_networkfail_curl_stub)
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "rede tentativas" "esperado exatamente 3 tentativas, obtido $(_curl_call_count)"; return 1; }
+}
+
+scenario_request_op_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|200|{}')
+  assert_exit 2 env PATH="$_bin:$PATH" "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 --op R99 || return 1
+  [ "$(_curl_call_count)" = "0" ] \
+    || { _fail "op invalido calls" "--op invalido nao deve disparar nenhuma requisicao"; return 1; }
+}
+
+# JI-47 (3.4.7): teste de contrato dedicado — 401 vs 403 R1/R2 vs 403 demais
+# vs 429 SEM colisao no mesmo tratamento (CHK009). Cada sub-chamada usa seu
+# proprio stub/diretorio (evita reuso de estado entre invocacoes na mesma
+# funcao de cenario).
+scenario_contrato_401_403_429_sem_colisao() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+
+  _bin401=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|401|{}')
+  capture env PATH="$_bin401:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1
+  [ "$_CAPTURED_EXIT" = "4" ] || { _fail "401 exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *classification=auth_failed*) : ;;
+    *) _fail "401 classification" "esperado auth_failed: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+
+  _bin403r1=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue|403|{}')
+  capture env PATH="$_bin403r1:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue --op R1
+  [ "$_CAPTURED_EXIT" = "7" ] || { _fail "403 R1 exit" "esperado 7, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *classification=permission_denied*) : ;;
+    *) _fail "403 R1 classification" "esperado permission_denied: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+
+  _bin403outros=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1/transitions|403|{}')
+  capture env PATH="$_bin403outros:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issue/CSTK-1/transitions --op R4
+  [ "$_CAPTURED_EXIT" = "4" ] || { _fail "403 R4 exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *classification=auth_failed*) : ;;
+    *) _fail "403 R4 classification" "esperado auth_failed: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+
+  _bin429=$(_make_headers_curl_stub 429)
+  capture env PATH="$_bin429:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issue/CSTK-1
+  [ "$_CAPTURED_EXIT" = "1" ] || { _fail "429 exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *classification=deferred*) : ;;
+    *) _fail "429 classification" "esperado deferred: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+
+  # Os 4 exit codes observados (4, 7, 4, 1) e as 3 classificacoes distintas
+  # (auth_failed, permission_denied, deferred) provam que nao ha colisao:
+  # 401 e "403 demais" COMPARTILHAM auth_failed de proposito (mesmo
+  # tratamento, plan.md), mas 403-R1/R2 e 429 sao SEMPRE distintos dos dois.
 }
 
 run_all_scenarios

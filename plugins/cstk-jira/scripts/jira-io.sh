@@ -11,16 +11,46 @@
 #      tasks.md FASE 3 tarefa 3.1.
 #
 # ESCOPO ATE AGORA (3.1 `deps-check`+`request` com host unico/SEC-5, 3.2
-# allowlist de charset em PATH/SEC-1, e 3.3 credencial temporaria segura/
-# SEC-4). NAO implementado aqui (fica para as proximas tarefas da FASE 3,
-# cada uma com seus proprios testes):
-#   - 3.4 classificacao fina de status HTTP (auth_failed/deferred/retry) —
-#     esta versao so distingue "requisicao OK, corpo em stdout" (qualquer
-#     status exceto 3xx) de erro mecanico (3xx, DELETE, host/METHOD/PATH
-#     invalidos, dependencia ausente, credencial ausente/incompleta);
+# allowlist de charset em PATH/SEC-1, 3.3 credencial temporaria segura/SEC-4,
+# e 3.4 classificacao fina de status HTTP). NAO implementado aqui (fica para
+# a proxima tarefa da FASE 3, com seus proprios testes):
 #   - 3.5 `json-get`/`json-build` (SEC-3) — subcomandos ainda nao existem
 #     neste dispatcher. A JQL de FASE 7 (SEC-3) MUST reusar `validate-segment`
 #     (abaixo) para cada valor interpolado — nenhum texto livre entra em JQL.
+#
+# 3.4 (classificacao de status HTTP, dec-073): `request` ganhou a opcao
+# `--op OP` (OP em `R1`..`R11`, contracts/jira-rest.md) para o motor
+# (jira-sync.sh/jira-map.sh, FASE 4+) informar QUAL operacao esta servindo —
+# `request` em si nao tem como inferir isso do METHOD+PATH sozinho. So os
+# codigos abaixo ganham classificacao dedicada (demais codigos, ex. `400`/
+# `409` fora de R4, `404`, `422`, mantem o comportamento pre-3.4: passthrough
+# como sucesso, exit 0, corpo em stdout — nao inventar classificacao alem do
+# que plan.md/contracts/jira-rest.md/checklists/api.md CHK009 exigem):
+#   `401` (qualquer operacao)      => `classification=auth_failed`, exit 4,
+#                                      nunca retry (FR-016/FR-019)
+#   `403` em `--op R1`/`--op R2`   => `classification=permission_denied`,
+#                                      exit 7 (NOVO — nao reusa o exit 6 ja
+#                                      reservado em plugin-scripts.md para
+#                                      conflito/orfao de outros scripts);
+#                                      credencial valida, permissao
+#                                      insuficiente — NUNCA reconfiguracao
+#   `403` fora de R1/R2 (ou sem
+#   `--op`, default conservador)   => `classification=auth_failed`, exit 4,
+#                                      ate nova fonte que os distinga
+#   `429`                          => `classification=deferred`, exit 1,
+#                                      `retry_after=<s>` em stderr quando o
+#                                      header `Retry-After` vier
+#   `5xx` / erro de rede / timeout => ate 3 tentativas com backoff (`sleep`,
+#                                      intervalo em `JIRA_IO_BACKOFF_SECONDS`,
+#                                      default 2s, overridable p/ testes
+#                                      rapidos); esgotadas => `deferred`,
+#                                      exit 1
+#   `400`/`409` em `--op R4`       => `classification=deferred`, exit 1
+#                                      (transicao concorrente, change-notice
+#                                      confirmado em contracts/jira-rest.md)
+# Corpo da resposta so vai para stdout no caminho de sucesso (2xx e os
+# codigos fora do escopo acima) — mesmo precedente do `3xx` (SEC-5), que
+# nunca relaya corpo em erro.
 #
 # SEC-4 (tarefa 3.3): `request` agora envia autenticacao Basic (email + API
 # token — data-model.md Entity Credential, `contracts/jira-rest.md` linha 5)
@@ -46,11 +76,16 @@
 #         instalacao se faltar qualquer um dos dois (carve-out 1.1.0
 #         condicao a).
 #
-#   jira-io.sh request METHOD PATH [--body-file F]
+#   jira-io.sh request METHOD PATH [--body-file F] [--op OP]
 #       — METHOD restrito a allowlist FECHADA `GET`/`POST`/`PUT` — `DELETE`
 #         nunca existe como opcao valida (FR-012); qualquer METHOD fora da
 #         allowlist e uso incorreto (exit 2), nao erro de requisicao.
 #         PATH MUST comecar com `/rest/`.
+#         `--op OP` (opcional): OP em `R1`..`R11` (contracts/jira-rest.md) —
+#         informa ao classificador de status (3.4, abaixo) qual operacao esta
+#         sendo servida. OP fora dessa allowlist e uso incorreto (exit 2).
+#         Omitido (ou fora de R1/R2) => tratamento conservador de `403` como
+#         `auth_failed` (dec-073).
 #         SEC-1: PATH e recusado (exit 2, SEM requisicao) se contiver `..`,
 #         `//`, `\`, `@`, `#`, espaco, CR/LF ou qualquer outro byte de
 #         controle, em qualquer posicao — esta e a checagem que cobre TODOS
@@ -79,7 +114,10 @@
 #         "email:token"` e o passa via `-K` — a credencial NUNCA aparece em
 #         argv/linha de comando do cliente HTTP nem em log.
 #         Corpo da resposta em stdout; `http_status=<codigo>` na 1a linha
-#         de stderr.
+#         de stderr. 3.4: `401`/`403`/`429`/`5xx`-apos-retries/`400`-`409`-
+#         em-R4 sao classificados (`classification=<token>` em stderr) em
+#         vez de tratados como sucesso — ver bloco de comentarios 3.4 acima
+#         para a tabela completa; demais codigos mantem o passthrough.
 #
 #   jira-io.sh validate-segment VALUE [VALUE...]
 #       — SEC-1: valida cada VALUE contra a allowlist FECHADA de charset
@@ -94,13 +132,21 @@
 #
 # Exit codes (mesma convencao de jira-config.sh):
 #   0 sucesso
-#   1 erro geral / falha de requisicao (rede, 3xx recusado, etc.)
+#   1 erro geral / falha de requisicao (rede, 3xx recusado, etc.) OU
+#     `classification=deferred` (429; 5xx/rede/timeout apos ate 3
+#     tentativas; 400/409 em `--op R4`) — candidato a retry pelo chamador
 #   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, PATH/
-#     segmento fora da allowlist SEC-1, args)
+#     segmento fora da allowlist SEC-1, `--op` fora de R1..R11, args)
 #   3 ProjectConfig ausente/inacessivel (propagado de jira-config.sh get)
 #   4 credencial ausente/permissao insegura (propagado de jira-config.sh
 #     credential-check) ou incompleta (falta `email`/`api_token` no arquivo)
+#     OU `classification=auth_failed` (401 em qualquer operacao; 403 fora
+#     de `--op R1`/`--op R2`) — nunca retry automatico (FR-016/FR-019)
 #   5 dependencia ausente (`jq` ou cliente HTTP fora do PATH)
+#   7 `classification=permission_denied` (403 em `--op R1`/`--op R2`,
+#     dec-073) — credencial valida, permissao insuficiente no projeto/tipo;
+#     NUNCA reconfiguracao de credencial (nao reusa o exit 6, ja reservado
+#     em contracts/plugin-scripts.md para conflito/orfao de outros scripts)
 #
 # Convencoes (Principio II / contracts/plugin-scripts.md):
 #   `#!/bin/sh`, `set -eu`, sem bash-isms; dados em stdout, diagnostico em
@@ -121,12 +167,16 @@ USO:
   jira-io.sh deps-check
       Confere jq + cliente HTTP no PATH.
 
-  jira-io.sh request METHOD PATH [--body-file F]
+  jira-io.sh request METHOD PATH [--body-file F] [--op OP]
       Requisicao HTTPS contra <site_host><PATH>. METHOD em GET/POST/PUT
       (DELETE nunca existe como opcao valida). PATH deve comecar com /rest/
       e nao pode conter .. // \ @ # espaco CR/LF/controle (SEC-1).
       Autenticacao Basic (email + API token de Credential) enviada via
       arquivo de config temporario do cliente HTTP (SEC-4) — nunca em argv.
+      --op OP (opcional, R1..R11) informa a operacao para classificar 403
+      (permission_denied em R1/R2, auth_failed nas demais/omitido) e 400/409
+      (deferred em R4). 401/429/5xx/rede/timeout tambem sao classificados
+      (classification=<token> em stderr) — ver cabecalho do script.
 
   jira-io.sh validate-segment VALUE [VALUE...]
       Valida cada VALUE contra a allowlist [A-Za-z0-9_-] (SEC-1), a usar
@@ -134,9 +184,9 @@ USO:
       PATH ou JQL.
 
 EXIT CODES:
-  0 sucesso   1 erro geral/requisicao   2 uso incorreto
-  3 ProjectConfig ausente   4 credencial ausente/incompleta
-  5 dependencia ausente
+  0 sucesso   1 erro geral/requisicao/deferred   2 uso incorreto
+  3 ProjectConfig ausente   4 credencial ausente/incompleta/auth_failed
+  5 dependencia ausente   7 permission_denied (403 em R1/R2)
 HELP
 }
 
@@ -206,17 +256,59 @@ _ji_curlrc_escape() {
 }
 
 # _ji_cred_cleanup — acao do trap EXIT de `request`: remove o arquivo de
-# config temporario de credencial + o arquivo de resposta, depois o
-# diretorio privado (so remove se ja estiver vazio — `rmdir` com `|| :`
-# porque, sob `set -eu`, uma falha de `rmdir` sendo o ULTIMO comando de um
-# `&&`/`if` NAO e isenta de errexit). Variaveis podem estar vazias (sinal
-# chegou antes de qualquer recurso existir) — `rm -f`/o guard `[ -n ... ]`
-# cobrem esse caso sem diagnostico de erro.
+# config temporario de credencial + o arquivo de resposta + o arquivo de
+# headers (3.4), depois o diretorio privado (so remove se ja estiver vazio —
+# `rmdir` com `|| :` porque, sob `set -eu`, uma falha de `rmdir` sendo o
+# ULTIMO comando de um `&&`/`if` NAO e isenta de errexit). Variaveis podem
+# estar vazias (sinal chegou antes de qualquer recurso existir) — `rm -f`/o
+# guard `[ -n ... ]` cobrem esse caso sem diagnostico de erro.
 _ji_cred_cleanup() {
-  rm -f -- "$_jir_cred_file" "$_jir_tmp_out" 2>/dev/null
+  rm -f -- "$_jir_cred_file" "$_jir_tmp_out" "$_jir_header_file" 2>/dev/null
   if [ -n "$_jir_cred_dir" ]; then
     rmdir -- "$_jir_cred_dir" 2>/dev/null || :
   fi
+}
+
+# _ji_op_allowed OP — allowlist FECHADA da flag `--op` (3.4, dec-073): OP
+# MUST ser uma das operacoes R1-R11 documentadas em contracts/jira-rest.md.
+_ji_op_allowed() {
+  case "$1" in
+    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# _ji_extract_retry_after HEADERFILE — le o header `Retry-After` (segundos)
+# de um dump de resposta HTTP (curl `-D`), case-insensitive, ultima
+# ocorrencia (RFC permite so 1, mas evita ambiguidade se houver mais de uma).
+# Imprime so o valor numerico (sem CR/LF/espaco); vazio se ausente/ilegivel.
+# Nunca falha sob `set -eu`: se HEADERFILE nao existir/nao tiver o header, a
+# pipeline termina no `tr` (sempre exit 0), resultando em string vazia.
+_ji_extract_retry_after() {
+  [ -r "$1" ] || { printf ''; return 0; }
+  LC_ALL=C grep -i '^Retry-After:' -- "$1" 2>/dev/null \
+    | tail -n 1 \
+    | sed 's/^[Rr][Ee][Tt][Rr][Yy]-[Aa][Ff][Tt][Ee][Rr]:[[:space:]]*//' \
+    | tr -d '\r\n '
+}
+
+# _ji_fail_status STATUS CLASSIFICATION EXITCODE MSG [RETRY_AFTER]
+# — 3.4: encerra `request` com o protocolo estruturado de classificacao de
+# falha (dec-073): `http_status=<STATUS>` (omitido se STATUS vazio, caso do
+# erro de rede puro sem resposta HTTP), `classification=<CLASSIFICATION>`,
+# `retry_after=<n>` (so quando o 5o argumento vier nao-vazio), e por fim a
+# mensagem humana + exit code via `_ji_die` (mesma convencao das demais
+# falhas deste script).
+_ji_fail_status() {
+  _jifs_status="$1"
+  _jifs_class="$2"
+  _jifs_exit="$3"
+  _jifs_msg="$4"
+  _jifs_retry_after="${5:-}"
+  [ -n "$_jifs_status" ] && printf 'http_status=%s\n' "$_jifs_status" >&2
+  printf 'classification=%s\n' "$_jifs_class" >&2
+  [ -n "$_jifs_retry_after" ] && printf 'retry_after=%s\n' "$_jifs_retry_after" >&2
+  _ji_die "$_jifs_msg" "$_jifs_exit"
 }
 
 _ji_cmd_deps_check() {
@@ -282,6 +374,7 @@ _ji_cmd_request() {
   shift 2
 
   _jir_body_file=""
+  _jir_op=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --body-file)
@@ -289,11 +382,24 @@ _ji_cmd_request() {
         _jir_body_file="$2"
         shift 2
         ;;
+      --op)
+        [ "$#" -ge 2 ] || _ji_die_usage "--op requer argumento"
+        _jir_op="$2"
+        shift 2
+        ;;
       *)
         _ji_die_usage "argumento desconhecido: $1"
         ;;
     esac
   done
+
+  # 3.4/dec-073: --op (opcional) informa qual operacao R-n esta sendo
+  # servida, para classificar 403 (permission_denied em R1/R2) e 400/409
+  # (deferred em R4). Fora da allowlist fechada => uso incorreto (exit 2).
+  if [ -n "$_jir_op" ]; then
+    _ji_op_allowed "$_jir_op" || _ji_die_usage \
+      "--op invalido: $_jir_op (permitido: R1..R11 — contracts/jira-rest.md)"
+  fi
 
   _ji_method_allowed "$_jir_method" || _ji_die_usage \
     "METHOD invalido: $_jir_method (permitido: GET, POST, PUT — DELETE nunca existe como opcao valida, FR-012)"
@@ -342,6 +448,7 @@ _ji_cmd_request() {
   _jir_cred_dir=""
   _jir_cred_file=""
   _jir_tmp_out=""
+  _jir_header_file=""
   trap '_ji_cred_cleanup' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -374,37 +481,97 @@ _ji_cmd_request() {
 
   _jir_tmp_out=$(mktemp "${TMPDIR:-/tmp}/jira-io.XXXXXX") \
     || _ji_die "falha ao criar arquivo temporario de resposta" 1
+  _jir_header_file=$(mktemp "${TMPDIR:-/tmp}/jira-io-headers.XXXXXX") \
+    || _ji_die "falha ao criar arquivo temporario de headers" 1
 
-  # Sem `-L` (SEC-5: nunca seguir redirect) e sem `-k`/`--insecure` (TLS
-  # sempre verificado — nao ha flag neste script para desativar). Um unico
-  # disparo por chamada: nao ha caminhada de `Location` (diferente de
-  # cli/lib/http.sh), porque este script so fala com `site_host`. `-K`
-  # carrega a credencial (SEC-4) — NUNCA aparece como argv literal.
-  _jir_ec=0
-  if [ -n "$_jir_body_file" ]; then
-    _jir_status=$(curl -sS --connect-timeout 10 --max-time 60 \
-      -K "$_jir_cred_file" \
-      -X "$_jir_method" \
-      -H 'Accept: application/json' -H 'Content-Type: application/json' \
-      --data-binary "@${_jir_body_file}" \
-      -o "$_jir_tmp_out" -w '%{http_code}' \
-      -- "$_jir_url") || _jir_ec=$?
-  else
-    _jir_status=$(curl -sS --connect-timeout 10 --max-time 60 \
-      -K "$_jir_cred_file" \
-      -X "$_jir_method" \
-      -H 'Accept: application/json' \
-      -o "$_jir_tmp_out" -w '%{http_code}' \
-      -- "$_jir_url") || _jir_ec=$?
-  fi
+  # 3.4: `5xx`/erro de rede/timeout ganham ate 3 tentativas com backoff
+  # (`sleep` entre tentativas, NUNCA apos a ultima) antes de virar
+  # `deferred` — `JIRA_IO_BACKOFF_SECONDS` permite testes rapidos (default
+  # 2s em producao). `429`/`401`/`403`/etc. NAO entram neste loop: uma
+  # unica tentativa basta para classifica-los (abaixo).
+  _jir_max_attempts=3
+  _jir_backoff_seconds="${JIRA_IO_BACKOFF_SECONDS:-2}"
+  _jir_attempt=1
+  _jir_network_fail="no"
+  while :; do
+    _jir_ec=0
+    : > "$_jir_header_file"
+    # Sem `-L` (SEC-5: nunca seguir redirect) e sem `-k`/`--insecure` (TLS
+    # sempre verificado — nao ha flag neste script para desativar). `-K`
+    # carrega a credencial (SEC-4) — NUNCA aparece como argv literal. `-D`
+    # captura os headers de resposta (3.4: le `Retry-After` em 429).
+    if [ -n "$_jir_body_file" ]; then
+      _jir_status=$(curl -sS --connect-timeout 10 --max-time 60 \
+        -K "$_jir_cred_file" \
+        -X "$_jir_method" \
+        -H 'Accept: application/json' -H 'Content-Type: application/json' \
+        --data-binary "@${_jir_body_file}" \
+        -D "$_jir_header_file" \
+        -o "$_jir_tmp_out" -w '%{http_code}' \
+        -- "$_jir_url") || _jir_ec=$?
+    else
+      _jir_status=$(curl -sS --connect-timeout 10 --max-time 60 \
+        -K "$_jir_cred_file" \
+        -X "$_jir_method" \
+        -H 'Accept: application/json' \
+        -D "$_jir_header_file" \
+        -o "$_jir_tmp_out" -w '%{http_code}' \
+        -- "$_jir_url") || _jir_ec=$?
+    fi
 
-  if [ "$_jir_ec" -ne 0 ]; then
-    _ji_die "requisicao falhou (cliente HTTP exit $_jir_ec): $_jir_method $_jir_path" 1
+    if [ "$_jir_ec" -ne 0 ]; then
+      _jir_network_fail="yes"
+    else
+      case "$_jir_status" in
+        5??) _jir_network_fail="yes" ;;
+        *) _jir_network_fail="no" ;;
+      esac
+    fi
+
+    [ "$_jir_network_fail" = "no" ] && break
+    [ "$_jir_attempt" -ge "$_jir_max_attempts" ] && break
+    sleep "$_jir_backoff_seconds" 2>/dev/null || :
+    _jir_attempt=$((_jir_attempt + 1))
+  done
+
+  if [ "$_jir_network_fail" = "yes" ]; then
+    if [ "$_jir_ec" -ne 0 ]; then
+      _ji_fail_status "" deferred 1 \
+        "requisicao falhou apos $_jir_attempt tentativa(s) (cliente HTTP exit $_jir_ec, deferred, backoff esgotado): $_jir_method $_jir_path"
+    else
+      _ji_fail_status "$_jir_status" deferred 1 \
+        "resposta $_jir_status apos $_jir_attempt tentativa(s) (deferred, backoff esgotado): $_jir_method $_jir_path"
+    fi
   fi
 
   case "$_jir_status" in
     3??)
       _ji_die "resposta $_jir_status (redirecionamento) recusada SEM nova requisicao — SEC-5 nunca segue Location: $_jir_method $_jir_path" 1
+      ;;
+    401)
+      _ji_fail_status "$_jir_status" auth_failed 4 \
+        "resposta 401 (auth_failed) — credencial invalida/expirada, nunca retry automatico (FR-016/FR-019): $_jir_method $_jir_path"
+      ;;
+    403)
+      if [ "$_jir_op" = "R1" ] || [ "$_jir_op" = "R2" ]; then
+        _ji_fail_status "$_jir_status" permission_denied 7 \
+          "resposta 403 em $_jir_op (permission_denied) — credencial valida, permissao insuficiente no projeto/tipo, NUNCA reconfigurar credencial: $_jir_method $_jir_path"
+      else
+        _ji_fail_status "$_jir_status" auth_failed 4 \
+          "resposta 403 fora de R1/R2 (sem fonte que distinga) — tratado como auth_failed ate nova fonte: $_jir_method $_jir_path"
+      fi
+      ;;
+    429)
+      _jir_retry_after=$(_ji_extract_retry_after "$_jir_header_file")
+      _ji_fail_status "$_jir_status" deferred 1 \
+        "resposta 429 (deferred) — rate limit, respeitar Retry-After quando presente: $_jir_method $_jir_path" \
+        "$_jir_retry_after"
+      ;;
+    400|409)
+      if [ "$_jir_op" = "R4" ]; then
+        _ji_fail_status "$_jir_status" deferred 1 \
+          "resposta $_jir_status em transicao concorrente (R4, deferred) — candidato a retry (change-notice confirmado): $_jir_method $_jir_path"
+      fi
       ;;
   esac
 

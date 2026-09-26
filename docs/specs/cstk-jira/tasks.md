@@ -339,22 +339,52 @@ Ref: plan.md SEC-4; checklists/security.md CHK006/CHK007.
 Ref: plan.md Test Strategy "Falha"; checklists/api.md CHK009
 (auth_failed vs permission_denied vs deferred).
 
-- [ ] 3.4.1 `401` em qualquer operacao => exit 4 (`auth_failed`), nunca
+- [x] 3.4.1 `401` em qualquer operacao => exit 4 (`auth_failed`), nunca
       retry (FR-016/FR-019)
-- [ ] 3.4.2 `403` em R1 (criar issue) ou R2 (editar issue) => diagnostico
+- [x] 3.4.2 `403` em R1 (criar issue) ou R2 (editar issue) => diagnostico
       distinto `permission_denied` ("credencial valida, permissao
       insuficiente no projeto/tipo") — NUNCA reconfiguracao de credencial
-- [ ] 3.4.3 `403` nas demais operacoes (sem fonte que os distinga) segue
+- [x] 3.4.3 `403` nas demais operacoes (sem fonte que os distinga) segue
       tratado como `auth_failed` ate nova fonte
-- [ ] 3.4.4 `429` => `deferred`, lendo `Retry-After` (segundos) do header
+- [x] 3.4.4 `429` => `deferred`, lendo `Retry-After` (segundos) do header
       quando presente
-- [ ] 3.4.5 `5xx`/erro de rede/timeout => `deferred` com backoff limitado a
+- [x] 3.4.5 `5xx`/erro de rede/timeout => `deferred` com backoff limitado a
       3 tentativas por drain
-- [ ] 3.4.6 `400`/`409` em transicao concorrente (R4) => `deferred`
+- [x] 3.4.6 `400`/`409` em transicao concorrente (R4) => `deferred`
       (candidatos a retry — change-notice confirmado em `contracts/jira-rest.md`)
-- [ ] 3.4.7 Teste de contrato dedicado: `401` (qualquer op) vs `403` em
+- [x] 3.4.7 Teste de contrato dedicado: `401` (qualquer op) vs `403` em
       R1/R2 vs `403` nas demais vs `429` — os 4 casos SEM colisao no mesmo
       tratamento (CHK009)
+
+      Implementado em `plugins/cstk-jira/scripts/jira-io.sh`: `request`
+      ganhou `--op OP` (OP em `R1`..`R11`, allowlist fechada; omitido ou
+      fora de R1/R2 => tratamento conservador — dec-073) e um bloco de
+      classificacao apos a resposta HTTP: `401` (qualquer op) e `403` fora
+      de `--op R1`/`--op R2` => exit 4 `classification=auth_failed`; `403`
+      em `--op R1`/`--op R2` => exit 7 (NOVO — nao colide com o exit 6 ja
+      reservado em `contracts/plugin-scripts.md` para conflito/orfao de
+      `jira-map.sh`) `classification=permission_denied`; `429` => exit 1
+      `classification=deferred` + `retry_after=<s>` em stderr quando o
+      header `Retry-After` vier (lido via novo `-D` no `curl`,
+      `_ji_extract_retry_after`) — sem retry interno, quem decide quando
+      reenviar e o chamador; `5xx`/erro de rede (`curl` exit != 0) =>
+      loop de ate 3 tentativas com `sleep` de backoff entre elas
+      (`JIRA_IO_BACKOFF_SECONDS`, overridable — default 2s), esgotadas =>
+      exit 1 `classification=deferred`; `400`/`409` em `--op R4` => exit 1
+      `classification=deferred`. Codigos fora deste escopo (400/409 sem
+      R4, 404, 422 etc.) mantem o passthrough pre-3.4 (exit 0, corpo
+      relayed) — nao inventada classificacao alem do exigido por
+      plan.md/contracts/jira-rest.md/checklists/api.md CHK009 (dec-073).
+      `contracts/plugin-scripts.md` atualizado (tabela "Mapeamento de
+      status HTTP" corrigida para bater com a correcao de CHK009/dec-038
+      ja aplicada em `plan.md`, e exit codes comuns com a entrada `7`).
+      Testes em `tests/cstk/test_jira-io.sh`: 15 cenarios novos JI-33..
+      JI-47 (incluindo JI-47 = teste de contrato dedicado da 3.4.7, que
+      dispara as 4 respostas na mesma funcao de cenario e confere exit
+      codes/`classification` distintos sem colisao) + os 32 de 3.1-3.3
+      continuam verdes — `sh tests/run.sh jira-io`: 47/47 PASS; `sh
+      tests/run.sh --check-coverage`: zero orfaos; `shellcheck -s sh`
+      limpo nos dois arquivos.
 
 ### 3.5 `json-get`/`json-build` e JQL segura (SEC-3) `[A]`
 

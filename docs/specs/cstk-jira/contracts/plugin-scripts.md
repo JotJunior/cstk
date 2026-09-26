@@ -7,11 +7,17 @@ em que ela toca o Jira remetem a `jira-rest.md`/`rovo-mcp.md`).
 Convencoes comuns (Principio II):
 
 - `#!/bin/sh`, `set -eu`, sem bash-isms; dados em stdout, diagnostico em stderr.
-- Exit codes: `0` sucesso; `1` erro geral; `2` uso incorreto; `3` plugin
+- Exit codes: `0` sucesso; `1` erro geral (inclui `classification=deferred`
+  — candidato a retry pelo chamador); `2` uso incorreto; `3` plugin
   inativo/nao configurado (FR-017 — chamador trata como no-op);
-  `4` credencial ausente/rejeitada (FR-016); `5` dependencia ausente
-  (`jq`/cliente HTTP — carve-out 1.1.0, condicao a); `6` conflito detectado
-  (FR-011) ou orfao (FR-012) — nada foi sobrescrito.
+  `4` credencial ausente/rejeitada (FR-016) OU `classification=auth_failed`
+  (`jira-io.sh request` apos `401`/`403` fora de R1/R2 — dec-073, nunca
+  retry automatico); `5` dependencia ausente (`jq`/cliente HTTP — carve-out
+  1.1.0, condicao a); `6` conflito detectado (FR-011) ou orfao (FR-012) —
+  nada foi sobrescrito; `7` `classification=permission_denied` (so
+  `jira-io.sh request` — `403` em `--op R1`/`--op R2`, dec-073: credencial
+  valida, permissao insuficiente no projeto/tipo, NUNCA reconfiguracao de
+  credencial).
 - Nenhum script aceita URL, host ou credencial por argumento: host vem de
   `ProjectConfig.site_host`, credencial de `Credential` (`data-model.md`).
 - Instalado o plugin, SO a subarvore `plugins/cstk-jira/` existe no disco do
@@ -23,20 +29,27 @@ Convencoes comuns (Principio II):
 | Subcomando | Entrada | Saida | Notas |
 |------------|---------|-------|-------|
 | `deps-check` | — | nada | exit 5 + instrucao de instalacao se faltar `jq` ou o cliente HTTP |
-| `request METHOD PATH [--body-file F]` | METHOD em `GET`/`POST`/`PUT` (allowlist fechada — nao existe `DELETE`, FR-012); PATH relativo iniciado em `/rest/` | corpo da resposta em stdout; status HTTP na 1a linha de stderr estruturado | monta `https://<site_host><PATH>`; valida host por IGUALDADE exata (sem userinfo, sem porta) antes de cada requisicao; NAO segue redirect para host diferente (FR-015); credencial passada ao cliente HTTP por arquivo de config temporario `0600` removido em `trap`, nunca em argv; SEC-1: PATH recusado (exit 2, sem requisicao) se contiver `..`, `//`, `\`, `@`, `#`, espaco, CR/LF ou qualquer outro byte de controle |
+| `request METHOD PATH [--body-file F] [--op OP]` | METHOD em `GET`/`POST`/`PUT` (allowlist fechada — nao existe `DELETE`, FR-012); PATH relativo iniciado em `/rest/`; `OP` opcional em `R1`..`R11` (contracts/jira-rest.md) — informa qual operacao esta sendo servida, so usado para classificar `403`/`400`/`409` (dec-073) | corpo da resposta em stdout SO no caminho de sucesso; status HTTP + classificacao estruturada (`http_status=`/`classification=`/`retry_after=`) em stderr | monta `https://<site_host><PATH>`; valida host por IGUALDADE exata (sem userinfo, sem porta) antes de cada requisicao; NAO segue redirect para host diferente (FR-015); credencial passada ao cliente HTTP por arquivo de config temporario `0600` removido em `trap`, nunca em argv; SEC-1: PATH recusado (exit 2, sem requisicao) se contiver `..`, `//`, `\`, `@`, `#`, espaco, CR/LF ou qualquer outro byte de controle; ver "Mapeamento de status HTTP" abaixo para a classificacao de falha (3.4) |
 | `validate-segment VALUE [VALUE...]` | 1+ VALUE (ex.: `jira_id`/`jira_key`/`project_key`) | nada (so exit code) | SEC-1: valida cada VALUE contra a allowlist fechada de charset `[A-Za-z0-9_-]`, nao-vazio; exit 2 no primeiro que falhar. O motor (`jira-sync.sh`/`jira-map.sh`, FASE 4+) MUST chamar isto para cada segmento ANTES de interpolar PATH ou JQL — nao exige `jq`/cliente HTTP |
 | `json-get FILTER` | JSON em stdin | valor em stdout | wrapper de leitura (restringe `jq` a este arquivo) |
 | `json-build ...` | pares chave/valor | JSON em stdout | monta corpos a partir de `contracts/jira-rest.md` |
 
-Mapeamento de status HTTP (politica de design):
+Mapeamento de status HTTP (politica de design; **corrigido na tarefa 3.4/
+dec-073** — a versao anterior desta tabela tratava `401`/`403` uniformemente
+como `auth_failed`, mesmo conflito ja identificado e corrigido em `plan.md`
+por CHK009/dec-038; a tabela abaixo e a versao final, implementada em
+`jira-io.sh`):
 
 | Resposta | Tratamento |
 |----------|-----------|
-| 2xx | sucesso |
-| 401 / 403 em chamada autenticada | exit 4 (`auth_failed`) — nunca retry (FR-016/FR-019) |
-| 429 | exit 1 com `retry_after=<s>` em stderr quando o header `Retry-After` vier (research Decision 3) — evento vira `deferred` |
-| 5xx / erro de rede / timeout | `deferred`, backoff limitado a 3 tentativas por drain |
-| 400 em transicao concorrente | `deferred` (research Decision 3: requisicoes simultaneas na mesma issue) |
+| 2xx | sucesso — corpo em stdout, `http_status=<codigo>` em stderr |
+| 401 (qualquer operacao) | exit 4, `classification=auth_failed` — nunca retry (FR-016/FR-019) |
+| 403 em `--op R1`/`--op R2` (criar/editar issue) | exit 7, `classification=permission_denied` — credencial valida, permissao insuficiente no projeto/tipo; NUNCA reconfiguracao de credencial (`contracts/jira-rest.md` "Validacao de credencial") |
+| 403 fora de R1/R2 (ou `--op` omitido — default conservador) | exit 4, `classification=auth_failed` ate nova fonte que os distinga |
+| 429 | exit 1, `classification=deferred`, `retry_after=<s>` em stderr quando o header `Retry-After` vier (research Decision 3) — `jira-io.sh` NAO retenta sozinho; quem decide quando reenviar e o chamador (drain) |
+| 5xx / erro de rede / timeout | ate 3 tentativas com backoff (`sleep`, `JIRA_IO_BACKOFF_SECONDS` overridable) DENTRO da mesma chamada de `request`; esgotadas, exit 1 `classification=deferred` |
+| 400/409 em `--op R4` (transicao concorrente) | exit 1, `classification=deferred` (research Decision 3 / change-notice: requisicoes simultaneas na mesma issue) |
+| Demais codigos (400/409 fora de R4, 404, 422, etc.) | fora do escopo de classificacao desta tarefa — passthrough como sucesso (comportamento pre-3.4 preservado; nao inventar classificacao alem do exigido) |
 
 ## `jira-config.sh`
 
