@@ -910,29 +910,84 @@ completo).
 
 Ref: `tests/test_doc-counts.sh`; `tests/test_state-parity-sweep.sh`.
 
-- [ ] 9.1.1 Atualizar `README.md`: contagem de skills (soma das 21
+- [x] 9.1.1 Atualizar `README.md`: contagem de skills (soma das 21
       globais + as 3 novas do cstk-jira onde aplicavel) e mencao ao
-      3o plugin no marketplace
-- [ ] 9.1.2 Ajustar `tests/test_doc-counts.sh` (contagem esperada) para
-      refletir o novo total de skills/plugins documentados
-- [ ] 9.1.3 Incluir os 2 hooks novos (`posttooluse-jira-sync.sh`,
+      3o plugin no marketplace <!-- README.md + README.pt-BR.md: nova
+      secao "Jira Cloud integration (cstk-jira)"/"Integracao com Jira
+      Cloud (cstk-jira)" com as 3 skills, os 2 hooks, pre-requisitos
+      (jq + cliente HTTP) e credencial 0600 fora do repo; arvore de
+      `plugins/` e comentario de marketplace.json atualizados para 3
+      entradas; `/plugin install cstk-jira@cstk` no bloco de instalacao;
+      linha nova na tabela "Documentation by topic". Contagem "21 global
+      skills" NAO muda (onda-026): `_count_skills` conta so
+      `plugins/cstk/skills/`; cstk-jira nao entra nesse universo (dec-020,
+      sem MCP proprio) -->
+- [x] 9.1.2 Ajustar `tests/test_doc-counts.sh` (contagem esperada) para
+      refletir o novo total de skills/plugins documentados <!-- Verificado
+      empiricamente (onda-034): as 3 scenarios de test_doc-counts.sh
+      (skills_count_matches_readme, all_skills_referenced_in_readme,
+      profile_counts_match_sources) derivam so de `plugins/cstk/skills/`
+      + scripts/profiles.txt.in + `plugins/cstk-language-*/`; nenhuma
+      deriva de `plugins/cstk-jira/` (build-release.sh so faz glob de
+      `cstk-language-*`). Sem numero para ajustar — gate ja verde antes e
+      depois desta onda, confirmado por `sh tests/run.sh test_doc-counts.sh`
+      (3 PASS) -->
+- [x] 9.1.3 Incluir os 2 hooks novos (`posttooluse-jira-sync.sh`,
       `pretooluse-jira-deny-destructive.sh`) na allowlist de
-      `tests/test_state-parity-sweep.sh`
-- [ ] 9.1.4 Teste: `tests/test_doc-counts.sh` e
+      `tests/test_state-parity-sweep.sh` <!-- Escopo estatico expandido
+      (scenario_estatica_sem_acesso_direto_fora_da_allowlist +
+      scenario_estatica_allowlist_sem_entradas_mortas) para cobrir
+      `plugins/cstk-jira/hooks/*.sh`. `posttooluse-jira-sync.sh` entrou na
+      allowlist como `codigo-real` (le `canonical_project` de
+      state.json/state.db sem passar por `_state-read.sh`, fallback
+      dual-backend simetrico, mesma classe de bloqueios.sh/
+      spawn-tracker.sh). `pretooluse-jira-deny-destructive.sh` NAO entrou
+      na allowlist: nao tem nenhum hit de `/state\.json` (so inspeciona o
+      tool_input do PreToolUse) — uma entrada sem hit falharia
+      scenario_estatica_allowlist_sem_entradas_mortas de proposito (a
+      mesma guarda anti-drift). Continua coberto pelo escopo varrido para
+      deteccao futura -->
+- [x] 9.1.4 Teste: `tests/test_doc-counts.sh` e
       `tests/test_state-parity-sweep.sh` verdes apos as edicoes acima
+      <!-- `sh tests/run.sh test_doc-counts.sh`: PASS 3 FAIL 0. `sh
+      tests/run.sh test_state-parity-sweep.sh`: PASS 4 FAIL 0 (inclui os 2
+      cenarios estaticos alterados). `sh tests/run.sh
+      test_posttooluse-jira-sync.sh` (12 PASS) e `sh tests/run.sh
+      test_pretooluse-jira-deny-destructive.sh` (5 PASS) tambem
+      re-confirmados sem regressao -->
 
 ### 9.2 Lockstep de versao (MP-5) e CHANGELOG `[M]`
 
 Ref: plan.md Constitution Check Principio I; `scripts/validate-plugin-manifests.sh`
 MP-5.
 
-- [ ] 9.2.1 `plugins/cstk-jira/.claude-plugin/plugin.json` `.version` ==
+- [x] 9.2.1 `plugins/cstk-jira/.claude-plugin/plugin.json` `.version` ==
       `.claude-plugin/marketplace.json` `.plugins[cstk-jira].version` no
       momento do release (mesma disciplina ja aplicada a `cstk`/
-      `cstk-language-go`)
-- [ ] 9.2.2 Entrada no `CHANGELOG.md` descrevendo o novo plugin cstk-jira
-- [ ] 9.2.3 Teste: `bash scripts/validate-plugin-manifests.sh --strict`
-      verde com as 3 entradas em lockstep de versao (MP-5)
+      `cstk-language-go`) <!-- Verificado empiricamente (onda-034): os 3
+      manifests (plugins/cstk, plugins/cstk-language-go, plugins/cstk-jira
+      `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`)
+      ja estavam em lockstep em 10.7.0 antes desta onda (fato verificado
+      pelo pai no bootstrap desta retomada) — sem escrita necessaria,
+      so confirmacao via `bash scripts/validate-plugin-manifests.sh
+      --version 10.7.0 --strict` (OK, 0 avisos) -->
+- [x] 9.2.2 Entrada no `CHANGELOG.md` descrevendo o novo plugin cstk-jira
+      <!-- Secao `## [Unreleased]` adicionada no topo (nao existia antes),
+      formato Keep a Changelog, descrevendo as 3 skills, os 2 hooks, a
+      credencial fora do repo e a distribuicao exclusiva via plugin nativo
+      (sem profile `cstk install` equivalente) -->
+- [x] 9.2.3 Teste: `bash scripts/validate-plugin-manifests.sh --strict`
+      verde com as 3 entradas em lockstep de versao (MP-5) <!-- `bash
+      scripts/validate-plugin-manifests.sh --version 10.7.0 --strict`:
+      "validate-plugin-manifests: OK (0 aviso(s))", exit 0. MP-2 (.plugins
+      length==3) e MP-5 (lockstep de versao) ja cobertos pelo script;
+      `sh tests/run.sh test_cstk-jira-plugin-manifest.sh` (3 PASS) e `sh
+      tests/run.sh test_validate-plugin-manifests.sh` tambem verificados
+      -->
+
+Nao ha bump de versao nesta onda (dec explicita): o bump coordenado
+(MP-5 + WL-5 do painel) e feito na release pela skill `release-wave`,
+fora desta pipeline SDD — as 3 entradas permanecem em 10.7.0 ate la.
 
 ### 9.3 Validacao final do quickstart `[M]`
 

@@ -5,6 +5,37 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Added
+
+- **Plugin `cstk-jira`** (3º entry do marketplace, `plugins/cstk-jira/`):
+  integracao com Jira Cloud para o toolkit. Converte uma feature
+  documentada (`spec.md` + `tasks.md`) num Epic com Tasks/Sub-tasks
+  correspondentes no Jira, mantem um board dedicado por projeto-alvo e
+  sincroniza status automaticamente durante execucoes
+  `agente-00c`/`feature-00c`.
+  - 3 skills: `jira-setup` (setup guiado — site, project key, credencial
+    em terminal proprio, mapeamento de tipos de issue e de status),
+    `jira-convert` (feature -> Epic/Task/Sub-task, mapeamento local<->Jira
+    em `jira-map.tsv`, reexecucao segura) e `jira-sync` (status da fila de
+    sincronizacao autonoma, resolucao de conflitos e cards orfaos).
+  - 2 hooks: `posttooluse-jira-sync.sh` (drena outcomes de task/onda para
+    o Jira, assincrono) e `pretooluse-jira-deny-destructive.sh` (bloqueia
+    chamadas destrutivas via Rovo MCP — cards nunca sao apagados, so
+    desconectados/religados).
+  - Credencial (API token classico) gerada pelo operador e gravada FORA
+    do repositorio, em `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials`
+    com permissao `0600` (diretorio `0700`) — nunca digitada no chat.
+  - Dependencias confinadas a um unico script (`jira-io.sh`): `jq` + um
+    cliente HTTP de linha de comando, sob o mesmo carve-out de
+    zero-dependencia ja documentado para o restante do toolkit.
+  - Distribuido apenas como plugin nativo (`/plugin install
+    cstk-jira@cstk`) — sem profile equivalente no `cstk install` classico
+    (nao depende do binario `cstk`).
+
+  Spec: `docs/specs/cstk-jira/`.
+
 ## [10.7.0] - 2026-09-23
 
 Ate agora, saber "o que aconteceu na onda que acabou de fechar" exigia ler
