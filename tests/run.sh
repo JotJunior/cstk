@@ -532,6 +532,15 @@ _is_internal_test() {
       # guarded: se o hook sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk-jira/hooks/posttooluse-jira-sync.sh" ] && return 0
       return 1 ;;
+    test_pretooluse-jira-deny-destructive.sh)
+      # cobre plugins/cstk-jira/hooks/pretooluse-jira-deny-destructive.sh
+      # (hook PreToolUse da guarda de exclusao via Rovo MCP — cstk-jira
+      # FASE 5.2, FR-012) — mesma razao do caso acima: _find_scripts so
+      # escaneia plugins/cstk-jira/scripts/ (nao hooks/), entao hooks/ fica
+      # fora do mapeamento 1:1. Existence-guarded: se o hook sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/hooks/pretooluse-jira-deny-destructive.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }

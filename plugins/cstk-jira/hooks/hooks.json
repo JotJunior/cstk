@@ -1,6 +1,17 @@
 {
-  "description": "Sync autonomo do cstk-jira: enfileira e drena outcomes de task/wave para o Jira Cloud durante execucoes agente-00c/feature-00c (US3, FR-005, FR-018-INFRA-SCHED). A guarda PreToolUse de exclusao (FR-012) entra na FASE 5.2.",
+  "description": "Sync autonomo do cstk-jira: enfileira e drena outcomes de task/wave para o Jira Cloud durante execucoes agente-00c/feature-00c (US3, FR-005, FR-018-INFRA-SCHED). Guarda PreToolUse de exclusao via Rovo MCP (FR-012).",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*__(deleteJiraIssue|executeDestructive)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-jira-deny-destructive.sh\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "mcp__.*__record_task",

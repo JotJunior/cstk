@@ -641,19 +641,19 @@ posttooluse-jira-sync.sh".
 Ref: contracts/hooks.md "Comportamento de pretooluse-jira-deny-destructive.sh";
 contracts/rovo-mcp.md "Tools proibidas".
 
-- [ ] 5.2.1 Matcher `PreToolUse` `mcp__.*__(deleteJiraIssue|
+- [x] 5.2.1 Matcher `PreToolUse` `mcp__.*__(deleteJiraIssue|
       executeDestructive)` (casa qualquer prefixo de instalacao do Rovo MCP)
-- [ ] 5.2.2 Casou => mensagem em stderr citando FR-012 + `exit 2`
+- [x] 5.2.2 Casou => mensagem em stderr citando FR-012 + `exit 2`
       (unico exit code que bloqueia a tool por si so)
-- [ ] 5.2.3 Sem `<cwd>/.claude/cstk-jira/config` => guarda e no-op
+- [x] 5.2.3 Sem `<cwd>/.claude/cstk-jira/config` => guarda e no-op
       (exit 0) — FR-017/SC-006, mesmo quando o Rovo MCP esta sendo usado
       para outros fins fora do plugin
-- [ ] 5.2.4 Defesa em profundidade complementar: `jira-io.sh` (FASE 3) nao
+- [x] 5.2.4 Defesa em profundidade complementar: `jira-io.sh` (FASE 3) nao
       tem metodo `DELETE` — dois pontos de enforcement independentes
       (CHK010)
-- [ ] 5.2.5 Teste positivo: `tool_name` casando o matcher => `exit 2` +
+- [x] 5.2.5 Teste positivo: `tool_name` casando o matcher => `exit 2` +
       mensagem citando FR-012
-- [ ] 5.2.6 Teste negativo: sem config presente, mesmo `tool_name` =>
+- [x] 5.2.6 Teste negativo: sem config presente, mesmo `tool_name` =>
       `exit 0` (no-op)
 
 ---
