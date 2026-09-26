@@ -444,23 +444,26 @@ ConflictRecord. **Depende de** FASE 2 (persistencia) e FASE 3 (jira-io.sh).
 
 Ref: spec.md US1; plan.md fluxo 2 "Convert".
 
-- [ ] 4.1.1 `plan --feature F`: dry-run listando criacoes, atualizacoes,
+- [x] 4.1.1 `plan --feature F`: dry-run listando criacoes, atualizacoes,
       transicoes, orfaos e conflitos previstos, sem nenhuma escrita
-- [ ] 4.1.2 `convert --feature F`: pre-condicoes completas ANTES da 1a
+      (resolvido via plugins/cstk-jira/scripts/jira-sync.sh `plan` — dry-run
+      100% local, sem `jq`/cliente HTTP; conflitos reais delegados a `drain`,
+      FASE 4.2, ainda nao implementada — nota explicita no stdout)
+- [x] 4.1.2 `convert --feature F`: pre-condicoes completas ANTES da 1a
       escrita — `deps-check`, `validate`, `credential-check` e validacao
       de credencial remota (`GET /rest/api/3/myself`); qualquer falha
       aborta sem criar artefato parcial no Jira (US1 cenario 3)
-- [ ] 4.1.3 Cria Epic, depois Tasks (`parent` = Epic), depois Sub-tasks
+- [x] 4.1.3 Cria Epic, depois Tasks (`parent` = Epic), depois Sub-tasks
       (`parent` = Task), gravando `jira-map.tsv` item a item IMEDIATAMENTE
       apos cada resposta de criacao (antes de qualquer outra chamada)
-- [ ] 4.1.4 Reexecucao de `convert`: busca SEMPRE por `jira_id`/`jira_key`
+- [x] 4.1.4 Reexecucao de `convert`: busca SEMPRE por `jira_id`/`jira_key`
       do mapeamento (nunca por titulo/JQL) — cria so o `local_key` ausente
       do arquivo (US1 cenario 2, FR-014)
-- [ ] 4.1.5 Teste de idempotencia (SC-002): 10 execucoes de `convert`
+- [x] 4.1.5 Teste de idempotencia (SC-002): 10 execucoes de `convert`
       seguidas para a mesma feature => 0 criacoes apos a 1a
-- [ ] 4.1.6 Teste: credencial rejeitada durante `convert` => nenhum issue
+- [x] 4.1.6 Teste: credencial rejeitada durante `convert` => nenhum issue
       criado (nem parcial) e `jira-map.tsv` permanece inalterado
-- [ ] 4.1.7 Teste: `tasks.md` ganha uma tarefa nova apos conversao anterior
+- [x] 4.1.7 Teste: `tasks.md` ganha uma tarefa nova apos conversao anterior
       => `convert` cria SOMENTE a Task nova associada ao Epic existente
 
 ### 4.2 `enqueue`/`drain` (US3, FR-004/005/018) `[C]`
