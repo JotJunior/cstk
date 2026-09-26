@@ -10,10 +10,20 @@
 #      issue) + nota "Resolucao do project.id"; data-model.md Entity
 #      LocalWorkItem/SyncMapping; tasks.md 4.1.1-4.1.7.
 #
-# ESCOPO ATE AGORA (tarefa 4.1): `plan` (dry-run local, sem rede) e `convert`
-# (US1: cria Epic/Task/Sub-task, grava jira-map.tsv item a item, idempotente
-# por presenca no mapeamento — FR-013/FR-014). `enqueue`/`drain`/`status`/
-# `resolve` sao FASE 4.2/4.3, fora do escopo desta tarefa.
+# ESCOPO ATE AGORA (tarefas 4.1 + 4.2 parcial): `plan`/`convert` (US1, FASE
+# 4.1 completa) e `enqueue`/`drain` (US3, FASE 4.2 PARCIAL — 4.2.1/4.2.2/
+# 4.2.6/4.2.8). `status`/`resolve`/`relink` sao FASE 4.3, fora do escopo.
+#
+# `drain` NAO implementa ainda deteccao de conflito (4.2.3/4.2.4, SyncMarker
+# via R6) nem transicao de status (4.2.5, R4): o corpo de resposta de
+# `GET .../properties/{propertyKey}` (R6) NAO tem confirmacao de roundtrip
+# real em `contracts/jira-rest.md` (so os LIMITES de tamanho da propriedade
+# estao CONFIRMADO; o shape exato da resposta segue sem fonte citavel) — por
+# Principio VI (Zero Fabricacao) o motor nao decide esse shape sem uma fonte
+# (roundtrip real ou doc oficial explicito). Eventos `queued` permanecem na
+# fila (proximo `drain` os reconsidera); nenhuma chamada de rede e feita para
+# eles nesta tarefa. Serializacao de escritas por issue (4.2.7, rate limit)
+# tambem fica para quando a transicao real existir.
 #
 # Subcomandos:
 #
@@ -105,6 +115,19 @@ USO:
       Cria Epic/Task/Sub-task no Jira (US1), gravando jira-map.tsv item a
       item; idempotente por presenca no mapeamento (FR-013/FR-014).
 
+  jira-sync.sh enqueue --feature F --local-key K --state S --source SRC
+      Acrescenta um OutboxEvent (append-only) em
+      <cwd>/.claude/cstk-jira/runtime/outbox.tsv. S em pending/in_progress/
+      pass/fail/reconcile; SRC em hook-record-task/hook-close-wave/manual.
+
+  jira-sync.sh drain --feature F
+      Processa o outbox da feature sob lock proprio (`runtime/.drain.lock/`,
+      `mkdir` atomico — lock ocupado: sai exit 0 sem processar). Compacta
+      eventos `done`; se houver QUALQUER evento `auth_failed` da feature, nao
+      faz nenhuma chamada nova (FR-016). Deteccao de conflito/transicao real
+      (SyncMarker/R4/R6) ainda NAO implementada nesta tarefa (ver nota de
+      escopo no topo do arquivo) — eventos `queued` permanecem na fila.
+
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
@@ -124,6 +147,37 @@ _js_is_safe_feature() {
   esac
   return 0
 }
+
+# Newline literal — mesmo padrao/motivo de jira-map.sh _JM_NL (deteccao de
+# injecao de linha via argumento; "$(printf '\n')" descarta o \n final e
+# quebraria o case abaixo).
+_JS_NL='
+'
+
+# _js_is_safe_field VALUE -> nao-vazio e sem TAB/newline (protege a
+# integridade de linha/coluna do outbox.tsv contra injecao via argumento —
+# mesma funcao de jira-map.sh _jm_is_safe_field, duplicada aqui porque
+# jira-sync.sh nao importa funcoes de jira-map.sh, so o invoca como binario).
+_js_is_safe_field() {
+  case "$1" in
+    '') return 1 ;;
+  esac
+  case "$1" in
+    *"$(printf '\t')"*) return 1 ;;
+  esac
+  case "$1" in
+    *"$_JS_NL"*) return 1 ;;
+  esac
+  return 0
+}
+
+# Entity OutboxEvent (data-model.md) — fila local de sync, append-only com
+# compactacao no drain (4.2.8). Arquivo compartilhado entre features (coluna
+# `feature` filtra); lock de drain e GLOBAL ao projeto (contracts/hooks.md
+# "Drenar": escritas serializadas por um unico `runtime/.drain.lock/`).
+_JS_OUTBOX_FILE="./.claude/cstk-jira/runtime/outbox.tsv"
+_JS_OUTBOX_HEADER='event_id	created_at	feature	local_key	desired_state	source	attempts	status'
+_JS_DRAIN_LOCK_DIR="./.claude/cstk-jira/runtime/.drain.lock"
 
 # _js_script_dir -> diretorio deste script (para localizar os irmaos
 # jira-config.sh/jira-tasks.sh/jira-map.sh/jira-io.sh — mesmo padrao de
@@ -341,6 +395,142 @@ _js_cmd_convert() {
   done
 }
 
+# --- enqueue -----------------------------------------------------------
+
+# _js_cmd_enqueue --feature F --local-key K --state S --source SRC — 4.2.1
+# (US3, FR-004/018): acrescenta um OutboxEvent (append-only) ao outbox
+# compartilhado do projeto. S (desired_state) e SRC (source) sao enums
+# fechados (data-model.md Entity OutboxEvent). local-key aceita `*`
+# (data-model.md: "reconciliar a feature inteira"), so exige nao-vazio e
+# ausencia de TAB/newline (mesma disciplina de jira-map.sh). Escrita atomica
+# (arquivo temporario no mesmo diretorio + `mv`, mesmo padrao de
+# jira-map.sh put). Imprime o `event_id` gerado em stdout.
+_js_cmd_enqueue() {
+  _jse_feature=""
+  _jse_key=""
+  _jse_state=""
+  _jse_source=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _js_die_usage "--feature requer valor"
+        _jse_feature="$2"; shift 2 ;;
+      --local-key)
+        [ "$#" -ge 2 ] || _js_die_usage "--local-key requer valor"
+        _jse_key="$2"; shift 2 ;;
+      --state)
+        [ "$#" -ge 2 ] || _js_die_usage "--state requer valor"
+        _jse_state="$2"; shift 2 ;;
+      --source)
+        [ "$#" -ge 2 ] || _js_die_usage "--source requer valor"
+        _jse_source="$2"; shift 2 ;;
+      *)
+        _js_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jse_feature" ] || _js_die_usage "enqueue requer --feature F"
+  _js_is_safe_feature "$_jse_feature" \
+    || _js_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jse_feature"
+  _js_is_safe_field "$_jse_key" \
+    || _js_die_usage "enqueue requer --local-key K valido (nao-vazio, sem TAB/newline; aceita '*' para reconciliar a feature inteira)"
+
+  case "$_jse_state" in
+    pending|in_progress|pass|fail|reconcile) : ;;
+    *) _js_die_usage "--state invalido: '$_jse_state' (validos: pending, in_progress, pass, fail, reconcile)" ;;
+  esac
+  case "$_jse_source" in
+    hook-record-task|hook-close-wave|manual) : ;;
+    *) _js_die_usage "--source invalido: '$_jse_source' (validos: hook-record-task, hook-close-wave, manual)" ;;
+  esac
+
+  _jse_dir=$(dirname -- "$_JS_OUTBOX_FILE")
+  mkdir -p "$_jse_dir" || _js_die "falha ao criar diretorio do outbox: $_jse_dir" 1
+
+  # seq: contador simples baseado no numero de linhas ja gravadas (so para
+  # tornar event_id legivel/unico dentro do mesmo pid+segundo; NAO e usado
+  # para nenhuma logica de idempotencia/lock — so o lock de drain serializa).
+  _jse_seq=1
+  if [ -f "$_JS_OUTBOX_FILE" ]; then
+    _jse_seq=$(($(awk -F '\t' 'NR > 1' "$_JS_OUTBOX_FILE" | wc -l | tr -d ' ') + 1))
+  fi
+  _jse_event_id="$(date -u +%s)-$$-${_jse_seq}"
+  _jse_created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  _jse_tmp="$_JS_OUTBOX_FILE.tmp.$$"
+  {
+    if [ -f "$_JS_OUTBOX_FILE" ]; then
+      cat "$_JS_OUTBOX_FILE"
+    else
+      printf '%s\n' "$_JS_OUTBOX_HEADER"
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t0\tqueued\n' \
+      "$_jse_event_id" "$_jse_created_at" "$_jse_feature" "$_jse_key" \
+      "$_jse_state" "$_jse_source"
+  } > "$_jse_tmp"
+  mv -- "$_jse_tmp" "$_JS_OUTBOX_FILE"
+
+  printf '%s\n' "$_jse_event_id"
+}
+
+# --- drain ---------------------------------------------------------------
+
+# _js_cmd_drain --feature F — 4.2.2/4.2.6/4.2.8 (US3, FR-004/005/016/018):
+# processa o outbox da feature sob lock GLOBAL do projeto
+# (`runtime/.drain.lock/`, `mkdir` atomico — contracts/hooks.md "Drenar").
+# Lock ocupado: sai exit 0 IMEDIATAMENTE sem tocar o outbox (proximo
+# gatilho de drain reprocessa). Sob o lock: compacta eventos `done` (4.2.8);
+# se QUALQUER evento `auth_failed` da feature estiver presente, nao faz
+# NENHUMA chamada nova (regra dura FR-016 — nunca repetir silenciosamente
+# tentativas que falham) e sai. Deteccao de conflito (SyncMarker/R6) e
+# transicao real (R4) SAO FASE 4.2.3-4.2.5, NAO implementadas aqui (ver nota
+# de escopo no topo do arquivo — shape de resposta de R6 sem fonte citavel,
+# Principio VI): eventos `queued` permanecem na fila.
+_js_cmd_drain() {
+  _jsd_feature=$(_js_parse_feature_arg "$@")
+
+  _jsd_lock_parent=$(dirname -- "$_JS_DRAIN_LOCK_DIR")
+  mkdir -p "$_jsd_lock_parent" || _js_die "falha ao criar diretorio runtime: $_jsd_lock_parent" 1
+
+  if ! mkdir "$_JS_DRAIN_LOCK_DIR" 2>/dev/null; then
+    # 4.2.2: lock ocupado -> outro drain em andamento. Sai sem erro; o
+    # proximo gatilho (hook/skill) drena os eventos pendentes.
+    exit 0
+  fi
+  trap 'rmdir -- "$_JS_DRAIN_LOCK_DIR" 2>/dev/null || :' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  [ -f "$_JS_OUTBOX_FILE" ] || exit 0
+
+  # 4.2.8: compactacao — remove eventos `done` (o outbox nao cresce
+  # indefinidamente). Rewrite atomico (tmp no mesmo diretorio + mv).
+  _jsd_tmp="$_JS_OUTBOX_FILE.tmp.$$"
+  awk -F '\t' -v OFS='\t' '
+    NR == 1 { print; next }
+    $8 != "done" { print }
+  ' "$_JS_OUTBOX_FILE" > "$_jsd_tmp"
+  mv -- "$_jsd_tmp" "$_JS_OUTBOX_FILE"
+
+  # 4.2.6: regra dura — qualquer evento auth_failed presente PARA ESTA
+  # FEATURE bloqueia toda chamada nova ate reconfiguracao (jira-setup).
+  _jsd_auth_failed=$(awk -F '\t' -v f="$_jsd_feature" \
+    'NR > 1 && $3 == f && $8 == "auth_failed" { print; exit }' "$_JS_OUTBOX_FILE")
+  if [ -n "$_jsd_auth_failed" ]; then
+    printf '%s: evento auth_failed presente para a feature %s — nenhuma chamada nova ate reconfiguracao (FR-016)\n' \
+      "$_JS_NAME" "$_jsd_feature" >&2
+    exit 0
+  fi
+
+  _jsd_queued=$(awk -F '\t' -v f="$_jsd_feature" \
+    'NR > 1 && $3 == f && $8 == "queued" { print $1 }' "$_JS_OUTBOX_FILE")
+  if [ -n "$_jsd_queued" ]; then
+    printf '%s: deteccao de conflito/transicao (R4/R6, tarefas 4.2.3-4.2.5) ainda nao implementada — eventos permanecem na fila: %s\n' \
+      "$_JS_NAME" "$(printf '%s' "$_jsd_queued" | tr '\n' ' ')" >&2
+  fi
+
+  exit 0
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _js_sub="${1:-}"
@@ -357,7 +547,13 @@ case "$_js_sub" in
   convert)
     _js_cmd_convert "$@"
     ;;
+  enqueue)
+    _js_cmd_enqueue "$@"
+    ;;
+  drain)
+    _js_cmd_drain "$@"
+    ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain)"
     ;;
 esac

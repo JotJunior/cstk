@@ -57,6 +57,25 @@
 #   SY-12 convert (US1 cenario 2): task nova acrescentada ao tasks.md apos
 #         conversao anterior -> convert cria SOMENTE a task nova associada
 #         ao Epic ja existente (nenhuma chamada para os itens ja mapeados)
+#
+# enqueue/drain (FASE 4.2 PARCIAL — 4.2.1/4.2.2/4.2.6/4.2.8; deteccao de
+# conflito/transicao real via R4/R6 fica para 4.2.3-4.2.5, fora desta tarefa
+# — ver nota de escopo no topo de jira-sync.sh):
+#   SY-13 enqueue: 1a chamada cria outbox.tsv com cabecalho + 1 linha
+#         (status=queued, attempts=0); --state/--source fora do enum -> exit
+#         2, outbox.tsv nunca criado
+#   SY-14 drain: lock (`runtime/.drain.lock/`) ja ocupado -> exit 0
+#         imediato, outbox.tsv NAO tocado (simula 2 chamadas concorrentes,
+#         4.2.9 — a que "chega depois" sai sem processar nem erro)
+#   SY-15 drain: compactacao remove eventos `done`, preserva `queued`
+#         (4.2.8); lock e sempre liberado ao final (rmdir)
+#   SY-16 drain: evento `auth_failed` presente para a feature -> nenhum
+#         evento `queued` da MESMA feature e alterado, diagnostico em
+#         stderr citando FR-016 (4.2.6 — nota de escopo: cobre o gate no
+#         nivel do outbox; bloqueio de chamadas de rede reais pende de
+#         4.2.3-4.2.5, ainda nao implementadas)
+#   SY-17 drain: evento `auth_failed` de OUTRA feature nao bloqueia o drain
+#         da feature corrente (gate e por feature, nao global)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -404,6 +423,104 @@ scenario_convert_task_nova_cria_somente_a_nova() {
   _new_task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-8.json")
   [ "$_new_task_parent" = "DEMO-1" ] \
     || { _fail "convert_new_task_parent_is_existing_epic" "esperado parent=DEMO-1 (epic existente), obtido $_new_task_parent"; return 1; }
+  return 0
+}
+
+# =========================== enqueue/drain ==================================
+
+_outbox_file() {
+  printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv"
+}
+
+_drain_lock_dir() {
+  printf '%s\n' "$TMPDIR_TEST/.claude/cstk-jira/runtime/.drain.lock"
+}
+
+scenario_enqueue_cria_outbox_com_cabecalho_e_linha_queued() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state pass --source manual || return 1
+  [ -f "$(_outbox_file)" ] || { _fail "enqueue_creates_outbox" "outbox.tsv nao foi criado"; return 1; }
+  head -n1 "$(_outbox_file)" | grep -q '^event_id	created_at	feature	local_key	desired_state	source	attempts	status$' \
+    || { _fail "enqueue_header" "cabecalho do outbox.tsv incorreto"; return 1; }
+  _line=$(awk -F '\t' 'NR==2' "$(_outbox_file)")
+  printf '%s' "$_line" | grep -q '	demo	1.1	pass	manual	0	queued$' \
+    || { _fail "enqueue_line" "linha gravada incorreta: $_line"; return 1; }
+  return 0
+}
+
+scenario_enqueue_state_invalido_exit2_sem_criar_outbox() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state bogus --source manual || return 1
+  [ -f "$(_outbox_file)" ] && { _fail "enqueue_bad_state_no_outbox" "outbox.tsv foi criado com --state invalido"; return 1; }
+  return 0
+}
+
+scenario_enqueue_source_invalido_exit2_sem_criar_outbox() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state pending --source bogus || return 1
+  [ -f "$(_outbox_file)" ] && { _fail "enqueue_bad_source_no_outbox" "outbox.tsv foi criado com --source invalido"; return 1; }
+  return 0
+}
+
+scenario_drain_lock_ocupado_sai_exit0_sem_tocar_outbox() {
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" enqueue --feature demo --local-key 1.1 --state pending --source manual >/dev/null || return 1
+  _before=$(cat "$(_outbox_file)")
+  mkdir -p "$(_drain_lock_dir)"
+  assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+  _after=$(cat "$(_outbox_file)")
+  [ "$_before" = "$_after" ] \
+    || { _fail "drain_lock_busy_no_touch" "outbox.tsv foi alterado mesmo com lock ocupado"; return 1; }
+  [ -d "$(_drain_lock_dir)" ] \
+    || { _fail "drain_lock_busy_keeps_dir" "drain removeu o lock de OUTRO dono ao sair"; return 1; }
+  return 0
+}
+
+scenario_drain_compacta_done_preserva_queued_e_libera_lock() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	done
+e2	2026-01-01T00:00:01Z	demo	1.2	pending	manual	0	queued
+EOF
+  assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+  grep -q '^e1	' "$(_outbox_file)" && { _fail "drain_compaction_removes_done" "evento done nao foi removido"; return 1; }
+  grep -q '^e2	' "$(_outbox_file)" || { _fail "drain_compaction_keeps_queued" "evento queued foi removido indevidamente"; return 1; }
+  [ -d "$(_drain_lock_dir)" ] && { _fail "drain_releases_lock" "lock nao foi liberado apos drain"; return 1; }
+  return 0
+}
+
+scenario_drain_auth_failed_bloqueia_e_nao_altera_queued_da_mesma_feature() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	auth_failed
+e2	2026-01-01T00:00:01Z	demo	1.2	pending	manual	0	queued
+EOF
+  _before_e2=$(awk -F '\t' '$1=="e2"' "$(_outbox_file)")
+  assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+  assert_stderr_contains "FR-016" || return 1
+  _after_e2=$(awk -F '\t' '$1=="e2"' "$(_outbox_file)")
+  [ "$_before_e2" = "$_after_e2" ] \
+    || { _fail "drain_auth_failed_no_touch" "evento queued da mesma feature foi alterado apesar do gate auth_failed"; return 1; }
+  return 0
+}
+
+scenario_drain_auth_failed_de_outra_feature_nao_bloqueia() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	outra-feature	9.9	pass	manual	0	auth_failed
+e2	2026-01-01T00:00:01Z	demo	1.2	pending	manual	0	queued
+EOF
+  assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+  case "${_CAPTURED_STDERR:-}" in
+    *FR-016*) _fail "drain_cross_feature_gate" "gate auth_failed vazou de outra feature"; return 1 ;;
+  esac
+  grep -q '^e2	' "$(_outbox_file)" || { _fail "drain_cross_feature_queued_kept" "evento queued da feature corrente sumiu"; return 1; }
   return 0
 }
 

@@ -470,35 +470,78 @@ Ref: spec.md US1; plan.md fluxo 2 "Convert".
 
 Ref: spec.md US3; data-model.md OutboxEvent; contracts/hooks.md "Drenar".
 
-- [ ] 4.2.1 `enqueue --feature F --local-key K --state S --source SRC`:
+- [x] 4.2.1 `enqueue --feature F --local-key K --state S --source SRC`:
       append em `outbox.tsv` (append-only)
-- [ ] 4.2.2 `drain --feature F`: lock `runtime/.drain.lock/` (`mkdir`
+- [x] 4.2.2 `drain --feature F`: lock `runtime/.drain.lock/` (`mkdir`
       atomico); lock ocupado => sai sem erro, proximo gatilho drena
 - [ ] 4.2.3 Para cada evento: ler issue + `SyncMarker` (entity property
       `cstk-jira.sync`), detectar conflito (`sha256(titulo_atual) !=
       written_summary_sha256` OU `status_atual != written_status` OU
-      marker ausente `marker_missing`) ANTES de escrever
+      marker ausente `marker_missing`) ANTES de escrever — **BLOQUEADO por
+      Principio VI**: `contracts/jira-rest.md` R6 confirma so os LIMITES de
+      tamanho da propriedade (roundtrip real nao cobriu R6); o shape exato
+      da resposta de `GET .../properties/{propertyKey}` (envelope
+      `{key,value}` vs valor cru) segue sem fonte citavel no contrato desta
+      feature — nao decidido aqui sem roundtrip real ou doc oficial
+      explicito citado no contrato
 - [ ] 4.2.4 Conflito detectado => NAO escreve; gera `ConflictRecord`
       (`reason` = `manual_edit`/`marker_missing`); nunca sobrescreve
-      silenciosamente (FR-011)
+      silenciosamente (FR-011) — depende de 4.2.3
 - [ ] 4.2.5 Sem conflito: transiciona para o status mapeado
       (`status_pending`/`status_in_progress`/`status_pass`/`status_fail`)
       e regrava `SyncMarker` com o novo `written_summary_sha256`/
-      `written_status`/`written_at`
-- [ ] 4.2.6 Regra dura: com qualquer evento `auth_failed` presente no
+      `written_status`/`written_at` — depende de 4.2.3/R4 (mapear status
+      alvo -> `transition.id` via R5, ainda nao amarrado ao motor)
+- [x] 4.2.6 Regra dura: com qualquer evento `auth_failed` presente no
       outbox, o drain NAO faz NENHUMA nova chamada ate reconfiguracao
-      (FR-016 — nunca repetir silenciosamente tentativas que falham)
+      (FR-016 — nunca repetir silenciosamente tentativas que falham) —
+      gate implementado no NIVEL DO OUTBOX (por feature); bloqueio de
+      chamadas de rede REAIS so sera totalmente observavel quando
+      4.2.3-4.2.5 existirem
 - [ ] 4.2.7 Serializacao de escritas: nunca 2 escritas concorrentes na
       mesma issue (rate limit Jira de 20 escritas/2s por issue —
-      checklists/api.md CHK014)
-- [ ] 4.2.8 Compactacao do outbox: eventos `done` sao removidos no proximo
+      checklists/api.md CHK014) — nao ha ainda escrita real a serializar
+      (depende de 4.2.5)
+- [x] 4.2.8 Compactacao do outbox: eventos `done` sao removidos no proximo
       drain (outbox nao cresce indefinidamente)
-- [ ] 4.2.9 Teste: 2 chamadas de `drain` concorrentes (lock disputado) =>
+- [x] 4.2.9 Teste: 2 chamadas de `drain` concorrentes (lock disputado) =>
       apenas uma processa; a outra sai imediatamente sem erro
 - [ ] 4.2.10 Teste: deteccao de conflito (issue editada manualmente
-      simulada) gera `ConflictRecord` e NAO sobrescreve o titulo/status
+      simulada) gera `ConflictRecord` e NAO sobrescreve o titulo/status —
+      depende de 4.2.3/4.2.4
 - [ ] 4.2.11 Teste: evento `auth_failed` presente bloqueia TODAS as
-      chamadas subsequentes do drain ate reconfiguracao simulada
+      chamadas subsequentes do drain ate reconfiguracao simulada — coberto
+      PARCIALMENTE (gate por feature no outbox, `scenario_drain_auth_
+      failed_bloqueia_e_nao_altera_queued_da_mesma_feature`); cobertura
+      completa (contagem de chamadas de rede reais) pende de 4.2.3-4.2.5
+
+      Implementado em `plugins/cstk-jira/scripts/jira-sync.sh`: subcomandos
+      `enqueue` (valida `--state` em
+      `pending|in_progress|pass|fail|reconcile` e `--source` em
+      `hook-record-task|hook-close-wave|manual`; escreve
+      `.claude/cstk-jira/runtime/outbox.tsv`, atomico via tmp+mv, mesmo
+      padrao de `jira-map.sh put`) e `drain` (lock GLOBAL do projeto via
+      `mkdir` atomico em `runtime/.drain.lock/`, `trap` EXIT/INT/TERM
+      liberando o lock; compactacao remove `status=done`; gate `auth_failed`
+      e por `feature`, nao global). `drain` ainda NAO chama `jira-io.sh`
+      (nenhuma chamada de rede nesta tarefa) — eventos `queued`
+      permanecem na fila com diagnostico em stderr explicando o motivo
+      (4.2.3-4.2.5 pendentes). Testes em `tests/cstk/test_jira-sync.sh`:
+      7 cenarios novos (SY-13..SY-17) + os 12 de 4.1 continuam verdes —
+      `sh tests/run.sh jira-sync`: 19/19 PASS; `shellcheck -s sh` limpo;
+      `sh tests/run.sh --check-coverage`: zero orfaos.
+
+      **Proximas subtarefas (proxima onda)**: 4.2.3 (ler `GET
+      /rest/api/3/issue/{key}` + `GET .../properties/cstk-jira.sync`,
+      comparar sha256 do titulo/status contra o SyncMarker — exige ANTES
+      um roundtrip real ou fonte oficial citavel para o shape da resposta
+      de R6, sob pena de violar Principio VI) -> 4.2.4 (`ConflictRecord`
+      em `runtime/conflicts.tsv`) -> 4.2.5 (resolver `transition.id` via
+      `GET .../transitions` comparando `to.name` ao `status_*` configurado,
+      `POST .../transitions` com `--op R4`, regravar SyncMarker via `PUT
+      .../properties/cstk-jira.sync`) -> 4.2.7 (serializacao real) -> 4.2.10/
+      4.2.11 (testes de conflito e de bloqueio de chamadas reais). Depois:
+      4.3 (`status`/`resolve`/`relink`) e 4.4 (orfao nunca apagado).
 
 ### 4.3 `status`/`resolve`/`relink` (resolucao humana) `[A]`
 
