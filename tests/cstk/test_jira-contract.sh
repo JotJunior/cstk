@@ -251,15 +251,21 @@ scenario_ct_r1_convert_metodo_path_corpo_batem_contrato() {
     || { _fail "ct_r1_subtask_url" "obtido: $_l5"; return 1; }
 
   # contracts/jira-rest.md R1 "Campos de request/response": Epic (raiz, sem
-  # fields.parent) so tem project/issuetype/summary; Task (com parent) soma
-  # fields.parent — nenhum campo fora do contrato (ex.: description nunca
-  # foi passado pelo motor nesta versao).
+  # fields.parent, e SEM fields.description — data-model.md: criticidade/
+  # dependencia so entram na descricao da TASK) so tem project/issuetype/
+  # summary. Task (com parent) soma fields.parent + fields.description desde
+  # a feature cstk-jira FASE 10 tarefa 10.1 (FR-001): a fixture
+  # `_write_tasks_1task_1sub` tem a tag `` `[A]` `` no heading da task 1.1,
+  # entao a descricao composta ("Criticidade: A") sempre acompanha a
+  # criacao — nenhum campo fora do contrato (`fields.description` em ADF ja
+  # documentado em `contracts/jira-rest.md` R1/`plugin-scripts.md`
+  # `json-build issue`).
   _epic_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-3.json" | tr '\n' ',')
   [ "$_epic_fields" = "issuetype,project,summary," ] \
     || { _fail "ct_r1_epic_fields" "esperado issuetype,project,summary — obtido $_epic_fields"; return 1; }
   _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-4.json" | tr '\n' ',')
-  [ "$_task_fields" = "issuetype,parent,project,summary," ] \
-    || { _fail "ct_r1_task_fields" "esperado issuetype,parent,project,summary — obtido $_task_fields"; return 1; }
+  [ "$_task_fields" = "description,issuetype,parent,project,summary," ] \
+    || { _fail "ct_r1_task_fields" "esperado description,issuetype,parent,project,summary — obtido $_task_fields"; return 1; }
 
   # fields.project.id (contracts/jira-rest.md: "{"id": "<string>"}
   # CONFIRMADO roundtrip onda-011") vem da resolucao via GET /project

@@ -64,6 +64,14 @@ USO:
       Imprime: local_key  kind  phase  criticality  local_state  title
       (uma linha por Epic/Task/Sub-task, TAB-separado)
 
+  jira-tasks.sh phase-deps --feature F --phase PHASE
+      Imprime uma linha por FASE da qual PHASE depende (rotulo completo,
+      extraido da secao "## Matriz de Dependencias" de tasks.md — unica
+      fonte real de dependencia deste backlog, FR-001). PHASE e a coluna
+      `phase` de `items` (ex.: "FASE 6 - Skills Interativas"). Sem numero de
+      fase reconhecivel, sem secao Matriz, ou sem aresta apontando para essa
+      fase: stdout vazio, exit 0 (dependencia "quando existir").
+
 Le <cwd>/docs/specs/F/tasks.md (obrigatorio) e <cwd>/docs/specs/F/spec.md
 (opcional, titulo do Epic).
 
@@ -302,6 +310,95 @@ _jt_cmd_items() {
   ' "$_jti_tasks_file"
 }
 
+# _jt_cmd_phase_deps --feature F --phase PHASE — feature cstk-jira FASE 10
+# tarefa 10.1 (FR-001 "dependencias... quando existirem"). A UNICA fonte real
+# e extraivel de dependencia neste backlog e a secao "## Matriz de
+# Dependencias" (grafo mermaid FASE-a-FASE, template canonico
+# plugins/cstk/skills/create-tasks/templates/tasks.md) — NAO existe
+# dependencia por-task no formato do template (Principio VI: nunca inventar
+# um campo "depende de N.M" que a fonte nao tem). Por isso esta funcao
+# resolve dependencias no nivel de FASE: dado PHASE (coluna `phase` de
+# `items`, ex.: "FASE 6 - Skills Interativas"), imprime uma linha por FASE
+# da qual ela depende (rotulo completo do node de origem de cada aresta
+# "F<M> --> F<N>" onde N e o numero desta FASE). Sem numero de FASE
+# reconhecivel, sem secao Matriz, ou sem arestas apontando para N: nenhuma
+# linha (silencio, nunca erro — dependencia "quando existir").
+_jt_cmd_phase_deps() {
+  _jtpd_feature=""
+  _jtpd_phase=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _jt_die_usage "--feature requer valor"
+        _jtpd_feature="$2"
+        shift 2
+        ;;
+      --phase)
+        [ "$#" -ge 2 ] || _jt_die_usage "--phase requer valor"
+        _jtpd_phase="$2"
+        shift 2
+        ;;
+      *)
+        _jt_die_usage "argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  _jt_is_safe_feature "$_jtpd_feature" \
+    || _jt_die_usage "--feature invalido (charset [A-Za-z0-9_-]): '$_jtpd_feature'"
+  [ -n "$_jtpd_phase" ] || _jt_die_usage "phase-deps requer --phase nao-vazio"
+
+  _jtpd_tasks_file="./docs/specs/$_jtpd_feature/tasks.md"
+  [ -f "$_jtpd_tasks_file" ] || _jt_die "tasks.md nao encontrado: $_jtpd_tasks_file" 1
+
+  # Numero da FASE: 2a palavra de "FASE N - <nome>" (ex.: "FASE 6 - Skills
+  # Interativas" -> "6"). PHASE sem esse formato -> sem dependencia conhecida
+  # (silencio, nao erro: campos vazios de LocalWorkItem — ex.: Epic/Sub-task
+  # — chamam phase-deps com string vazia/fora do formato eventualmente).
+  _jtpd_num=$(printf '%s' "$_jtpd_phase" | awk '{print $2}')
+  case "$_jtpd_num" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+
+  awk -v target="$_jtpd_num" '
+    BEGIN { in_matrix = 0; in_flow = 0; n_edges = 0 }
+    /^## Matriz de Dependencias/ { in_matrix = 1; next }
+    in_matrix && /^## / { in_matrix = 0 }
+    in_matrix && $0 ~ /^```mermaid/ { in_flow = 1; next }
+    in_matrix && in_flow && $0 ~ /^```/ { in_flow = 0; next }
+    in_flow && match($0, /^[ \t]*F[0-9]+\[[^]]*\]/) {
+      seg = substr($0, RSTART, RLENGTH)
+      idend = index(seg, "[")
+      id = substr(seg, 1, idend - 1)
+      gsub(/[ \t]/, "", id)
+      label = substr(seg, idend + 1, length(seg) - idend - 1)
+      node_label[id] = label
+      next
+    }
+    in_flow && match($0, /^[ \t]*F[0-9]+[ \t]*-->[ \t]*F[0-9]+/) {
+      seg = substr($0, RSTART, RLENGTH)
+      arrow = index(seg, "-->")
+      from = substr(seg, 1, arrow - 1)
+      to = substr(seg, arrow + 3)
+      gsub(/[ \t]/, "", from)
+      gsub(/[ \t]/, "", to)
+      n_edges++
+      edge_from[n_edges] = from
+      edge_to[n_edges] = to
+      next
+    }
+    END {
+      wanted = "F" target
+      for (i = 1; i <= n_edges; i++) {
+        if (edge_to[i] == wanted && (edge_from[i] in node_label)) {
+          print node_label[edge_from[i]]
+        }
+      }
+    }
+  ' "$_jtpd_tasks_file"
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _jt_sub="${1:-}"
@@ -315,7 +412,10 @@ case "$_jt_sub" in
   items)
     _jt_cmd_items "$@"
     ;;
+  phase-deps)
+    _jt_cmd_phase_deps "$@"
+    ;;
   *)
-    _jt_die_usage "subcomando desconhecido: $_jt_sub (validos: items)"
+    _jt_die_usage "subcomando desconhecido: $_jt_sub (validos: items, phase-deps)"
     ;;
 esac

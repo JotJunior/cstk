@@ -316,6 +316,12 @@ USO:
       Todos os campos sao texto livre, escapados via jq --arg (local_key/
       status podem conter pontos/espacos, ex. "4.2.1"/"In Progress").
 
+  jira-io.sh json-build issue-update --summary TEXT [--description TEXT]
+      Monta o corpo de R2 (editar issue, FR-003): {"fields":{"summary":...}}
+      (+ "description" em ADF, opcional). SEM project/issuetype/parent —
+      um update so envia os campos que mudam. summary/description texto
+      livre, escapado via jq --arg.
+
   jira-io.sh sha256-stdin
       Le stdin, imprime o SHA-256 hex (sha256sum ou shasum -a 256, o que
       estiver no PATH). Usado pelo motor (jira-sync.sh, FASE 4.2.3) para
@@ -828,11 +834,14 @@ _ji_cmd_json_build() {
     marker)
       _ji_cmd_json_build_marker "$@"
       ;;
+    issue-update)
+      _ji_cmd_json_build_issue_update "$@"
+      ;;
     '')
-      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker)"
+      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update)"
       ;;
     *)
-      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker)"
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update)"
       ;;
   esac
 }
@@ -926,6 +935,65 @@ _ji_cmd_json_build_issue() {
     --argjson have_description "$_jbi_have_description_json" \
     '{fields: {project: {id: $pid}, issuetype: {id: $tid}, summary: $summary}}
      | if $have_parent then .fields.parent = {key: $parent_key} else . end
+     | if $have_description then
+         .fields.description = {
+           type: "doc",
+           version: 1,
+           content: [{type: "paragraph", content: [{type: "text", text: $description}]}]
+         }
+       else . end'
+}
+
+# _ji_cmd_json_build_issue_update --summary TEXT [--description TEXT] —
+# feature cstk-jira FASE 10 tarefa 10.2 (FR-003): monta o corpo de R2
+# (`PUT /rest/api/3/issue/{issueIdOrKey}`, `contracts/jira-rest.md` R2 —
+# mesmo schema `IssueUpdateDetails` de R1, mas so os campos que MUDAM: uma
+# edicao nunca precisa reenviar `project`/`issuetype`). Deliberadamente SEM
+# `--project-id`/`--issuetype-id`/`--parent-key` (imutaveis num update de
+# summary/description — reenvia-los seria dado nao-tocado, alem de exigir
+# resolucao de IDs que o chamador de update nao tem motivo para buscar de
+# novo). summary/description via `jq --arg` (nunca concatenacao de string,
+# mesma disciplina de `json-build issue`); description usa a MESMA forma ADF
+# (paragrafo unico).
+_ji_cmd_json_build_issue_update() {
+  _jbu_summary=""
+  _jbu_description=""
+  _jbu_have_summary="no"
+  _jbu_have_description="no"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --summary)
+        [ "$#" -ge 2 ] || _ji_die_usage "--summary requer argumento"
+        _jbu_summary="$2"
+        _jbu_have_summary="yes"
+        shift 2
+        ;;
+      --description)
+        [ "$#" -ge 2 ] || _ji_die_usage "--description requer argumento"
+        _jbu_description="$2"
+        _jbu_have_description="yes"
+        shift 2
+        ;;
+      *)
+        _ji_die_usage "json-build issue-update: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ "$_jbu_have_summary" = "yes" ] \
+    || _ji_die_usage "json-build issue-update requer --summary"
+
+  _ji_require_jq
+
+  _jbu_have_description_json="false"
+  [ "$_jbu_have_description" = "yes" ] && _jbu_have_description_json="true"
+
+  jq -n \
+    --arg summary "$_jbu_summary" \
+    --arg description "$_jbu_description" \
+    --argjson have_description "$_jbu_have_description_json" \
+    '{fields: {summary: $summary}}
      | if $have_description then
          .fields.description = {
            type: "doc",

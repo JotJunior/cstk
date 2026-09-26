@@ -302,7 +302,13 @@ _queue_calls_count() {
 
 _queue_post_issue_calls_count() {
   [ -f "$TMPDIR_TEST/queue-curl-calls.log" ] || { printf '0'; return; }
-  grep -c 'POST .*api/3/issue$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null || printf '0'
+  # `grep -c` sai 1 quando NAO acha nenhuma linha (mesmo tendo impresso "0"
+  # legitimamente) — capturar em variavel ANTES de decidir o fallback evita
+  # o double-print "00" que `grep -c ... || printf '0'` produzia direto no
+  # caso zero-matches (bug latente exposto pela 1a asserção de 0 criacoes,
+  # feature cstk-jira FASE 10 tarefa 10.2/SY-39).
+  _qpicc_n=$(grep -c 'POST .*api/3/issue$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _qpicc_n=0
+  printf '%s' "$_qpicc_n"
 }
 
 # =========================== plan ==========================================
@@ -469,11 +475,18 @@ scenario_convert_idempotente_10x_3_criacoes_no_total() {
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
-  # execucoes 2-10: so myself + project (tudo ja mapeado -> 0 criacoes)
+  # execucoes 2-10: myself + project + 1 GET R3 por item ja mapeado (FR-003,
+  # feature cstk-jira FASE 10 tarefa 10.2 — _js_maybe_update_mapped_issue
+  # checa divergencia antes de decidir nao-criar); summary devolvido IDENTICO
+  # ao composto na criacao -> no-op imediato, SEM leitura do SyncMarker (R6) e
+  # SEM nenhuma criacao.
   _i=2
   while [ "$_i" -le 10 ]; do
     _queue_push 200 '{"accountId":"acc-1"}'
     _queue_push 200 '{"id":"10000","key":"DEMO"}'
+    _queue_push 200 '{"fields":{"summary":"demo"}}'
+    _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa"}}'
+    _queue_push 200 '{"fields":{"summary":"Sub um"}}'
     _i=$((_i + 1))
   done
 
@@ -507,6 +520,12 @@ scenario_convert_task_nova_cria_somente_a_nova() {
   _append_task_1_2
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  # FR-003 (feature cstk-jira FASE 10 tarefa 10.2): epic/task 1.1/sub 1.1.1 ja
+  # mapeados -> _js_maybe_update_mapped_issue checa cada um (1 GET R3, summary
+  # devolvido identico ao composto -> no-op) ANTES da task 1.2 (nova) ser criada.
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa"}}'
+  _queue_push 200 '{"fields":{"summary":"Sub um"}}'
   _queue_push 201 '{"id":"20004","key":"DEMO-4"}'
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
@@ -514,8 +533,9 @@ scenario_convert_task_nova_cria_somente_a_nova() {
     || { _fail "convert_new_task_total_creates" "esperado 4 POST /issue no total, obtido $(_queue_post_issue_calls_count)"; return 1; }
   grep -q '^1\.2	task	20004	DEMO-4	active$' "$(_map_file)" \
     || { _fail "convert_new_task_mapped" "task nova (1.2) nao foi mapeada corretamente"; return 1; }
-  # a nova task usa o Epic ja existente como parent (call index 8: 6=myself,7=project,8=create)
-  _new_task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-8.json")
+  # a nova task usa o Epic ja existente como parent (call index 11: 6=myself,
+  # 7=project, 8/9/10=R3 dos 3 itens ja mapeados (FR-003), 11=create)
+  _new_task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-11.json")
   [ "$_new_task_parent" = "DEMO-1" ] \
     || { _fail "convert_new_task_parent_is_existing_epic" "esperado parent=DEMO-1 (epic existente), obtido $_new_task_parent"; return 1; }
   return 0
@@ -1216,6 +1236,264 @@ scenario_convert_deps_ausentes_exit5_path_minimo() {
   assert_exit 5 env PATH="$_bin" "$SCRIPT" convert --feature demo || return 1
   assert_stderr_contains "jq" || return 1
   assert_stderr_contains "curl" || return 1
+  return 0
+}
+
+# =========================== convert: descricao FR-001 (FASE 10 t. 10.1) ====
+#
+#   SY-36 convert: task com tag de criticidade (`[A]`) e SEM secao "Matriz
+#         de Dependencias" -> fields.description da Task = "Criticidade: A";
+#         Epic e Sub-task NUNCA ganham fields.description (data-model.md:
+#         so a Task carrega criticidade/dependencia no LocalWorkItem)
+#   SY-37 convert: 2 fases com "## Matriz de Dependencias" apontando
+#         F1-->F2 -> Task da FASE 2 ganha "Criticidade: A | Depende de: FASE
+#         1 - Fundacao"; Task da FASE 1 (sem aresta de entrada) ganha SO
+#         "Criticidade: A" (sem "Depende de")
+#   SY-38 convert: task SEM tag de criticidade e SEM "Matriz de
+#         Dependencias" -> nenhum trecho para compor -> fields.description
+#         OMITIDO do corpo (nunca uma chave vazia/nula)
+
+# _write_tasks_2fases_com_matriz: FASE 1 (task 1.1 `[A]` + sub) e FASE 2
+# (task 2.1 `[A]` + sub), com "## Matriz de Dependencias" (F1 --> F2) —
+# fixture dedicada de SY-37 (fonte real e extraivel de dependencia, nunca
+# inventada por-task; FR-001).
+_write_tasks_2fases_com_matriz() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Fundacao `[A]`
+
+### 1.1 Titulo um `[A]`
+
+- [ ] 1.1.1 Sub um
+
+## FASE 2 - Sincronizacao `[A]`
+
+### 2.1 Titulo dois `[A]`
+
+- [ ] 2.1.1 Sub dois
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Fundacao]
+    F2[FASE 2 - Sincronizacao]
+
+    F1 --> F2
+```
+EOF
+}
+
+# _write_tasks_1task_1sub_sem_crit: mesma forma de _write_tasks_1task_1sub,
+# mas SEM a tag `` `[A]` `` no heading da task (SY-38 — sem criticidade e sem
+# Matriz, description nunca deve ser passada ao json-build).
+_write_tasks_1task_1sub_sem_crit() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa
+
+- [ ] 1.1.1 Sub um
+EOF
+}
+
+scenario_convert_description_com_criticidade_sem_matriz() {
+  _write_full_config
+  _write_tasks_1task_1sub
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  _epic_desc=$("$IO_SCRIPT" json-get '.fields.description? // "none"' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_epic_desc" = "none" ] || { _fail "sy36_epic_no_description" "Epic nao deveria ter fields.description (obtido $_epic_desc)"; return 1; }
+
+  _task_desc_text=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_task_desc_text" = "Criticidade: A" ] \
+    || { _fail "sy36_task_description" "esperado 'Criticidade: A', obtido '$_task_desc_text'"; return 1; }
+
+  _sub_desc=$("$IO_SCRIPT" json-get '.fields.description? // "none"' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_sub_desc" = "none" ] || { _fail "sy36_subtask_no_description" "Sub-task nao deveria ter fields.description (obtido $_sub_desc)"; return 1; }
+  return 0
+}
+
+scenario_convert_description_com_criticidade_e_dependencia_da_matriz() {
+  _write_full_config
+  _write_tasks_2fases_com_matriz
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  # myself + project + 5 creates (epic, task1.1, sub1.1.1, task2.1, sub2.1.1)
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 201 '{"id":"20004","key":"DEMO-4"}'
+  _queue_push 201 '{"id":"20005","key":"DEMO-5"}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  # chamada 4 = task 1.1 (FASE 1, sem aresta de entrada na Matriz)
+  _t1_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_t1_desc" = "Criticidade: A" ] \
+    || { _fail "sy37_fase1_sem_dependencia" "esperado 'Criticidade: A', obtido '$_t1_desc'"; return 1; }
+
+  # chamada 6 = task 2.1 (FASE 2, aresta F1-->F2 na Matriz)
+  _t2_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_t2_desc" = "Criticidade: A | Depende de: FASE 1 - Fundacao" ] \
+    || { _fail "sy37_fase2_com_dependencia" "esperado 'Criticidade: A | Depende de: FASE 1 - Fundacao', obtido '$_t2_desc'"; return 1; }
+  return 0
+}
+
+scenario_convert_description_omitida_sem_criticidade_e_sem_dependencia() {
+  _write_full_config
+  _write_tasks_1task_1sub_sem_crit
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-4.json" | tr '\n' ',')
+  [ "$_task_fields" = "issuetype,parent,project,summary," ] \
+    || { _fail "sy38_task_sem_description" "esperado issuetype,parent,project,summary (sem description) — obtido $_task_fields"; return 1; }
+  return 0
+}
+
+# =========================== convert: atualizar issue mapeada (FR-003, FASE 10 t. 10.2) ====
+#
+#   SY-39 convert: item ja mapeado (`active`) com titulo local mudado e SEM
+#         divergencia no Jira (summary atual == SyncMarker) -> R2 PUT com o
+#         NOVO summary/description + regrava o SyncMarker (novo hash,
+#         written_status PRESERVADO); ZERO POST /issue (nada criado);
+#         jira-map.tsv NUNCA reescrito por uma atualizacao de conteudo
+#   SY-40 convert: item ja mapeado com SyncMarker AUSENTE (404) -> NUNCA
+#         escreve (FR-011); gera ConflictRecord `marker_missing`; ZERO
+#         PUT/POST de escrita
+#   SY-41 convert: item ja mapeado cujo summary ATUAL no Jira ja diverge do
+#         SyncMarker (edicao manual desde a ultima sync) -> NUNCA sobrescreve
+#         (FR-011), mesmo com o titulo local tambem tendo mudado; gera
+#         ConflictRecord `manual_edit`; ZERO PUT/POST de escrita
+
+# _write_tasks_titulo_mudado: FASE 1 / task 1.1 com titulo "Novo titulo"
+# (SEM sub-task, para manter a fila de rede pequena) — usada pelas 3
+# cenarios SY-39/40/41, que pre-existem o mapeamento (epic+task `active`)
+# ANTES de rodar convert, simulando uma re-conversao apos editar o titulo
+# local.
+_write_tasks_titulo_mudado() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Novo titulo `[A]`
+EOF
+}
+
+scenario_convert_atualiza_summary_via_r2_sem_conflito() {
+  _write_full_config
+  _write_tasks_titulo_mudado
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _sha_antigo=$(printf '%s' "[FASE 1] 1.1 Titulo antigo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo"}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\"}}"
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_post_issue_calls_count)" = "0" ] \
+    || { _fail "sy39_zero_creates" "esperado 0 POST /issue, obtido $(_queue_post_issue_calls_count)"; return 1; }
+  [ "$(_queue_calls_count)" = "7" ] \
+    || { _fail "sy39_calls_count" "esperado 7 chamadas (myself+project+R3epic+R3task+R6get+R2put+R6put), obtido $(_queue_calls_count)"; return 1; }
+
+  # call 6 = PUT R2 (novo summary + description)
+  _r2_summary=$("$IO_SCRIPT" json-get '.fields.summary' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_r2_summary" = "[FASE 1] 1.1 Novo titulo" ] \
+    || { _fail "sy39_r2_summary" "esperado '[FASE 1] 1.1 Novo titulo', obtido '$_r2_summary'"; return 1; }
+  _r2_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_r2_desc" = "Criticidade: A" ] \
+    || { _fail "sy39_r2_description" "esperado 'Criticidade: A', obtido '$_r2_desc'"; return 1; }
+
+  # call 7 = PUT R6 (marker regravado: novo hash, written_status preservado)
+  _sha_novo=$(printf '%s' "[FASE 1] 1.1 Novo titulo" | "$IO_SCRIPT" sha256-stdin)
+  _marker_sha=$("$IO_SCRIPT" json-get '.written_summary_sha256' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_marker_sha" = "$_sha_novo" ] \
+    || { _fail "sy39_marker_sha" "esperado hash do novo summary, obtido '$_marker_sha'"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_marker_status" = "To Do" ] \
+    || { _fail "sy39_marker_status_preservado" "esperado written_status preservado 'To Do', obtido '$_marker_status'"; return 1; }
+
+  _rows=$(awk -F '\t' 'NR>1' "$(_map_file)" | wc -l | tr -d ' ')
+  [ "$_rows" = "2" ] || { _fail "sy39_map_inalterado" "jira-map.tsv nao deveria mudar de linha (obtido $_rows linhas)"; return 1; }
+  return 0
+}
+
+scenario_convert_marker_ausente_vira_conflict_sem_escrever() {
+  _write_full_config
+  _write_tasks_titulo_mudado
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo"}}'
+  _queue_push 404 '{"errorMessages":["not found"]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy40_calls_count" "esperado 5 chamadas (nenhuma escrita apos o R6-get 404), obtido $(_queue_calls_count)"; return 1; }
+  grep -q 'demo	1\.1	DEMO-2	marker_missing	pending$' "$(_conflicts_file)" \
+    || { _fail "sy40_conflict_record" "ConflictRecord marker_missing ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+scenario_convert_manual_edit_vira_conflict_sem_sobrescrever() {
+  _write_full_config
+  _write_tasks_titulo_mudado
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  # SyncMarker aponta para um hash que NAO bate com o summary atual da issue
+  # (edicao manual no Jira desde a ultima sync do plugin).
+  _sha_divergente=$(printf '%s' "Outro titulo qualquer" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo editado manualmente"}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_divergente\",\"written_status\":\"To Do\"}}"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy41_calls_count" "esperado 5 chamadas (nenhuma escrita apos detectar manual_edit), obtido $(_queue_calls_count)"; return 1; }
+  grep -q 'demo	1\.1	DEMO-2	manual_edit	pending$' "$(_conflicts_file)" \
+    || { _fail "sy41_conflict_record" "ConflictRecord manual_edit ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
   return 0
 }
 

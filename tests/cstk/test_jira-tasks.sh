@@ -285,4 +285,130 @@ EOF
   [ "$_nlines" -eq 3 ] || { _fail "line_count" "esperado 3 linhas (epic+task+subtask), obtido $_nlines"; return 1; }
 }
 
+# =========================== phase-deps (cstk-jira FASE 10 t. 10.1) =========
+#
+#   JT-17 phase-deps: FASE com aresta de entrada na Matriz -> imprime o(s)
+#         rotulo(s) completo(s) da(s) FASE(s) de origem
+#   JT-18 phase-deps: FASE sem nenhuma aresta de entrada -> stdout vazio,
+#         exit 0 (dependencia "quando existir" — nunca erro)
+#   JT-19 phase-deps: tasks.md sem secao "## Matriz de Dependencias" ->
+#         stdout vazio, exit 0
+#   JT-20 phase-deps: --phase sem numero de FASE reconhecivel na 2a palavra
+#         (ex.: "FASE X - Nome") -> stdout vazio, exit 0 (nunca erro)
+#   JT-21 phase-deps: tasks.md ausente -> exit 1 (mesma disciplina de items)
+#   JT-22 phase-deps: --phase vazio -> exit 2 (uso incorreto, mesma
+#         disciplina de --feature/--phase obrigatorios nos demais subcomandos)
+
+scenario_phase_deps_com_aresta_de_entrada() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fundacao `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [ ] 1.1.1 sub um
+
+## FASE 2 - Sincronizacao `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 sub dois
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Fundacao]
+    F2[FASE 2 - Sincronizacao]
+
+    F1 --> F2
+```
+EOF
+  assert_exit 0 "$SCRIPT" phase-deps --feature demo --phase "FASE 2 - Sincronizacao" || return 1
+  [ "$_CAPTURED_STDOUT" = "FASE 1 - Fundacao" ] \
+    || { _fail "jt17_dep_label" "esperado 'FASE 1 - Fundacao', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_phase_deps_sem_aresta_de_entrada() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fundacao `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [ ] 1.1.1 sub um
+
+## FASE 2 - Sincronizacao `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 sub dois
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Fundacao]
+    F2[FASE 2 - Sincronizacao]
+
+    F1 --> F2
+```
+EOF
+  assert_exit 0 "$SCRIPT" phase-deps --feature demo --phase "FASE 1 - Fundacao" || return 1
+  [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "jt18_sem_dependencia" "esperado stdout vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_phase_deps_sem_secao_matriz() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fase Um `[A]`
+
+### 1.1 Tarefa `[M]`
+
+- [x] 1.1.1 sub um
+EOF
+  assert_exit 0 "$SCRIPT" phase-deps --feature demo --phase "FASE 1 - Fase Um" || return 1
+  [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "jt19_sem_matriz" "esperado stdout vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_phase_deps_phase_sem_numero_reconhecivel() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fase Um `[A]`
+
+### 1.1 Tarefa `[M]`
+
+- [x] 1.1.1 sub um
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[Fase 1]
+```
+EOF
+  assert_exit 0 "$SCRIPT" phase-deps --feature demo --phase "FASE X - Nome" || return 1
+  [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "jt20_phase_sem_numero" "esperado stdout vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_phase_deps_tasks_ausente_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 "$SCRIPT" phase-deps --feature naoexiste --phase "FASE 1 - X" || return 1
+}
+
+scenario_phase_deps_phase_vazio_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fase Um `[A]`
+
+### 1.1 Tarefa `[M]`
+
+- [x] 1.1.1 sub um
+EOF
+  assert_exit 2 "$SCRIPT" phase-deps --feature demo --phase "" || return 1
+}
+
 run_all_scenarios

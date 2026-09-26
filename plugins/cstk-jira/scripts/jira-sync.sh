@@ -460,6 +460,166 @@ _js_cmd_plan() {
   printf 'conflicts\tn-a\t-\t-\tdeteccao completa (SyncMarker/R6) e responsabilidade de jira-sync.sh drain (FASE 4.2)\n'
 }
 
+# _js_build_task_description TASKS_SH FEATURE CRITICALITY PHASE — feature
+# cstk-jira FASE 10 tarefa 10.1 (FR-001: Tasks devem espelhar "fases,
+# dependencias e criticidade quando existirem"). So chamada para kind=task
+# (data-model.md: "dependencias/criticidade entram na descricao da Task" —
+# Epic/Sub-task nao carregam esses campos no LocalWorkItem). Compoe um texto
+# livre simples (sem estrutura ADF alem do paragrafo unico que
+# `json-build issue --description` ja monta): "Criticidade: X" e/ou
+# "Depende de: FASE A; FASE B" (fonte: `jira-tasks.sh phase-deps`, unica
+# fonte real de dependencia deste backlog — nunca inventa dependencia
+# por-task, que a fonte nao tem). Ambos os campos sao opcionais ("quando
+# existirem"): CRITICALITY vazia e/ou phase-deps vazio -> trecho
+# correspondente omitido; os dois vazios -> stdout vazio (chamador NAO passa
+# --description ao json-build, mantendo o corpo de R1 identico ao anterior).
+_js_build_task_description() {
+  _jbtd_tasks_sh="$1"
+  _jbtd_feature="$2"
+  _jbtd_crit="$3"
+  _jbtd_phase="$4"
+
+  _jbtd_deps=$("$_jbtd_tasks_sh" phase-deps --feature "$_jbtd_feature" --phase "$_jbtd_phase") \
+    || _jbtd_deps=""
+  _jbtd_deps_line=""
+  if [ -n "$_jbtd_deps" ]; then
+    _jbtd_deps_line=$(printf '%s' "$_jbtd_deps" | tr '\n' ';' | sed 's/;$//' | sed 's/;/; /g')
+  fi
+
+  _jbtd_out=""
+  if [ -n "$_jbtd_crit" ]; then
+    _jbtd_out="Criticidade: $_jbtd_crit"
+  fi
+  if [ -n "$_jbtd_deps_line" ]; then
+    if [ -n "$_jbtd_out" ]; then
+      _jbtd_out="$_jbtd_out | Depende de: $_jbtd_deps_line"
+    else
+      _jbtd_out="Depende de: $_jbtd_deps_line"
+    fi
+  fi
+
+  printf '%s' "$_jbtd_out"
+}
+
+# _js_maybe_update_mapped_issue IO FEATURE LOCAL_KEY JIRA_KEY NEW_SUMMARY
+#   NEW_DESCRIPTION — feature cstk-jira FASE 10 tarefa 10.2 (FR-003): item
+# JA mapeado (`active`) cujo titulo/descricao local pode ter mudado desde a
+# ultima sync. Detecta divergencia contra o SyncMarker com a MESMA logica de
+# conflito de `_js_process_one_event`/4.2.3 (FR-011 — nunca sobrescrever
+# silenciosamente): le o summary atual da issue (R3) e o SyncMarker (R6);
+# marker ausente (`marker_missing`) ou summary atual divergente do que o
+# plugin gravou por ultimo (`manual_edit`) -> ConflictRecord (mesmo arquivo/
+# fluxo de `resolve` da FASE 4.3), NUNCA escreve. Sem conflito e
+# NEW_SUMMARY == summary atual -> nada a fazer (no-op silencioso, comum:
+# maioria dos itens de uma re-conversao nao mudou). Sem conflito e
+# NEW_SUMMARY != summary atual -> local venceu (a issue nao foi tocada
+# manualmente): PUT R2 (fields.summary [+ fields.description]) e regrava o
+# SyncMarker com o novo hash, preservando written_status do marker anterior
+# (esta funcao so muda conteudo, nunca status). Falha de rede/permissao
+# durante a checagem/escrita: diagnostico em stderr, item pulado SEM abortar
+# o `convert` inteiro (itens novos continuam sendo criados normalmente).
+_js_maybe_update_mapped_issue() {
+  _jsu_io="$1"
+  _jsu_feature="$2"
+  _jsu_lkey="$3"
+  _jsu_jkey="$4"
+  _jsu_new_summary="$5"
+  _jsu_new_description="$6"
+
+  if _jsu_issue_resp=$("$_jsu_io" request GET "/rest/api/3/issue/$_jsu_jkey?fields=summary" --op R3 2>/dev/null); then
+    :
+  else
+    printf '%s: falha ao ler issue %s para checar atualizacao (FR-003) — item pulado, mapeamento/SyncMarker inalterados\n' \
+      "$_JS_NAME" "$_jsu_jkey" >&2
+    return 0
+  fi
+  _jsu_cur_summary=$(printf '%s' "$_jsu_issue_resp" | "$_jsu_io" json-get '.fields.summary')
+
+  # Nada mudou localmente (summary composto agora == summary atual do Jira)
+  # -> no-op, sem sequer ler o SyncMarker (economiza 1 chamada de rede por
+  # item inalterado — o caso comum de uma re-conversao).
+  [ "$_jsu_cur_summary" = "$_jsu_new_summary" ] && return 0
+
+  _jsu_cur_sha=$(printf '%s' "$_jsu_cur_summary" | "$_jsu_io" sha256-stdin)
+
+  _jsu_err_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  if _jsu_prop_resp=$("$_jsu_io" request GET "/rest/api/3/issue/$_jsu_jkey/properties/$_JS_MARKER_PROPERTY_KEY" --op R6 2>"$_jsu_err_file"); then
+    _jsu_prop_ec=0
+  else
+    _jsu_prop_ec=$?
+  fi
+  _jsu_prop_status=$(grep '^http_status=' "$_jsu_err_file" | tail -n 1 | cut -d= -f2)
+  rm -f "$_jsu_err_file"
+
+  if [ "$_jsu_prop_ec" -ne 0 ]; then
+    printf '%s: falha ao ler SyncMarker de %s para checar atualizacao (FR-003) — item pulado, mapeamento/SyncMarker inalterados\n' \
+      "$_JS_NAME" "$_jsu_jkey" >&2
+    return 0
+  fi
+
+  if [ "$_jsu_prop_status" = "404" ]; then
+    _js_conflict_pending_exists "$_jsu_feature" "$_jsu_lkey" \
+      || _js_append_conflict "$_jsu_feature" "$_jsu_lkey" "$_jsu_jkey" marker_missing
+    return 0
+  fi
+
+  _jsu_written_sha=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_summary_sha256')
+  _jsu_written_status=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_status')
+  if [ "$_jsu_cur_sha" != "$_jsu_written_sha" ]; then
+    # FR-011: o titulo no Jira ja diverge do que o plugin gravou por ultimo
+    # (edicao manual desde a ultima sync) -> conflito, NUNCA sobrescrever
+    # silenciosamente, mesmo que o titulo local tambem tenha mudado.
+    _js_conflict_pending_exists "$_jsu_feature" "$_jsu_lkey" \
+      || _js_append_conflict "$_jsu_feature" "$_jsu_lkey" "$_jsu_jkey" manual_edit
+    return 0
+  fi
+
+  # Seguro: o titulo no Jira e EXATAMENTE o que o plugin gravou por ultimo —
+  # a divergencia e so local -> local vence. R2 (so os campos que mudam).
+  set -- issue-update --summary "$_jsu_new_summary"
+  if [ -n "$_jsu_new_description" ]; then
+    set -- "$@" --description "$_jsu_new_description"
+  fi
+  _jsu_body=$("$_jsu_io" json-build "$@")
+  _jsu_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2body.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jsu_body" > "$_jsu_body_file"
+  if "$_jsu_io" request PUT "/rest/api/3/issue/$_jsu_jkey" \
+      --body-file "$_jsu_body_file" --op R2 >/dev/null 2>/dev/null; then
+    rm -f "$_jsu_body_file"
+  else
+    _jsu_ec=$?
+    rm -f "$_jsu_body_file"
+    printf '%s: falha ao atualizar summary de %s via R2 (exit %s) — mapeamento/SyncMarker inalterados, tentar novamente na proxima convert\n' \
+      "$_JS_NAME" "$_jsu_jkey" "$_jsu_ec" >&2
+    return 0
+  fi
+
+  # Regravar o SyncMarker com o novo hash — written_status PRESERVADO (esta
+  # funcao nunca muda status, so conteudo; status e responsabilidade
+  # exclusiva de drain/_js_process_one_event). Mesma limitacao aceita de
+  # _js_process_one_event: se este PUT falhar apos o R2 ja aplicado, a
+  # proxima checagem pode reportar manual_edit indevido ate o operador
+  # `resolve --choice keep_jira`.
+  _jsu_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  _jsu_new_sha=$(printf '%s' "$_jsu_new_summary" | "$_jsu_io" sha256-stdin)
+  _jsu_marker_body=$("$_jsu_io" json-build marker --local-key "$_jsu_lkey" --feature "$_jsu_feature" \
+    --written-summary-sha256 "$_jsu_new_sha" --written-status "$_jsu_written_status" --written-at "$_jsu_now")
+  _jsu_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jsu_marker_body" > "$_jsu_marker_body_file"
+  if "$_jsu_io" request PUT "/rest/api/3/issue/$_jsu_jkey/properties/$_JS_MARKER_PROPERTY_KEY" \
+      --body-file "$_jsu_marker_body_file" --op R6 >/dev/null 2>/dev/null; then
+    rm -f "$_jsu_marker_body_file"
+  else
+    rm -f "$_jsu_marker_body_file"
+    printf '%s: summary de %s atualizado mas falha ao regravar SyncMarker — proxima checagem pode reportar manual_edit indevido (resolve --choice keep_jira destrava)\n' \
+      "$_JS_NAME" "$_jsu_jkey" >&2
+  fi
+  return 0
+}
+
 # --- convert -----------------------------------------------------------------
 
 _js_cmd_convert() {
@@ -503,15 +663,28 @@ _js_cmd_convert() {
     _jsc_key=$(printf '%s' "$_jsc_line" | cut -f1)
     _jsc_kind=$(printf '%s' "$_jsc_line" | cut -f2)
     _jsc_phase=$(printf '%s' "$_jsc_line" | cut -f3)
+    _jsc_crit=$(printf '%s' "$_jsc_line" | cut -f4)
     _jsc_title=$(printf '%s' "$_jsc_line" | cut -f6)
 
     # Idempotencia (FR-014/SC-002): local_key ja presente no mapeamento
-    # (active OU orphan) -> pula, NENHUMA chamada de criacao.
-    if "$_jsc_map" get --feature "$_jsc_feature" --local-key "$_jsc_key" >/dev/null 2>&1; then
-      continue
+    # (active OU orphan) -> NENHUMA chamada de criacao. `orphan` pula de
+    # imediato (removido/renumerado — religar e decisao humana explicita via
+    # `jira-map.sh relink`, FASE 4.3/4.4, nunca uma atualizacao automatica
+    # aqui). `active` segue para compor summary/description (case abaixo) e
+    # so entao decide criar vs. atualizar (FR-003, feature cstk-jira FASE 10
+    # tarefa 10.2 — ver _js_maybe_update_mapped_issue).
+    _jsc_map_line=""
+    _jsc_already_mapped="no"
+    if _jsc_map_line=$("$_jsc_map" get --feature "$_jsc_feature" --local-key "$_jsc_key" 2>/dev/null); then
+      _jsc_already_mapped="yes"
+      _jsc_mapped_state=$(printf '%s' "$_jsc_map_line" | cut -f5)
+      if [ "$_jsc_mapped_state" = "orphan" ]; then
+        continue
+      fi
     fi
 
     _jsc_parent_key=""
+    _jsc_description=""
     case "$_jsc_kind" in
       epic)
         _jsc_issuetype_id="$_jsc_issuetype_epic"
@@ -524,6 +697,11 @@ _js_cmd_convert() {
         _jsc_parent_key=$(printf '%s' "$_jsc_epic_line" | cut -f4)
         _jsc_summary=$("$_jsc_title_sh" compose --kind task --phase "$_jsc_phase" \
           --local-key "$_jsc_key" --title "$_jsc_title")
+        # FR-001: descricao da Task com criticidade e dependencias, quando
+        # existirem (feature cstk-jira FASE 10 tarefa 10.1) — ver
+        # _js_build_task_description acima.
+        _jsc_description=$(_js_build_task_description "$_jsc_tasks" "$_jsc_feature" \
+          "$_jsc_crit" "$_jsc_phase")
         ;;
       subtask)
         _jsc_issuetype_id="$_jsc_issuetype_subtask"
@@ -538,14 +716,26 @@ _js_cmd_convert() {
         ;;
     esac
 
-    if [ -n "$_jsc_parent_key" ]; then
-      _jsc_body=$("$_jsc_io" json-build issue --project-id "$_jsc_project_id" \
-        --issuetype-id "$_jsc_issuetype_id" --summary "$_jsc_summary" \
-        --parent-key "$_jsc_parent_key")
-    else
-      _jsc_body=$("$_jsc_io" json-build issue --project-id "$_jsc_project_id" \
-        --issuetype-id "$_jsc_issuetype_id" --summary "$_jsc_summary")
+    # FR-003 (feature cstk-jira FASE 10 tarefa 10.2): item JA mapeado
+    # (`active`) -> NENHUMA criacao; delega a checagem de divergencia/
+    # atualizacao (R2, respeitando FR-011) a _js_maybe_update_mapped_issue e
+    # segue para o proximo item.
+    if [ "$_jsc_already_mapped" = "yes" ]; then
+      _jsc_mapped_jkey=$(printf '%s' "$_jsc_map_line" | cut -f4)
+      _js_maybe_update_mapped_issue "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_mapped_jkey" \
+        "$_jsc_summary" "$_jsc_description"
+      continue
     fi
+
+    set -- --project-id "$_jsc_project_id" --issuetype-id "$_jsc_issuetype_id" \
+      --summary "$_jsc_summary"
+    if [ -n "$_jsc_parent_key" ]; then
+      set -- "$@" --parent-key "$_jsc_parent_key"
+    fi
+    if [ -n "$_jsc_description" ]; then
+      set -- "$@" --description "$_jsc_description"
+    fi
+    _jsc_body=$("$_jsc_io" json-build issue "$@")
 
     _jsc_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-body.XXXXXX") \
       || _js_die "falha ao criar arquivo temporario de corpo da requisicao" 1
