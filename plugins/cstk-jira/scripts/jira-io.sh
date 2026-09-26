@@ -151,11 +151,17 @@
 #         `jira-io.sh` so fala com UM host (`site_host`) por design.
 #         SEC-4: ANTES de disparar a requisicao, confere `jira-config.sh
 #         credential-check` (existencia + modo 0600) e le `email`/
-#         `api_token` do arquivo de Credential; grava um arquivo de config
-#         temporario do cliente HTTP (`umask 077`, diretorio privado,
-#         removido por `trap` em EXIT/INT/TERM) com a diretiva `user =
-#         "email:token"` e o passa via `-K` — a credencial NUNCA aparece em
-#         argv/linha de comando do cliente HTTP nem em log.
+#         `api_token`/`site_host` do arquivo de Credential; grava um arquivo
+#         de config temporario do cliente HTTP (`umask 077`, diretorio
+#         privado, removido por `trap` em EXIT/INT/TERM) com a diretiva
+#         `user = "email:token"` e o passa via `-K` — a credencial NUNCA
+#         aparece em argv/linha de comando do cliente HTTP nem em log.
+#         FR-015: o `site_host` gravado na propria credencial (por
+#         `jira-credential-setup.sh` no cadastro) MUST ser igual, byte-a-
+#         byte, ao `site_host` de ProjectConfig; campo ausente/vazio OU
+#         divergente => `classification=incompleta`, exit 4, SEM disparar
+#         requisicao (trocar `site_host` no config versionado nao desvia o
+#         email/api_token cadastrados para outro host).
 #         Corpo da resposta em stdout; `http_status=<codigo>` na 1a linha
 #         de stderr. 3.4: `401`/`403`/`429`/`5xx`-apos-retries/`400`-`409`-
 #         em-R4 sao classificados (`classification=<token>` em stderr) em
@@ -670,6 +676,24 @@ _ji_cmd_request() {
     || _ji_die "credencial incompleta: campo 'email' vazio em $_JI_CRED_FILE" 4
   [ -n "$_jir_api_token" ] \
     || _ji_die "credencial incompleta: campo 'api_token' vazio em $_JI_CRED_FILE" 4
+
+  # FR-015 / plan.md "credencial resolvida por site_host": a credencial
+  # (Entity Credential, global, fora do repo) carrega o proprio site_host
+  # gravado por `jira-credential-setup.sh` no momento do cadastro. Exigir
+  # igualdade exata com o site_host de ProjectConfig (versionado, portanto
+  # editavel por qualquer commit) ANTES de montar o header de autenticacao
+  # — sem isso, trocar `site_host` no config versionado desviaria o
+  # email/api_token cadastrados para um host diferente do pretendido pelo
+  # operador. Falha fail-closed (exit 4, mesma familia de "credencial
+  # incompleta"): campo ausente/vazio na credencial e tratado como
+  # divergencia, nunca como "sem opiniao" — nenhuma requisicao e disparada.
+  _jir_cred_site_host=$(_ji_cred_read site_host) \
+    || _ji_die "credencial incompleta: campo 'site_host' ausente em $_JI_CRED_FILE" 4
+  [ -n "$_jir_cred_site_host" ] \
+    || _ji_die "credencial incompleta: campo 'site_host' vazio em $_JI_CRED_FILE" 4
+  if [ "$_jir_cred_site_host" != "$_jir_site_host" ]; then
+    _ji_die "credencial pertence a outro site_host (ProjectConfig='$_jir_site_host', credencial='$_jir_cred_site_host') — recusado sem requisicao (FR-015)" 4
+  fi
 
   # `umask 077` ANTES de criar diretorio E arquivo — elimina a janela de
   # corrida entre "criar" e "restringir permissao" (CWE-377/SEC-4).

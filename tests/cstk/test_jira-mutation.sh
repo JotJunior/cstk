@@ -82,7 +82,8 @@ _write_site_host_config() {
 
 _write_credential() {
   mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
-  printf 'email=%s\napi_token=%s\n' "${1:-tester@example.com}" "${2:-tok-FAKE-000}" \
+  printf 'site_host=%s\nemail=%s\napi_token=%s\n' \
+    "${3:-example.atlassian.net}" "${1:-tester@example.com}" "${2:-tok-FAKE-000}" \
     > "$TMPDIR_TEST/xdg/cstk-jira/credentials"
   chmod 600 "$TMPDIR_TEST/xdg/cstk-jira/credentials"
 }

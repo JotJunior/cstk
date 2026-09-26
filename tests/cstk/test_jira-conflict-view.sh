@@ -62,7 +62,7 @@ EOF
 # XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" (mesmo padrao de test_jira-sync.sh).
 _write_credential() {
   mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
-  printf 'email=%s\napi_token=%s\n' "tester@example.com" "tok-FAKE-000" \
+  printf 'site_host=cstk-test.atlassian.net\nemail=%s\napi_token=%s\n' "tester@example.com" "tok-FAKE-000" \
     > "$TMPDIR_TEST/xdg/cstk-jira/credentials"
   chmod 600 "$TMPDIR_TEST/xdg/cstk-jira/credentials"
 }

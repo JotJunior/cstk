@@ -75,8 +75,18 @@ ao operador o comando abaixo para rodar num terminal PROPRIO dele:
 sh <caminho-do-plugin>/skills/jira-setup/scripts/jira-credential-setup.sh <site_host>
 ```
 
-O script pede email (visivel) e API token (eco desligado via `stty`) e
-grava `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials` com modo
+O script pede email (visivel), API token (eco desligado via `stty`) e,
+por ultimo, a **data de validade do token** (opcional — texto livre
+informado pelo operador, ex.: `2027-03-15`; Enter para pular). Essa data
+NUNCA e inferida/calculada pela skill nem por nenhuma chamada ao Jira —
+nao ha API que devolva a expiracao de um API token classico (plan.md risco
+5 / FR-019-INFRA-REFRESH), entao a UNICA fonte possivel e o proprio
+operador digitando o que ele mesmo escolheu ao gerar o token. Se
+informada, o proprio script REEXIBE um LEMBRETE na hora (`LEMBRETE: ...
+expira em <data> ...`) e grava `token_expires_at=<data>` no arquivo de
+credencial (nao e segredo, mas so vive ali — `Credential`, nunca
+versionado — jamais em `ProjectConfig`, que e opcionalmente commitado).
+Grava `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials` com modo
 `0600` (diretorio `0700`). Voce (skill) NUNCA executa esse script por conta
 propria nem le o conteudo do arquivo de credencial — so confere:
 

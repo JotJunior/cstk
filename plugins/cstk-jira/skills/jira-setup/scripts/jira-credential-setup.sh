@@ -19,7 +19,16 @@
 # data-model.md: credencial nunca em argv de processo).
 #
 # Grava ${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials no formato
-# key=value (mesmo parser de jira-config.sh): site_host, email, api_token.
+# key=value (mesmo parser de jira-config.sh): site_host, email, api_token
+# e, opcionalmente, token_expires_at (FASE 12 tarefa 12.12.1, plan.md risco
+# 5 / FR-019-INFRA-REFRESH: "jira-setup exibe a data de validade informada
+# pelo operador como lembrete" — nao ha API do Jira que devolva a
+# expiracao de um API token classico, entao a UNICA fonte possivel e o
+# proprio operador; nunca inferida/calculada). token_expires_at NAO e
+# segredo (so uma data de texto livre) mas so vive aqui — arquivo de
+# Credential, `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials`,
+# NUNCA versionado (data-model.md) — nunca em ProjectConfig
+# (`.claude/cstk-jira/config`, opcionalmente versionado/commitado).
 # Diretorio criado com 0700, arquivo com 0600 (data-model.md "MUST").
 # Escrita atomica (temp file + mv na mesma particao) — uma falha a meio do
 # processo nunca deixa um arquivo de credencial parcialmente escrito no
@@ -75,6 +84,17 @@ else
 fi
 [ -n "$_jcs_token" ] || _jcs_die "api_token vazio"
 
+# Data de validade (OPCIONAL, texto livre — nao segredo, nunca inferida):
+# so um lembrete local, sem validacao de formato (nenhuma API do Jira
+# devolve a expiracao de um token classico para confirmar/rejeitar o que o
+# operador digitar aqui). Enter em branco = pular, campo nao gravado.
+printf 'Data de validade deste API token (opcional — ex.: 2027-03-15;\n'
+printf 'Enter para pular): '
+# EOF (stdin fecha sem mais uma linha, ex.: heredoc/pipe sem newline final
+# para este campo opcional) == "pular", nunca erro fatal — so o Enter em
+# branco e o EOF tem o MESMO efeito (campo nao gravado).
+IFS= read -r _jcs_expires_at || _jcs_expires_at=""
+
 umask 077
 mkdir -p "$_JCS_CRED_DIR"
 chmod 700 "$_JCS_CRED_DIR"
@@ -87,10 +107,18 @@ chmod 600 "$_jcs_tmp"
   printf 'site_host=%s\n' "$_JCS_SITE_HOST"
   printf 'email=%s\n' "$_jcs_email"
   printf 'api_token=%s\n' "$_jcs_token"
+  if [ -n "$_jcs_expires_at" ]; then
+    printf 'token_expires_at=%s\n' "$_jcs_expires_at"
+  fi
 } > "$_jcs_tmp"
 mv "$_jcs_tmp" "$_JCS_CRED_FILE"
 trap - EXIT INT TERM
 
 printf '\nCredencial gravada em %s (modo 0600).\n' "$_JCS_CRED_FILE"
+if [ -n "$_jcs_expires_at" ]; then
+  printf 'LEMBRETE: voce informou que este token expira em %s — reconfigure\n' "$_jcs_expires_at"
+  printf 'rodando este script de novo antes dessa data (nenhuma renovacao automatica\n'
+  printf 'e possivel; um token expirado se manifesta como 401/auth_failed no sync).\n'
+fi
 printf 'Volte para a sessao do Claude Code e diga que a credencial foi configurada\n'
 printf 'para a skill continuar (ela roda "jira-config.sh credential-check" para confirmar).\n'

@@ -116,14 +116,19 @@ _write_site_host_config() {
   printf 'site_host=%s\n' "$1" > "$TMPDIR_TEST/.claude/cstk-jira/config"
 }
 
-# _write_credential [EMAIL] [TOKEN] — cria a credencial GLOBAL isolada em
-# $TMPDIR_TEST/xdg/cstk-jira/credentials (0600). SEMPRE combinar com
-# `XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"` na invocacao do script sob teste —
-# sem isso, jira-io.sh cairia no fallback `$HOME/.config` e poderia ler (ou
-# recusar por causa de) uma credencial REAL do operador.
+# _write_credential [EMAIL] [TOKEN] [SITE_HOST] — cria a credencial GLOBAL
+# isolada em $TMPDIR_TEST/xdg/cstk-jira/credentials (0600). SEMPRE combinar
+# com `XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"` na invocacao do script sob teste
+# — sem isso, jira-io.sh cairia no fallback `$HOME/.config` e poderia ler
+# (ou recusar por causa de) uma credencial REAL do operador. SITE_HOST
+# default = "example.atlassian.net" (mesmo host que TODOS os cenarios deste
+# arquivo gravam via `_write_site_host_config`/`_write_board_setup_config`)
+# — FR-015 exige igualdade exata com o `site_host` de ProjectConfig; passar
+# um valor diferente e o mecanismo dos cenarios JI-* de mismatch.
 _write_credential() {
   mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
-  printf 'email=%s\napi_token=%s\n' "${1:-tester@example.com}" "${2:-tok-FAKE-000}" \
+  printf 'site_host=%s\nemail=%s\napi_token=%s\n' \
+    "${3:-example.atlassian.net}" "${1:-tester@example.com}" "${2:-tok-FAKE-000}" \
     > "$TMPDIR_TEST/xdg/cstk-jira/credentials"
   chmod 600 "$TMPDIR_TEST/xdg/cstk-jira/credentials"
 }
@@ -601,6 +606,46 @@ scenario_request_credencial_incompleta_exit4_sem_requisicao() {
   assert_stderr_contains "api_token" || return 1
   [ "$(_curl_call_count)" = "0" ] \
     || { _fail "credencial_incompleta_calls" "api_token ausente nao deve disparar nenhuma requisicao"; return 1; }
+}
+
+# JI-75..JI-77 (tarefa 12.9.1, FR-015 / plan.md "credencial resolvida por
+# site_host"): `request` recusa (exit 4, SEM requisicao) quando o
+# `site_host` da credencial diverge do site_host de ProjectConfig, ou
+# quando a credencial nao tem o campo `site_host` (legado/incompleta) —
+# tratamento simetrico a `email`/`api_token` ausentes acima.
+
+scenario_request_credencial_site_host_divergente_exit4_sem_requisicao() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential "tester@example.com" "tok-FAKE-000" "outro-host.atlassian.net"
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|200|{}')
+  assert_exit 4 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "site_host" || return 1
+  [ "$(_curl_call_count)" = "0" ] \
+    || { _fail "site_host_divergente_calls" "site_host divergente nao deve disparar nenhuma requisicao"; return 1; }
+}
+
+scenario_request_credencial_sem_site_host_exit4_sem_requisicao() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
+  printf 'email=tester@example.com\napi_token=tok-FAKE-000\n' \
+    > "$TMPDIR_TEST/xdg/cstk-jira/credentials"
+  chmod 600 "$TMPDIR_TEST/xdg/cstk-jira/credentials"
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|200|{}')
+  assert_exit 4 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stderr_contains "site_host" || return 1
+  [ "$(_curl_call_count)" = "0" ] \
+    || { _fail "sem_site_host_calls" "credencial sem site_host nao deve disparar nenhuma requisicao"; return 1; }
+}
+
+scenario_request_credencial_site_host_igual_sucesso() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential "tester@example.com" "tok-FAKE-000" "example.atlassian.net"
+  _bin=$(_make_tracking_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|200|{"key":"CSTK-1"}')
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" "$SCRIPT" request GET /rest/api/3/issue/CSTK-1 || return 1
+  assert_stdout_contains '"key":"CSTK-1"' || return 1
 }
 
 scenario_request_credencial_sucesso_token_fora_do_argv() {

@@ -254,6 +254,15 @@ _is_internal_test() {
       # real.
       [ -f "$REPO_ROOT/plugins/cstk-jira/scripts/jira-io.sh" ] && return 0
       return 1 ;;
+    test_jira-credential-setup.sh)
+      # Cobre plugins/cstk-jira/skills/jira-setup/scripts/jira-credential-
+      # setup.sh (cstk-jira FASE 12 tarefa 12.12.1 — lembrete de validade do
+      # API token). O script vive sob skills/<skill>/scripts/ do plugin
+      # cstk-jira, fora do scan de plugins/cstk-jira/scripts/*.sh acima.
+      # Existence-guarded ao proprio script; se a fonte sumir, volta a ser
+      # orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/skills/jira-setup/scripts/jira-credential-setup.sh" ] && return 0
+      return 1 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.

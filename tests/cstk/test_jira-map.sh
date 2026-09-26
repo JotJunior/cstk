@@ -26,6 +26,14 @@
 #   JM-15 relink: sucesso -> exit 0, state volta a active, linha preservada
 #   JM-16 idempotencia (SC-002): 10 chamadas de put para o mesmo local_key
 #         resultam em 0 linhas novas apos a 1a
+#   JM-17 relink --new-local-key: renumeracao move a linha (novo local_key
+#         active, antigo desaparece do arquivo, jira_id/jira_key mantidos)
+#   JM-18 relink --new-local-key ja existente no mapeamento -> exit 1,
+#         RECUSA (nada escrito)
+#   JM-19 relink fecha ConflictRecord PENDENTE reason=orphan do par como
+#         resolution=relinked em runtime/conflicts.tsv (FR-012)
+#   JM-20 relink sem runtime/conflicts.tsv -> sucesso normal (best-effort,
+#         nada a fechar)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -217,6 +225,103 @@ EOF
   assert_exit 0 "$SCRIPT" relink --feature demo --local-key 1.1 --jira-key DEMO-1 || return 1
   grep -q '^1\.1	task	10001	DEMO-1	active$' "$(_map_file)" \
     || { _fail "relink_restores_active" "linha 1.1 nao voltou a active com os mesmos dados"; return 1; }
+}
+
+scenario_relink_new_local_key_move_linha() {
+  _write_tasks_md
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" put --feature demo --local-key 1.1 --kind task \
+    --jira-id 10001 --jira-key DEMO-1 >/dev/null || return 1
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Teste `[A]`
+
+### 1.2 Renumerada `[A]`
+
+- [ ] 1.2.1 Sub um
+EOF
+  "$SCRIPT" mark-orphans --feature demo >/dev/null || :
+  assert_exit 0 "$SCRIPT" relink --feature demo --local-key 1.1 --jira-key DEMO-1 \
+    --new-local-key 1.2 || return 1
+  grep -q '^1\.2	task	10001	DEMO-1	active$' "$(_map_file)" \
+    || { _fail "relink_new_key_active" "1.2 nao foi gravado active com os mesmos dados"; return 1; }
+  if grep -q '^1\.1	' "$(_map_file)"; then
+    _fail "relink_old_key_gone" "1.1 ainda presente no mapeamento apos renumeracao"
+    return 1
+  fi
+}
+
+scenario_relink_new_local_key_ja_existe_exit1() {
+  _write_tasks_md
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" put --feature demo --local-key 1.1 --kind task \
+    --jira-id 10001 --jira-key DEMO-1 >/dev/null || return 1
+  "$SCRIPT" put --feature demo --local-key 1.2 --kind task \
+    --jira-id 10002 --jira-key DEMO-2 >/dev/null || return 1
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Teste `[A]`
+
+### 1.2 Titulo `[A]`
+
+- [ ] 1.2.1 Sub um
+EOF
+  "$SCRIPT" mark-orphans --feature demo >/dev/null || :
+  assert_exit 1 "$SCRIPT" relink --feature demo --local-key 1.1 --jira-key DEMO-1 \
+    --new-local-key 1.2 || return 1
+  assert_stderr_contains "ja existe no mapeamento" || return 1
+  grep -q '^1\.1	task	10001	DEMO-1	orphan$' "$(_map_file)" \
+    || { _fail "relink_new_key_conflict_untouched" "1.1 nao deveria ter sido alterado (recusa)"; return 1; }
+}
+
+# _write_pending_orphan_conflict FEATURE LOCAL_KEY JIRA_KEY: cria
+# runtime/conflicts.tsv com um ConflictRecord PENDENTE reason=orphan (mesmo
+# schema/path de `_JS_CONFLICTS_FILE`/`_JS_CONFLICTS_HEADER` em
+# jira-sync.sh).
+_write_pending_orphan_conflict() {
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  {
+    printf 'detected_at\tfeature\tlocal_key\tjira_key\treason\tresolution\n'
+    printf '2026-01-01T00:00:00Z\t%s\t%s\t%s\torphan\tpending\n' "$1" "$2" "$3"
+  } > "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv"
+}
+
+scenario_relink_fecha_conflict_record_orphan_como_relinked() {
+  _write_tasks_md
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" put --feature demo --local-key 1.1 --kind task \
+    --jira-id 10001 --jira-key DEMO-1 >/dev/null || return 1
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Teste `[A]`
+
+### 1.2 Renumerada `[A]`
+
+- [ ] 1.2.1 Sub um
+EOF
+  "$SCRIPT" mark-orphans --feature demo >/dev/null || :
+  _write_pending_orphan_conflict demo 1.1 DEMO-1
+  assert_exit 0 "$SCRIPT" relink --feature demo --local-key 1.1 --jira-key DEMO-1 \
+    --new-local-key 1.2 || return 1
+  grep -q '	demo	1\.1	DEMO-1	orphan	relinked$' \
+    "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" \
+    || { _fail "conflict_closed_relinked" "ConflictRecord nao foi fechado como relinked"; return 1; }
+}
+
+scenario_relink_sem_conflicts_tsv_sucesso_normal() {
+  _write_tasks_md
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" put --feature demo --local-key 1.1 --kind task \
+    --jira-id 10001 --jira-key DEMO-1 >/dev/null || return 1
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Teste `[A]`
+
+### 1.2 Renumerada `[A]`
+
+- [ ] 1.2.1 Sub um
+EOF
+  "$SCRIPT" mark-orphans --feature demo >/dev/null || :
+  # Deliberadamente NAO cria runtime/conflicts.tsv.
+  assert_exit 0 "$SCRIPT" relink --feature demo --local-key 1.1 --jira-key DEMO-1 || return 1
+  [ ! -e "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" ] \
+    || { _fail "no_conflicts_file_created" "relink nao deveria criar conflicts.tsv do nada"; return 1; }
 }
 
 scenario_idempotencia_10x_put_mesma_chave_zero_linhas_novas() {

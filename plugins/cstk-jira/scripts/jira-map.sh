@@ -37,7 +37,8 @@
 #         se houver pelo menos 1 orfao (sinal de decisao humana pendente —
 #         contracts/plugin-scripts.md); exit 0 se nenhum.
 #
-#   jira-map.sh relink --feature F --local-key K --jira-key KEY
+#   jira-map.sh relink --feature F --local-key K --jira-key KEY \
+#                       [--new-local-key NK]
 #       — Religa um orphan por decisao humana: exige que K exista com
 #         state=orphan E que o jira_key armazenado seja EXATAMENTE KEY
 #         (confirmacao explicita do operador de qual card esta sendo
@@ -45,6 +46,19 @@
 #         card e apontado, so reativa o mesmo). Recusa (exit 1) se K nao
 #         existir, ja estiver active, ou se KEY nao conferir com o
 #         jira_key armazenado. Nunca apaga a linha original (FR-012).
+#         `--new-local-key NK` (opcional, FR-012/data-model.md renumeracao):
+#         em vez de reativar K no lugar, MOVE a linha para NK (a tarefa
+#         local foi renumerada, ex.: 2.3->2.4, mas o card Jira e o MESMO —
+#         evita o card duplicado que o proximo `convert` criaria se K
+#         ficasse orphan para sempre). Recusa (exit 1) se NK ja existir no
+#         mapeamento em qualquer estado (mesma disciplina de `put`). Sem
+#         `--new-local-key`, comportamento identico ao anterior (reativa o
+#         MESMO K). Em ambos os casos, fecha (best-effort, silencioso se
+#         ausente) o ConflictRecord PENDENTE `reason=orphan` de (F, K) em
+#         `runtime/conflicts.tsv` como `resolution=relinked`
+#         (data-model.md ConflictRecord enum `resolution`) — sem isso, o
+#         registro pendente continuaria suprimindo conflitos futuros do
+#         mesmo par via `_js_conflict_pending_exists` (jira-sync.sh).
 #
 # Convencoes (Principio II / contracts/plugin-scripts.md):
 #   `#!/bin/sh`, `set -eu`, sem bash-isms; dados em stdout, diagnostico em
@@ -53,12 +67,21 @@
 #   `mark-orphans` (FR-012) — nada foi sobrescrito.
 #
 # Nenhum host/credencial e tocado por este script (so parseia/reescreve o
-# arquivo TSV local versionado da feature).
+# arquivo TSV local versionado da feature). Excecao aditiva: `relink`
+# tambem fecha (best-effort) o ConflictRecord pendente correspondente em
+# `runtime/conflicts.tsv` — arquivo NAO-versionado (mesmo path que
+# jira-sync.sh ja le/escreve), nunca requisicao de rede.
 
 set -eu
 
 _JM_NAME="jira-map"
 _JM_KINDS="epic task subtask"
+
+# Mesmo path/schema de `_JS_CONFLICTS_FILE`/`_JS_CONFLICTS_HEADER` em
+# jira-sync.sh (nao compartilhado — cada script mantem sua propria copia
+# minima, mesmo idioma de `_ji_cred_read` em jira-io.sh). Runtime/nao-
+# versionado; so tocado por `relink` (fechamento best-effort, ver acima).
+_JM_CONFLICTS_FILE="./.claude/cstk-jira/runtime/conflicts.tsv"
 
 # Newline literal — usado para detectar valores adversariais que tentariam
 # injetar uma linha inteira via argumento (--jira-id/--jira-key/--local-key
@@ -88,8 +111,11 @@ USO:
       Marca orphan as chaves active ausentes de `jira-tasks.sh items`;
       imprime todos os orfaos; exit 6 se houver algum (FR-012)
 
-  jira-map.sh relink --feature F --local-key K --jira-key KEY
-      Religa um orphan (KEY deve conferir com o jira_key armazenado)
+  jira-map.sh relink --feature F --local-key K --jira-key KEY \
+                      [--new-local-key NK]
+      Religa um orphan (KEY deve conferir com o jira_key armazenado);
+      com --new-local-key, move a linha para NK (renumeracao). Fecha
+      (best-effort) o ConflictRecord pendente reason=orphan do par.
 
 Arquivo: <cwd>/docs/specs/F/jira-map.tsv (TAB-separado, cabecalho na 1a linha)
 
@@ -279,11 +305,13 @@ _jm_cmd_relink() {
   _jmr_feature=""
   _jmr_key=""
   _jmr_jkey=""
+  _jmr_new_key=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --feature)   [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jmr_feature="$2"; shift 2 ;;
-      --local-key) [ "$#" -ge 2 ] || _jm_die_usage "--local-key requer valor"; _jmr_key="$2"; shift 2 ;;
-      --jira-key)  [ "$#" -ge 2 ] || _jm_die_usage "--jira-key requer valor"; _jmr_jkey="$2"; shift 2 ;;
+      --feature)        [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jmr_feature="$2"; shift 2 ;;
+      --local-key)      [ "$#" -ge 2 ] || _jm_die_usage "--local-key requer valor"; _jmr_key="$2"; shift 2 ;;
+      --jira-key)       [ "$#" -ge 2 ] || _jm_die_usage "--jira-key requer valor"; _jmr_jkey="$2"; shift 2 ;;
+      --new-local-key)  [ "$#" -ge 2 ] || _jm_die_usage "--new-local-key requer valor"; _jmr_new_key="$2"; shift 2 ;;
       *) _jm_die_usage "argumento desconhecido: $1" ;;
     esac
   done
@@ -292,6 +320,10 @@ _jm_cmd_relink() {
     || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jmr_feature"
   _jm_is_safe_field "$_jmr_key" || _jm_die_usage "relink requer --local-key K valido (nao-vazio, sem TAB/newline)"
   _jm_is_safe_field "$_jmr_jkey" || _jm_die_usage "relink requer --jira-key KEY valido (nao-vazio, sem TAB/newline)"
+  if [ -n "$_jmr_new_key" ]; then
+    _jm_is_safe_field "$_jmr_new_key" \
+      || _jm_die_usage "--new-local-key invalido (nao-vazio, sem TAB/newline): $_jmr_new_key"
+  fi
 
   _jmr_map=$(_jm_map_file "$_jmr_feature")
   [ -f "$_jmr_map" ] || _jm_die "mapeamento nao encontrado: $_jmr_map" 1
@@ -308,12 +340,54 @@ _jm_cmd_relink() {
   [ "$_jmr_stored_jkey" = "$_jmr_jkey" ] \
     || _jm_die "jira-key informado ($_jmr_jkey) nao confere com o mapeado ($_jmr_stored_jkey) para $_jmr_key — relink recusado" 1
 
+  # Renumeracao (--new-local-key, FR-012/data-model.md): move a linha para
+  # um local_key NOVO em vez de reativar K no lugar. Recusa se NK ja
+  # existir no mapeamento em QUALQUER estado — mesma disciplina de `put`
+  # (nunca sobrescreve/duplica uma linha existente). Sem --new-local-key
+  # (ou igual a K), comportamento identico ao anterior.
+  if [ -n "$_jmr_new_key" ] && [ "$_jmr_new_key" != "$_jmr_key" ]; then
+    _jmr_new_exists=$(awk -F '\t' -v nk="$_jmr_new_key" \
+      'NR > 1 && $1 == nk { print "1"; exit }' "$_jmr_map")
+    [ -z "$_jmr_new_exists" ] \
+      || _jm_die "--new-local-key ja existe no mapeamento: $_jmr_new_key" 1
+  else
+    _jmr_new_key="$_jmr_key"
+  fi
+
   _jmr_tmp="$_jmr_map.tmp.$$"
-  awk -F '\t' -v OFS='\t' -v k="$_jmr_key" '
+  awk -F '\t' -v OFS='\t' -v k="$_jmr_key" -v nk="$_jmr_new_key" '
     NR == 1 { print; next }
-    { if ($1 == k) $5 = "active"; print }
+    { if ($1 == k) { $1 = nk; $5 = "active" } print }
   ' "$_jmr_map" > "$_jmr_tmp"
   mv -- "$_jmr_tmp" "$_jmr_map"
+
+  _jm_close_orphan_conflict "$_jmr_feature" "$_jmr_key"
+}
+
+# _jm_close_orphan_conflict FEATURE LOCAL_KEY — fecha, best-effort, o
+# ConflictRecord PENDENTE `reason=orphan` de (FEATURE, LOCAL_KEY) em
+# `runtime/conflicts.tsv` como `resolution=relinked` (data-model.md Entity
+# ConflictRecord). LOCAL_KEY e sempre o local_key ANTIGO (o que estava
+# orphan) — e o que consta no ConflictRecord, mesmo quando `relink` moveu a
+# linha para um --new-local-key. Sem efeito (retorna 0) se o arquivo nao
+# existir ou nao houver registro pendente reason=orphan para o par: a
+# renumeracao/reativacao do mapeamento MUST sempre completar mesmo que o
+# conflito ja tenha sido fechado por outro caminho, ou nunca tenha existido
+# (ex.: orphan marcado direto por `mark-orphans`, sem passar pelo
+# processamento de eventos de jira-sync.sh que grava conflicts.tsv).
+_jm_close_orphan_conflict() {
+  [ -f "$_JM_CONFLICTS_FILE" ] || return 0
+  _jmcc_tmp="$_JM_CONFLICTS_FILE.tmp.$$"
+  if awk -F '\t' -v OFS='\t' -v f="$1" -v k="$2" '
+       NR == 1 { print; next }
+       $2 == f && $3 == k && $5 == "orphan" && $6 == "pending" { $6 = "relinked" }
+       { print }
+     ' "$_JM_CONFLICTS_FILE" > "$_jmcc_tmp"; then
+    mv -- "$_jmcc_tmp" "$_JM_CONFLICTS_FILE"
+  else
+    rm -f "$_jmcc_tmp"
+  fi
+  return 0
 }
 
 # --- dispatcher ---------------------------------------------------------

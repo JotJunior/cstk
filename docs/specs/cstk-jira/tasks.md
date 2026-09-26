@@ -1492,7 +1492,7 @@ envia o token para o novo host. Completar e aditivo: exigir igualdade exata
 entre os dois antes de montar o header de autenticacao (senao exit 4 sem
 requisicao).
 
-- [ ] 12.9.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-io.sh` conforme `FR-015 / plan.md credencial resolvida por site_host`: `request` recusa (exit 4, sem requisicao) quando `site_host` da credencial difere do ProjectConfig, com teste em `tests/cstk/test_jira-io.sh`
+- [x] 12.9.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-io.sh` conforme `FR-015 / plan.md credencial resolvida por site_host`: `request` recusa (exit 4, sem requisicao) quando `site_host` da credencial difere do ProjectConfig, com teste em `tests/cstk/test_jira-io.sh`
 
 <!-- converge-key: 731aea8ed951 -->
 
@@ -1513,7 +1513,7 @@ suprime conflitos futuros do par via `_js_conflict_pending_exists`
 (ignora `reason`). Completar e aditivo: relink para `local_key` novo
 (mover a linha do mapeamento) e fechamento `relinked` do registro pendente.
 
-- [ ] 12.10.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-map.sh` conforme `FR-012 / data-model SyncMapping orphan->active relinked`: relink para `local_key` novo (renumeracao) + fechamento do ConflictRecord `orphan` como `relinked`, com teste em `tests/cstk/test_jira-map.sh`
+- [x] 12.10.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-map.sh` conforme `FR-012 / data-model SyncMapping orphan->active relinked`: relink para `local_key` novo (renumeracao) + fechamento do ConflictRecord `orphan` como `relinked`, com teste em `tests/cstk/test_jira-map.sh`
 
 <!-- converge-key: 9f3c0e52b0de -->
 
@@ -1531,7 +1531,7 @@ nao ha secao para `jira-title.sh compose`, `jira-conflict-view.sh` e
 `jira-setup.sh check-status-mapping|write-config`. Completar e aditivo
 (documentacao, sem mudar codigo).
 
-- [ ] 12.11.1 Implementar/corrigir `docs/specs/cstk-jira/contracts/plugin-scripts.md` conforme `contracts/plugin-scripts.md completeness / tasks 11.1.1 11.3.1`: documentar os subcomandos ausentes e atualizar a linha `convert` (marker inicial + comparacao de status)
+- [x] 12.11.1 Implementar/corrigir `docs/specs/cstk-jira/contracts/plugin-scripts.md` conforme `contracts/plugin-scripts.md completeness / tasks 11.1.1 11.3.1`: documentar os subcomandos ausentes e atualizar a linha `convert` (marker inicial + comparacao de status)
 
 <!-- converge-key: 25f9d2e1ff46 -->
 
@@ -1547,6 +1547,6 @@ data (nenhuma ocorrencia de "validade"/"expira"). Completar e aditivo: passo
 que coleta a data informada pelo operador (nunca inventada) e a exibe como
 lembrete, sem gravar segredo.
 
-- [ ] 12.12.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-setup/SKILL.md` conforme `plan.md risco 5 / FR-019-INFRA-REFRESH lembrete de validade`: coletar/exibir a data de validade do API token informada pelo operador
+- [x] 12.12.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-setup/SKILL.md` conforme `plan.md risco 5 / FR-019-INFRA-REFRESH lembrete de validade`: coletar/exibir a data de validade do API token informada pelo operador
 
 <!-- converge-key: 56ce1b369eea -->

@@ -82,9 +82,15 @@ sync_autonomous=on
 EOF
 }
 
+# _write_credential [SITE_HOST] — default = "cstk-test.atlassian.net"
+# (mesmo host de `_write_full_config`); os cenarios de board-setup passam
+# "example.atlassian.net" explicitamente (mesmo host de
+# `_write_board_setup_config`) — FR-015 exige igualdade exata com o
+# site_host de ProjectConfig.
 _write_credential() {
   mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
-  printf 'email=%s\napi_token=%s\n' "tester@example.com" "tok-FAKE-000" \
+  printf 'site_host=%s\nemail=%s\napi_token=%s\n' \
+    "${1:-cstk-test.atlassian.net}" "tester@example.com" "tok-FAKE-000" \
     > "$TMPDIR_TEST/xdg/cstk-jira/credentials"
   chmod 600 "$TMPDIR_TEST/xdg/cstk-jira/credentials"
 }
@@ -366,7 +372,7 @@ EOF
 # COVERS: R11
 scenario_ct_r9_r10_r11_board_setup_metodo_path_corpo_batem_contrato() {
   _write_board_setup_config "DEMO"
-  _write_credential
+  _write_credential "example.atlassian.net"
   cd "$TMPDIR_TEST" || return 1
   _bin="$TMPDIR_TEST/bin"
   mkdir -p "$_bin"
