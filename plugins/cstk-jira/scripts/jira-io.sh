@@ -10,11 +10,9 @@
 #      docs/specs/cstk-jira/data-model.md Entity ProjectConfig/Credential;
 #      tasks.md FASE 3 tarefa 3.1.
 #
-# ESCOPO DESTA TAREFA (3.1 — `deps-check` + `request` com host unico e
-# SEC-5): so a mecanica de transporte HTTPS. NAO implementado aqui (fica
-# para as proximas tarefas da FASE 3, cada uma com seus proprios testes):
-#   - 3.2 allowlist de charset em PATH/JQL (SEC-1) — `request` ainda so
-#     confere o prefixo `/rest/`, nao o charset dos segmentos interpolados;
+# ESCOPO ATE AGORA (3.1 `deps-check`+`request` com host unico/SEC-5, e 3.2
+# allowlist de charset em PATH/SEC-1). NAO implementado aqui (fica para as
+# proximas tarefas da FASE 3, cada uma com seus proprios testes):
 #   - 3.3 credencial (SEC-4) — esta versao de `request` NAO envia header
 #     `Authorization` nenhum (o cliente HTTP roda sem config de credencial);
 #   - 3.4 classificacao fina de status HTTP (auth_failed/deferred/retry) —
@@ -22,10 +20,11 @@
 #     status exceto 3xx) de erro mecanico (3xx, DELETE, host/METHOD/PATH
 #     invalidos, dependencia ausente);
 #   - 3.5 `json-get`/`json-build` (SEC-3) — subcomandos ainda nao existem
-#     neste dispatcher.
+#     neste dispatcher. A JQL de FASE 7 (SEC-3) MUST reusar `validate-segment`
+#     (abaixo) para cada valor interpolado — nenhum texto livre entra em JQL.
 #
-# Subcomandos (contrato final documentado em plugin-scripts.md; apenas os
-# dois abaixo existem nesta tarefa):
+# Subcomandos (contrato final documentado em plugin-scripts.md; os tres
+# abaixo existem nesta tarefa):
 #
 #   jira-io.sh deps-check
 #       — Confere `jq` e o cliente HTTP no PATH. Exit 5 + instrucao de
@@ -37,6 +36,14 @@
 #         nunca existe como opcao valida (FR-012); qualquer METHOD fora da
 #         allowlist e uso incorreto (exit 2), nao erro de requisicao.
 #         PATH MUST comecar com `/rest/`.
+#         SEC-1: PATH e recusado (exit 2, SEM requisicao) se contiver `..`,
+#         `//`, `\`, `@`, `#`, espaco, CR/LF ou qualquer outro byte de
+#         controle, em qualquer posicao — esta e a checagem que cobre TODOS
+#         os pontos de interpolacao do motor R1-R11 (contracts/jira-rest.md),
+#         porque `request` e o UNICO ponto por onde qualquer chamada R1-R11
+#         de fato dispara: bastando o motor futuro (jira-sync.sh/jira-map.sh,
+#         FASE 4+) montar o PATH com os segmentos ja validados por
+#         `validate-segment` (abaixo), esta guarda central cobre o resto.
 #         Monta `https://<site_host><PATH>` com `site_host` lido de
 #         `jira-config.sh get site_host` (ProjectConfig); valida por
 #         IGUALDADE EXATA (sem userinfo, sem porta) o host que sera de fato
@@ -52,10 +59,22 @@
 #         Corpo da resposta em stdout; `http_status=<codigo>` na 1a linha
 #         de stderr.
 #
+#   jira-io.sh validate-segment VALUE [VALUE...]
+#       — SEC-1: valida cada VALUE contra a allowlist FECHADA de charset
+#         `[A-Za-z0-9_-]` (nao-vazio, sem excecao). Uso pretendido: o motor
+#         (jira-sync.sh/jira-map.sh, FASE 4+) chama isto para `jira_id`,
+#         `jira_key` e `project_key` ANTES de interpolar qualquer PATH ou
+#         JQL — nunca depois. Nao exige `jq`/cliente HTTP (deps-check nao e
+#         chamado aqui): validacao de string pura, POSIX `case`. Exit 0 se
+#         TODOS os VALUE casarem; exit 2 (uso incorreto) no primeiro que
+#         falhar, sem revelar o valor bruto em stderr (pode conter bytes de
+#         controle).
+#
 # Exit codes (mesma convencao de jira-config.sh):
 #   0 sucesso
 #   1 erro geral / falha de requisicao (rede, 3xx recusado, etc.)
-#   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, args)
+#   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, PATH/
+#     segmento fora da allowlist SEC-1, args)
 #   3 ProjectConfig ausente/inacessivel (propagado de jira-config.sh get)
 #   5 dependencia ausente (`jq` ou cliente HTTP fora do PATH)
 #
@@ -80,7 +99,13 @@ USO:
 
   jira-io.sh request METHOD PATH [--body-file F]
       Requisicao HTTPS contra <site_host><PATH>. METHOD em GET/POST/PUT
-      (DELETE nunca existe como opcao valida). PATH deve comecar com /rest/.
+      (DELETE nunca existe como opcao valida). PATH deve comecar com /rest/
+      e nao pode conter .. // \ @ # espaco CR/LF/controle (SEC-1).
+
+  jira-io.sh validate-segment VALUE [VALUE...]
+      Valida cada VALUE contra a allowlist [A-Za-z0-9_-] (SEC-1), a usar
+      pelo motor ANTES de interpolar jira_id/jira_key/project_key em
+      PATH ou JQL.
 
 EXIT CODES:
   0 sucesso   1 erro geral/requisicao   2 uso incorreto
@@ -121,6 +146,41 @@ _ji_method_allowed() {
   esac
 }
 
+# _ji_charset_ok VALUE — SEC-1: allowlist FECHADA [A-Za-z0-9_-], nao-vazio.
+# POSIX puro (case + bracket expression), sem dependencia externa. Usado
+# tanto por `validate-segment` quanto (potencialmente) por chamadores
+# futuros que queiram validar um valor isolado antes de montar PATH/JQL.
+_ji_charset_ok() {
+  [ -n "$1" ] || return 1
+  case "$1" in
+    *[!A-Za-z0-9_-]*) return 1 ;;
+  esac
+  return 0
+}
+
+# _ji_path_has_forbidden_bytes PATH — SEC-1: verdadeiro (exit 0) se PATH
+# contiver qualquer um dos padroes/bytes proibidos: `..`, `//`, `\`, `@`,
+# `#`, espaco, ou qualquer byte de controle (inclui CR/LF). Aplicado ao
+# PATH inteiro recebido por `request` — como `request` e o UNICO ponto de
+# disparo de requisicao (deps-check nao conta), esta e a guarda central que
+# cobre todos os pontos de interpolacao do motor (R1-R11), independente de
+# onde/como o PATH foi montado antes de chegar aqui.
+_ji_path_has_forbidden_bytes() {
+  case "$1" in
+    *..*|*//*|*"\\"*|*@*|*"#"*|*" "*) return 0 ;;
+  esac
+  # LF: printf '%s' sem terminador; wc -l so conta se ha \n EMBUTIDO no meio
+  # do valor (nao um trailing newline artificial, que nao existe aqui).
+  _jipfb_lines=$(printf '%s' "$1" | wc -l | tr -d ' ')
+  [ "$_jipfb_lines" -gt 0 ] && return 0
+  # CR e qualquer outro byte de controle (grep opera por linha; LF ja foi
+  # coberto acima porque grep nunca veria o \n como dado de uma linha).
+  if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    return 0
+  fi
+  return 1
+}
+
 _ji_cmd_request() {
   _ji_cmd_deps_check
 
@@ -150,6 +210,12 @@ _ji_cmd_request() {
     /rest/*) : ;;
     *) _ji_die_usage "PATH deve comecar com /rest/: $_jir_path" ;;
   esac
+
+  # SEC-1 (tarefa 3.2): recusa PATH com byte/sequencia proibida SEM disparar
+  # requisicao. Valor bruto NAO e ecoado (pode conter CR/LF/controle).
+  if _ji_path_has_forbidden_bytes "$_jir_path"; then
+    _ji_die_usage "PATH contem byte/sequencia proibida (.. // \\ @ # espaco CR/LF/controle) — recusado sem requisicao (SEC-1)"
+  fi
 
   if [ -n "$_jir_body_file" ] && [ ! -r "$_jir_body_file" ]; then
     _ji_die_usage "--body-file nao legivel: $_jir_body_file"
@@ -213,6 +279,20 @@ _ji_cmd_request() {
   return 0
 }
 
+# _ji_cmd_validate_segment VALUE [VALUE...] — SEC-1: valida cada VALUE
+# contra a allowlist FECHADA [A-Za-z0-9_-]. Nao exige jq/cliente HTTP (nao
+# chama _ji_cmd_deps_check). Uso pretendido: o motor (jira-sync.sh/
+# jira-map.sh) chama isto para jira_id/jira_key/project_key ANTES de montar
+# PATH ou JQL — a mesma allowlist que `request` reforca no PATH inteiro.
+_ji_cmd_validate_segment() {
+  [ "$#" -ge 1 ] || _ji_die_usage "validate-segment requer ao menos 1 VALUE"
+  for _jivs_val in "$@"; do
+    _ji_charset_ok "$_jivs_val" \
+      || _ji_die_usage "segmento fora da allowlist [A-Za-z0-9_-] (SEC-1) — jira_id/jira_key/project_key devem casar esse charset antes de qualquer interpolacao em PATH ou JQL"
+  done
+  return 0
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _ji_sub="${1:-}"
@@ -226,10 +306,13 @@ case "$_ji_sub" in
   deps-check)
     _ji_cmd_deps_check "$@"
     ;;
+  validate-segment)
+    _ji_cmd_validate_segment "$@"
+    ;;
   request)
     _ji_cmd_request "$@"
     ;;
   *)
-    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request)"
+    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment)"
     ;;
 esac

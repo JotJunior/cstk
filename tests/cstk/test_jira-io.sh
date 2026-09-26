@@ -2,14 +2,16 @@
 # test_jira-io.sh — cobre plugins/cstk-jira/scripts/jira-io.sh, tarefa 3.1
 # (cstk-jira, FASE 3 "Cliente REST Seguro").
 #
-# Ref: docs/specs/cstk-jira/plan.md SEC-5; docs/specs/cstk-jira/
-#      contracts/plugin-scripts.md `jira-io.sh`; tasks.md 3.1.1-3.1.7.
+# Ref: docs/specs/cstk-jira/plan.md SEC-1, SEC-5; docs/specs/cstk-jira/
+#      contracts/plugin-scripts.md `jira-io.sh`; tasks.md 3.1.1-3.1.7,
+#      3.2.1-3.2.5.
 #
-# Escopo desta suite (mesmo escopo do script nesta tarefa): so a mecanica
-# `deps-check` + `request` (host unico, allowlist de METHOD, recusa de
-# redirect). NAO cobre allowlist de charset (3.2), credencial (3.3),
-# classificacao fina de status HTTP (3.4) nem json-get/json-build (3.5) —
-# cada uma ganha sua propria suite quando a tarefa correspondente rodar.
+# Escopo desta suite (mesmo escopo do script ate esta tarefa): `deps-check`
+# + `request` (host unico, allowlist de METHOD, recusa de redirect, e desde
+# a tarefa 3.2 tambem a allowlist de charset em PATH/SEC-1) + o novo
+# subcomando `validate-segment`. NAO cobre credencial (3.3), classificacao
+# fina de status HTTP (3.4) nem json-get/json-build (3.5) — cada uma ganha
+# sua propria suite quando a tarefa correspondente rodar.
 #
 # Estrategia: NENHUM cenario toca rede. O cliente HTTP e sempre um STUB
 # (arquivo executavel `curl` instalado num diretorio de teste e injetado no
@@ -45,6 +47,30 @@
 #   JI-11 request sem ProjectConfig -> exit 3 (propagado de jira-config.sh)
 #   JI-12 request: resposta 3xx (redirect simulado para outro dominio) ->
 #         exit 1, recusada SEM disparar uma segunda requisicao (SEC-5)
+#
+# JI-13..JI-21 (tarefa 3.2, SEC-1): cada byte/sequencia proibida no PATH de
+# `request`, ISOLADAMENTE, causa exit 2 SEM disparar nenhuma requisicao
+# (mutation-test mental: remover `_ji_path_has_forbidden_bytes` da tarefa
+# 3.2 faz TODOS estes cenarios falhar, porque a chamada chegaria ao stub e
+# ganharia exit 0/1 em vez de 2 com zero chamadas):
+#   JI-13 PATH com `..`             -> exit 2, 0 chamadas
+#   JI-14 PATH com `//`             -> exit 2, 0 chamadas
+#   JI-15 PATH com `\`              -> exit 2, 0 chamadas
+#   JI-16 PATH com `@`              -> exit 2, 0 chamadas
+#   JI-17 PATH com `#`              -> exit 2, 0 chamadas
+#   JI-18 PATH com espaco           -> exit 2, 0 chamadas
+#   JI-19 PATH com CR               -> exit 2, 0 chamadas
+#   JI-20 PATH com LF               -> exit 2, 0 chamadas
+#   JI-21 PATH com byte de controle generico (TAB) -> exit 2, 0 chamadas
+#
+# JI-22..JI-26 (tarefa 3.2, SEC-1): subcomando `validate-segment`:
+#   JI-22 VALUE valido (`[A-Za-z0-9_-]`, ex. jira_key/jira_id/project_key)
+#         -> exit 0, para 1 ou varios VALUE de uma vez
+#   JI-23 VALUE com espaco          -> exit 2
+#   JI-24 VALUE com `/`             -> exit 2
+#   JI-25 2 VALUE, o 2o fora do charset -> exit 2 (recusa mesmo quando so
+#         um dos varios segmentos e invalido)
+#   JI-26 chamada sem nenhum VALUE  -> exit 2 (uso incorreto)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -225,6 +251,82 @@ scenario_request_redirect_3xx_recusado_sem_nova_requisicao() {
   assert_stderr_contains "SEC-5" || return 1
   [ "$(_curl_call_count)" = "1" ] \
     || { _fail "redirect calls" "esperado exatamente 1 chamada (sem nova requisicao), obtido $(_curl_call_count)"; return 1; }
+}
+
+# ==== JI-13..JI-21: request PATH com byte/sequencia proibida (SEC-1) ====
+
+# _assert_path_recusado_sem_requisicao PATH — helper comum: monta stub de
+# curl que responderia 200 se fosse chamado, dispara `request GET PATH`,
+# confere exit 2 + zero chamadas ao cliente HTTP.
+_assert_path_recusado_sem_requisicao() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issue/CSTK-1|200|{}')
+  assert_exit 2 env PATH="$_bin:$PATH" "$SCRIPT" request GET "$1" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  [ "$(_curl_call_count)" = "0" ] \
+    || { _fail "path forbidden calls" "PATH proibido nao deve disparar nenhuma requisicao: $(cat "$TMPDIR_TEST/io-curl-calls.log")"; return 1; }
+}
+
+scenario_request_path_com_dotdot_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "/rest/api/3/../secret"
+}
+
+scenario_request_path_com_barra_dupla_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "/rest/api//3/issue"
+}
+
+scenario_request_path_com_barra_invertida_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "/rest/api/3/issue$(printf '\134')CSTK-1"
+}
+
+scenario_request_path_com_arroba_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "/rest/api/3/issue/CSTK-1@evil"
+}
+
+scenario_request_path_com_hash_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "/rest/api/3/issue/CSTK-1#frag"
+}
+
+scenario_request_path_com_espaco_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "/rest/api/3/issue/CSTK 1"
+}
+
+scenario_request_path_com_cr_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "$(printf '/rest/api/3/issue/CSTK-1\r')"
+}
+
+scenario_request_path_com_lf_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "$(printf '/rest/api/3/issue/CSTK-1\ntail')"
+}
+
+scenario_request_path_com_controle_generico_exit2_sem_requisicao() {
+  _assert_path_recusado_sem_requisicao "$(printf '/rest/api/3/issue/CSTK\t1')"
+}
+
+# ==== JI-22..JI-26: validate-segment (SEC-1) ====
+
+scenario_validate_segment_valores_validos_exit0() {
+  assert_exit 0 "$SCRIPT" validate-segment "CSTK-123" || return 1
+  assert_exit 0 "$SCRIPT" validate-segment "CSTK-1" "10001" "abc_def" "PROJ" || return 1
+}
+
+scenario_validate_segment_com_espaco_exit2() {
+  assert_exit 2 "$SCRIPT" validate-segment "CSTK 1" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+}
+
+scenario_validate_segment_com_barra_exit2() {
+  assert_exit 2 "$SCRIPT" validate-segment "CSTK/1" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+}
+
+scenario_validate_segment_segundo_valor_invalido_exit2() {
+  assert_exit 2 "$SCRIPT" validate-segment "CSTK-1" "invalido com espaco" || return 1
+}
+
+scenario_validate_segment_sem_argumentos_exit2() {
+  assert_exit 2 "$SCRIPT" validate-segment || return 1
 }
 
 run_all_scenarios

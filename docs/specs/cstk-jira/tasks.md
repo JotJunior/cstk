@@ -271,17 +271,28 @@ Ref: plan.md SEC-5; contracts/plugin-scripts.md `jira-io.sh request`.
 
 Ref: plan.md SEC-1; checklists/security.md CHK001/CHK002.
 
-- [ ] 3.2.1 Validar segmentos de PATH vindos do mapeamento (`jira_id`/
+- [x] 3.2.1 Validar segmentos de PATH vindos do mapeamento (`jira_id`/
       `jira_key`) e de `project_key` contra allowlist `[A-Za-z0-9_-]`
       ANTES de qualquer interpolacao
-- [ ] 3.2.2 Rejeitar, sem fazer requisicao, PATH contendo `..`, `//`, `\`,
+- [x] 3.2.2 Rejeitar, sem fazer requisicao, PATH contendo `..`, `//`, `\`,
       `@`, `#`, espaco, CR/LF ou qualquer byte de controle
-- [ ] 3.2.3 Cobrir TODOS os pontos de interpolacao do motor: R1-R11
+- [x] 3.2.3 Cobrir TODOS os pontos de interpolacao do motor: R1-R11
       (contracts/jira-rest.md) + a JQL de FASE 7 (SEC-3)
-- [ ] 3.2.4 Teste: cada byte proibido de 3.2.2, isoladamente, causa recusa
+- [x] 3.2.4 Teste: cada byte proibido de 3.2.2, isoladamente, causa recusa
       sem requisicao (tabela de casos)
-- [ ] 3.2.5 Teste: `jira_id`/`jira_key`/`project_key` fora do charset
+- [x] 3.2.5 Teste: `jira_id`/`jira_key`/`project_key` fora do charset
       `[A-Za-z0-9_-]` (ex.: contendo espaco ou `/`) e recusado
+
+      Implementado em `plugins/cstk-jira/scripts/jira-io.sh`:
+      `_ji_path_has_forbidden_bytes` aplicada ao PATH inteiro dentro de
+      `request` (guarda central — cobre R1-R11 porque `request` e o unico
+      ponto de disparo de requisicao, independente de onde/como o motor
+      futuro montar o PATH) + novo subcomando `validate-segment VALUE...`
+      (`_ji_charset_ok`, allowlist `[A-Za-z0-9_-]`) para o motor validar
+      `jira_id`/`jira_key`/`project_key` ANTES de interpolar PATH ou a JQL
+      de FASE 7. Testes em `tests/cstk/test_jira-io.sh` (26 cenarios
+      JI-1..JI-26, PASS; os 12 de 3.1 continuam verdes). `sh tests/run.sh
+      --check-coverage`: zero orfaos.
 
 ### 3.3 Credencial temporaria segura (SEC-4) `[C]`
 
