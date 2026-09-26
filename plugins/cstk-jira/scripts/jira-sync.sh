@@ -209,6 +209,16 @@ USO:
       para TODAS as features (credencial e global ao projeto). Idempotente;
       sem eventos auth_failed, imprime contagem 0 e sai exit 0.
 
+  jira-sync.sh resolve-state-field --dir D --field F
+      Le o campo top-level F de D/state.json (grep/sed puro) ou, so D/
+      state.db existir, delega ao `state-rw.sh` do runtime
+      agente-00c-runtime quando localizavel (CSTK_LIB ou
+      ~/.claude/skills/agente-00c-runtime/scripts) — UNICO ponto do plugin
+      que le um campo de estado; nunca invoca sqlite3 diretamente
+      (Constitution II carve-out 1.1.0, task 13.1.1). Reusado pelo hook
+      `posttooluse-jira-sync.sh` para `canonical_project`. String vazia
+      (exit 0) sem state.json/state.db ou sem runtime localizavel.
+
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
@@ -313,6 +323,59 @@ _js_json_str() {
     | sed -n 's/.*"'"$2"'"[ 	]*:[ 	]*"\([^"]*\)".*/\1/p' | head -n 1
 }
 
+# _js_runtime_state_rw -> path do helper `state-rw.sh` do runtime
+# `agente-00c-runtime`, se localizavel (task 13.1.1 / Constitution II
+# carve-out 1.1.0: elimina o uso direto de `sqlite3` no plugin — quem detem
+# essa dependencia, sob o carve-out 1.3.0 RESTRITO ao proprio runtime, e o
+# `state-rw.sh`; este script so o CONSOME de fora, nunca reimplementa
+# leitura de SQLite). Ordem de fontes (a 1a que existir vence):
+# `$CSTK_LIB/../skills/agente-00c-runtime/scripts` (instalacao do toolkit
+# apontada pela variavel ja usada pelo `cli/lib` do proprio cstk) ou
+# `~/.claude/skills/agente-00c-runtime/scripts` (instalacao global padrao).
+# String vazia se nenhuma existir — o chamador trata como "runtime
+# indisponivel" (mesmo efeito pratico de "sqlite3 ausente do PATH" antes
+# desta mudanca: sem override, nunca inventa um valor). Nunca escreve nada.
+_js_runtime_state_rw() {
+  if [ -n "${CSTK_LIB:-}" ] \
+     && [ -r "$CSTK_LIB/../skills/agente-00c-runtime/scripts/state-rw.sh" ]; then
+    printf '%s\n' "$CSTK_LIB/../skills/agente-00c-runtime/scripts/state-rw.sh"
+    return 0
+  fi
+  if [ -r "$HOME/.claude/skills/agente-00c-runtime/scripts/state-rw.sh" ]; then
+    printf '%s\n' "$HOME/.claude/skills/agente-00c-runtime/scripts/state-rw.sh"
+    return 0
+  fi
+  return 0
+}
+
+# _js_resolve_state_field DIR FIELD -> valor de um campo top-level de
+# DIR/state.json (grep/sed puro via `_js_json_str`, sem dependencia nova)
+# ou, quando so DIR/state.db existir, delegado ao `state-rw.sh` do runtime
+# (`_js_runtime_state_rw`) QUANDO localizavel — UNICO ponto do plugin
+# (task 13.1.1) que resolve um campo de estado a partir de qualquer um dos
+# dois backends; `_js_resolve_stage` (abaixo) e o hook
+# `posttooluse-jira-sync.sh` (via subcomando `resolve-state-field`)
+# reutilizam esta funcao/subcomando em vez de duplicar a logica. Sem
+# state.json, sem state.db, ou sem runtime localizavel para o ramo
+# state.db: string vazia (chamador trata como "sem valor" — Principio VI,
+# nunca inventa). Nunca escreve nada.
+_js_resolve_state_field() {
+  _jsrsf_dir="$1"
+  _jsrsf_field="$2"
+  if [ -f "$_jsrsf_dir/state.json" ]; then
+    _js_json_str "$(cat "$_jsrsf_dir/state.json" 2>/dev/null)" "$_jsrsf_field" 2>/dev/null
+    return 0
+  fi
+  [ -f "$_jsrsf_dir/state.db" ] || return 0
+  _jsrsf_rw=$(_js_runtime_state_rw) || return 0
+  [ -n "$_jsrsf_rw" ] || return 0
+  _jsrsf_val=$("$_jsrsf_rw" get --state-dir "$_jsrsf_dir" --field ".$_jsrsf_field" 2>/dev/null) || return 0
+  [ -n "$_jsrsf_val" ] || return 0
+  [ "$_jsrsf_val" = "null" ] && return 0
+  printf '%s\n' "$_jsrsf_val"
+  return 0
+}
+
 # _js_resolve_stage FEATURE -> etapa corrente (`current_stage`) da execucao
 # ativa, READ-ONLY (FASE 12 tarefa 12.8.1; data-model.md ProjectConfig
 # `stage_status.<stage>` / US2 cenario 1). Mesma convencao de namespace do
@@ -337,12 +400,7 @@ _js_resolve_stage() {
   else
     return 0
   fi
-  if [ -f "$_jsrs_dir/state.json" ]; then
-    _js_json_str "$(cat "$_jsrs_dir/state.json" 2>/dev/null)" current_stage 2>/dev/null
-  elif [ -f "$_jsrs_dir/state.db" ] && command -v sqlite3 >/dev/null 2>&1; then
-    sqlite3 -readonly -noheader "$_jsrs_dir/state.db" \
-      'SELECT current_stage FROM execution LIMIT 1;' 2>/dev/null
-  fi
+  _js_resolve_state_field "$_jsrs_dir" current_stage
   return 0
 }
 
@@ -499,6 +557,33 @@ _js_close_conflict() {
   return 1
 }
 
+# _js_close_conflict_outbox_events FEATURE LOCAL_KEY — task 13.3.1
+# (data-model.md OutboxEvent "conflict --> [*]: operador decide (jira-sync
+# resolve)"): fecha (status=done) TODO evento outbox com status=`conflict`
+# do par (F, K). `resolve` e SEMPRE quem decide o destino de um conflito
+# (FASE 4.3, qualquer --choice) — sem isto, o evento outbox que originou o
+# conflito ficava `conflict` PARA SEMPRE (nenhuma compactacao remove
+# `conflict`, so `done`), e `_js_last_conflict_desired_state` (usado por
+# `overwrite`) continuava enxergando esse evento mesmo depois do conflito
+# ja fechado — um 2o conflito no MESMO par podia ser mascarado pelo
+# desired_state do conflito ANTERIOR ja resolvido. Mapeia para `done` (nao
+# um status novo) para que a PROXIMA compactacao de drain (4.2.8) tambem
+# remova estes eventos do outbox, mesmo efeito pratico do `[*]` terminal do
+# data-model. Idempotente (sem eventos `conflict` casando, no-op; arquivo
+# ausente, no-op).
+_js_close_conflict_outbox_events() {
+  _jscoe_feature="$1"
+  _jscoe_key="$2"
+  [ -f "$_JS_OUTBOX_FILE" ] || return 0
+  _jscoe_tmp="$_JS_OUTBOX_FILE.tmp.$$"
+  awk -F '\t' -v OFS='\t' -v f="$_jscoe_feature" -v k="$_jscoe_key" '
+    NR == 1 { print; next }
+    $3 == f && $4 == k && $8 == "conflict" { $8 = "done" }
+    { print }
+  ' "$_JS_OUTBOX_FILE" > "$_jscoe_tmp"
+  mv -- "$_jscoe_tmp" "$_JS_OUTBOX_FILE"
+}
+
 # _js_last_conflict_desired_state FEATURE LOCAL_KEY — imprime o
 # `desired_state` do evento outbox `conflict` MAIS RECENTE (ultima ocorrencia
 # na ordem do arquivo) para (F, K); retorna 1 se nenhum existir. Usado por
@@ -515,12 +600,23 @@ _js_last_conflict_desired_state() {
 
 # _js_rebaseline_marker IO FEATURE LOCAL_KEY JIRA_KEY — feature cstk-jira
 # FASE 12 tarefa 12.1.1 (FR-011 / task 4.3.2 / task 4.3.4 `resolve`): le o
-# titulo+status ATUAIS da issue (R3, mesma leitura que `drain`/`convert` ja
-# fazem) e regrava o SyncMarker (R6 PUT) com ESSES valores — nunca inventa
-# um estado, so espelha o que a issue tem agora. Efeito: a proxima
-# deteccao de conflito (drain/reconcile/`_js_maybe_update_mapped_issue`)
+# titulo+status+descricao ATUAIS da issue (R3, mesma leitura que `drain`/
+# `convert` ja fazem) e regrava o SyncMarker (R6 PUT) com ESSES valores —
+# nunca inventa um estado, so espelha o que a issue tem agora. Efeito: a
+# proxima deteccao de conflito (drain/reconcile/`_js_maybe_update_mapped_issue`)
 # compara contra um marker que bate o estado atual, logo NAO reabre o
 # MESMO conflito (`resolve --choice keep_jira`/`overwrite`, FASE 12.1).
+# task 13.2.1 (FR-011 / data-model SyncMarker written_description_sha256):
+# quando a issue carrega descricao composta (`fields.description` nao-vazio
+# — so Task/Sub-task com criticidade/dependencias, mesma extracao de
+# `_js_maybe_update_mapped_issue`), o marker rebaselinado grava
+# `written_description_sha256` do texto ATUAL (nao do valor anterior) —
+# "aceitar o Jira como esta" (keep_jira) ou "estabelecer a nova baseline
+# antes de reenfileirar" (overwrite) precisam refletir a descricao REAL da
+# issue, nunca uma baseline antiga nem a ausencia da chave (que faria a
+# proxima `convert` tratar a descricao como "sem baseline" e sobrescrever
+# uma edicao manual em silencio). Issue sem descricao: a chave continua
+# omitida (nada a proteger).
 # Imprime o status atual (stdout) em sucesso — reuso pelo chamador sem 2a
 # leitura R3. Falha (R3 ou R6 PUT) -> diagnostico em stderr, marker
 # intocado, retorna 1 — chamador NUNCA deve fechar o ConflictRecord como
@@ -532,7 +628,7 @@ _js_rebaseline_marker() {
   _jrm_lkey="$3"
   _jrm_jkey="$4"
 
-  if _jrm_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey?fields=summary,status" --op R3 2>/dev/null); then
+  if _jrm_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey?fields=summary,status,description" --op R3 2>/dev/null); then
     :
   else
     printf '%s: falha ao ler estado atual de %s (R3) para rebaselinear o SyncMarker\n' \
@@ -541,10 +637,17 @@ _js_rebaseline_marker() {
   fi
   _jrm_summary=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.summary')
   _jrm_status=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.status.name')
+  _jrm_description=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get \
+    '.fields.description.content[0].content[0].text? // ""')
   _jrm_sha=$(printf '%s' "$_jrm_summary" | "$_jrm_io" sha256-stdin)
   _jrm_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  _jrm_body=$("$_jrm_io" json-build marker --local-key "$_jrm_lkey" --feature "$_jrm_feature" \
-    --written-summary-sha256 "$_jrm_sha" --written-status "$_jrm_status" --written-at "$_jrm_now")
+  set -- marker --local-key "$_jrm_lkey" --feature "$_jrm_feature" \
+    --written-summary-sha256 "$_jrm_sha" --written-status "$_jrm_status" --written-at "$_jrm_now"
+  if [ -n "$_jrm_description" ]; then
+    _jrm_desc_sha=$(printf '%s' "$_jrm_description" | "$_jrm_io" sha256-stdin)
+    set -- "$@" --written-description-sha256 "$_jrm_desc_sha"
+  fi
+  _jrm_body=$("$_jrm_io" json-build "$@")
   _jrm_bf=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jrm_body" > "$_jrm_bf"
@@ -1247,9 +1350,21 @@ _js_cmd_enqueue() {
   # (`_js_process_reconcile_event` filtra este sidecar via
   # `_js_outcomes_file_for_feature`) — nunca para o evento `*`
   # (reconciliacao inteira da feature, que nao carrega um task_id real).
+  # task 13.3.1: gravado SOMENTE para --source hook-record-task — o unico
+  # source que carrega um outcome REAL de `record_task`/`record-task`
+  # (LocalWorkItem outcome precedence, data-model.md). `enqueue --source
+  # manual --state pass|fail` (usado por `resolve --choice overwrite` para
+  # reenfileirar um desired_state ja derivado — nao um outcome novo) e
+  # `hook-close-wave` (reconciliacao `local_key=*`, sempre filtrado acima)
+  # NUNCA devem gravar aqui — antes desta correcao, um `overwrite` ou
+  # qualquer `enqueue --source manual --state pass|fail` avulso sobrepunha
+  # em silencio o outcome REAL da ultima `record_task`, invertendo a
+  # precedencia que 12.4.1 existe para garantir.
   case "$_jse_state" in
     pass|fail)
-      [ "$_jse_key" = "*" ] || _js_set_task_outcome "$_jse_feature" "$_jse_key" "$_jse_state"
+      if [ "$_jse_key" != "*" ] && [ "$_jse_source" = "hook-record-task" ]; then
+        _js_set_task_outcome "$_jse_feature" "$_jse_key" "$_jse_state"
+      fi
       ;;
   esac
 
@@ -1434,6 +1549,14 @@ _js_process_reconcile_event() {
     else
       _jspr_written_sha=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_summary_sha256')
       _jspr_written_status=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_status')
+      # task 13.2.1 (FR-011 / data-model SyncMarker written_description_sha256):
+      # carrega adiante a baseline de descricao ja lida (R6 GET acima) para
+      # o R6 PUT desta transicao de status NUNCA apagar a protecao contra
+      # sobrescrita de descricao editada manualmente no Jira (o PUT
+      # substitui o valor inteiro da propriedade — sem isto, a proxima
+      # `convert` tratava a ausencia da chave como "sem baseline" e
+      # sobrescrevia a descricao em silencio).
+      _jspr_written_desc_sha=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_description_sha256? // ""')
       if [ "$_jspr_cur_sha" != "$_jspr_written_sha" ] || [ "$_jspr_cur_status" != "$_jspr_written_status" ]; then
         _jspr_conflict="yes"
         _jspr_conflict_reason="manual_edit"
@@ -1491,9 +1614,14 @@ _js_process_reconcile_event() {
     fi
 
     # R6 PUT — regravar o SyncMarker com o novo written_status/sha256.
+    # task 13.2.1: preserva `written_description_sha256` (lido acima do
+    # marker atual) — o PUT substitui o valor inteiro da propriedade, entao
+    # omiti-lo apagaria a baseline de protecao da descricao.
     _jspr_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    _jspr_marker_body=$("$_jsd_io" json-build marker --local-key "$_jspr_lkey" --feature "$_jsd_feature" \
-      --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_target" --written-at "$_jspr_now")
+    set -- marker --local-key "$_jspr_lkey" --feature "$_jsd_feature" \
+      --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_target" --written-at "$_jspr_now"
+    [ -n "${_jspr_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspr_written_desc_sha"
+    _jspr_marker_body=$("$_jsd_io" json-build "$@")
     _jspr_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
       || _js_die "falha ao criar arquivo temporario" 1
     printf '%s' "$_jspr_marker_body" > "$_jspr_marker_body_file"
@@ -1638,6 +1766,9 @@ _js_process_one_event() {
   else
     _jspe_written_sha=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_summary_sha256')
     _jspe_written_status=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_status')
+    # task 13.2.1: baseline de descricao lida do marker atual, carregada
+    # adiante para o R6 PUT desta transicao (ver nota no R6 PUT abaixo).
+    _jspe_written_desc_sha=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_description_sha256? // ""')
     if [ "$_jspe_cur_sha" != "$_jspe_written_sha" ] || [ "$_jspe_cur_status" != "$_jspe_written_status" ]; then
       _jspe_conflict="yes"
       _jspe_conflict_reason="manual_edit"
@@ -1728,9 +1859,14 @@ _js_process_one_event() {
   # aceito porque a janela e estreita (R6 PUT so falha por auth_failed/
   # deferred, ja raros) e o operador sempre pode `resolve --choice
   # keep_jira` para destravar (FASE 4.3).
+  # task 13.2.1: preserva `written_description_sha256` (lido acima) — o PUT
+  # substitui o valor inteiro da propriedade, entao omiti-lo apagaria a
+  # baseline de protecao da descricao editada manualmente no Jira.
   _jspe_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  _jspe_marker_body=$("$_jsd_io" json-build marker --local-key "$_jspe_lkey" --feature "$_jsd_feature" \
-    --written-summary-sha256 "$_jspe_cur_sha" --written-status "$_jspe_target" --written-at "$_jspe_now")
+  set -- marker --local-key "$_jspe_lkey" --feature "$_jsd_feature" \
+    --written-summary-sha256 "$_jspe_cur_sha" --written-status "$_jspe_target" --written-at "$_jspe_now"
+  [ -n "${_jspe_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspe_written_desc_sha"
+  _jspe_marker_body=$("$_jsd_io" json-build "$@")
   _jspe_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jspe_marker_body" > "$_jspe_marker_body_file"
@@ -2063,19 +2199,39 @@ _js_cmd_resolve() {
   fi
 
   if [ "$_jsr_choice" = "overwrite" ]; then
+    # task 13.3.1: so aceita o desired_state de um evento outbox `conflict`
+    # AINDA nao resolvido — `_js_last_conflict_desired_state` filtra por
+    # status=conflict, e `_js_close_conflict_outbox_events` (abaixo, ao fim
+    # desta funcao) fecha (status=done) todo evento conflict do par assim
+    # que o operador resolve; um conflito ANTERIOR ja resolvido, portanto,
+    # nunca e mais visto por esta chamada (achado 13.3: antes desta tarefa,
+    # o evento conflict do conflito ANTERIOR ficava conflict para sempre e
+    # podia ser reusado indevidamente por um overwrite posterior).
     if _jsr_ds=$(_js_last_conflict_desired_state "$_jsr_feature" "$_jsr_key"); then
       :
     else
-      # Fallback (achado 12.1): conflitos originados de reconcile
-      # (`_js_process_reconcile_event`) ou de convert
+      # Fallback (achado 12.1, corrigido 13.3.1): conflitos originados de
+      # reconcile (`_js_process_reconcile_event`) ou de convert
       # (`_js_maybe_update_mapped_issue`) nunca gravam evento outbox
       # 'conflict' com este local_key. Deriva o desired_state do
-      # local_state ATUAL — mesma fonte que `plan`/reconcile ja usam,
-      # nunca um valor inventado.
-      _jsr_ds=$("$_jsr_tasks" items --feature "$_jsr_feature" 2>/dev/null \
-        | awk -F '\t' -v k="$_jsr_key" '$1 == k { print $5; exit }')
+      # local_state ATUAL via `jira-tasks.sh items` — mesma derivacao
+      # (outcomes-file com precedencia de record_task + stage_status do
+      # Epic) que `_js_process_reconcile_event` ja usa (12.4.1/12.8.1),
+      # nunca um valor inventado nem divergente da reconciliacao.
+      _jsr_outcomes_file=$(_js_outcomes_file_for_feature "$_jsr_feature")
+      _jsr_stage=$(_js_resolve_stage "$_jsr_feature")
+      if [ -n "$_jsr_stage" ]; then
+        _jsr_ds=$("$_jsr_tasks" items --feature "$_jsr_feature" \
+          --outcomes-file "$_jsr_outcomes_file" --stage "$_jsr_stage" 2>/dev/null \
+          | awk -F '\t' -v k="$_jsr_key" '$1 == k { print $5; exit }')
+      else
+        _jsr_ds=$("$_jsr_tasks" items --feature "$_jsr_feature" \
+          --outcomes-file "$_jsr_outcomes_file" 2>/dev/null \
+          | awk -F '\t' -v k="$_jsr_key" '$1 == k { print $5; exit }')
+      fi
+      rm -f "$_jsr_outcomes_file"
       [ -n "$_jsr_ds" ] \
-        || _js_die "nao foi possivel determinar desired_state (nem evento outbox 'conflict', nem local_state atual via jira-tasks.sh items) para feature=$_jsr_feature local_key=$_jsr_key" 1
+        || _js_die "nao foi possivel determinar desired_state (nem evento outbox 'conflict' pendente, nem local_state atual via jira-tasks.sh items) para feature=$_jsr_feature local_key=$_jsr_key" 1
     fi
 
     _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" >/dev/null \
@@ -2089,6 +2245,14 @@ _js_cmd_resolve() {
     _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" >/dev/null \
       || _js_die "falha ao rebaselinear o SyncMarker — conflito NAO fechado, tente novamente" 1
   fi
+
+  # task 13.3.1 (data-model.md OutboxEvent "conflict --> [*]"): TODA
+  # resolucao (qualquer --choice) encerra o(s) evento(s) outbox `conflict`
+  # do par — nunca deixa um evento conflict "vivo" para sempre. Roda ANTES
+  # de fechar o ConflictRecord (abaixo); a ordem entre os dois nao importa
+  # para `overwrite` (o NOVO evento reenfileirado acima nasce `queued`,
+  # nunca `conflict` — nao e afetado por este fechamento).
+  _js_close_conflict_outbox_events "$_jsr_feature" "$_jsr_key"
 
   _js_close_conflict "$_jsr_feature" "$_jsr_key" "$_jsr_choice" \
     || _js_die "falha ao fechar ConflictRecord (corrida concorrente com outro drain/resolve?) para feature=$_jsr_feature local_key=$_jsr_key" 1
@@ -2163,6 +2327,32 @@ _js_cmd_requeue_auth_failed() {
   printf 'requeue-auth-failed: %s evento(s) auth_failed reenfileirado(s) para queued\n' "$_jsraf_count"
 }
 
+# _js_cmd_resolve_state_field --dir DIR --field FIELD — task 13.1.1
+# (Constitution II carve-out 1.1.0): subcomando fino sobre
+# `_js_resolve_state_field`, para que QUALQUER call-site do plugin que
+# precise ler um campo top-level de um state.json/state.db (hoje: o hook
+# `posttooluse-jira-sync.sh`, para `canonical_project`) delegue a este
+# UNICO ponto em vez de reimplementar a leitura (e, no ramo state.db,
+# reimplementar `sqlite3`). Imprime string vazia (exit 0) quando o campo
+# nao existe/o runtime nao esta localizavel — nunca falha o chamador.
+_js_cmd_resolve_state_field() {
+  _jsrsf_cmd_dir=""
+  _jsrsf_cmd_field=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dir)   _jsrsf_cmd_dir=$2;   shift 2 ;;
+      --field) _jsrsf_cmd_field=$2; shift 2 ;;
+      *) _js_die_usage "resolve-state-field: flag desconhecida: $1" ;;
+    esac
+  done
+  _js_is_safe_field "$_jsrsf_cmd_dir" \
+    || _js_die_usage "resolve-state-field: --dir obrigatorio e sem TAB/newline"
+  _js_is_safe_field "$_jsrsf_cmd_field" \
+    || _js_die_usage "resolve-state-field: --field obrigatorio e sem TAB/newline"
+  _js_resolve_state_field "$_jsrsf_cmd_dir" "$_jsrsf_cmd_field"
+  return 0
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _js_sub="${1:-}"
@@ -2194,7 +2384,10 @@ case "$_js_sub" in
   requeue-auth-failed)
     _js_cmd_requeue_auth_failed "$@"
     ;;
+  resolve-state-field)
+    _js_cmd_resolve_state_field "$@"
+    ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, resolve-state-field)"
     ;;
 esac

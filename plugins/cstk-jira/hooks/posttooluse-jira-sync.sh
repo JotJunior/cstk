@@ -94,15 +94,19 @@ _pjs_log() {
 
 # _pjs_resolve_canonical_project PROJECT_DIR -> canonical_project derivado
 # (mesma derivacao do orquestrador: .execution.canonical_project com
-# fallback basename(target_project_path)) — READ-ONLY, nunca escreve.
+# fallback basename(target_project_path)) — READ-ONLY, nunca escreve. Ramo
+# state.db (task 13.1.1 / Constitution II carve-out 1.1.0): este hook NUNCA
+# chama `sqlite3` diretamente — delega ao UNICO ponto do plugin que le
+# campos de state.db, o subcomando `resolve-state-field` de `jira-sync.sh`
+# (`$_PJS_ENGINE`, ja resolvido acima), que por sua vez so consome o
+# `state-rw.sh` do runtime `agente-00c-runtime` quando localizavel.
 _pjs_resolve_canonical_project() {
   _pjs_rc_dir="$1/.claude/agente-00c-state"
   _pjs_rc_val=""
   if [ -f "$_pjs_rc_dir/state.json" ]; then
     _pjs_rc_val=$(_pjs_json_str "$(cat "$_pjs_rc_dir/state.json" 2>/dev/null)" canonical_project 2>/dev/null) || _pjs_rc_val=""
-  elif [ -f "$_pjs_rc_dir/state.db" ] && command -v sqlite3 >/dev/null 2>&1; then
-    _pjs_rc_val=$(sqlite3 -readonly -noheader "$_pjs_rc_dir/state.db" \
-      'SELECT canonical_project FROM execution LIMIT 1;' 2>/dev/null) || _pjs_rc_val=""
+  elif [ -f "$_pjs_rc_dir/state.db" ]; then
+    _pjs_rc_val=$("$_PJS_ENGINE" resolve-state-field --dir "$_pjs_rc_dir" --field canonical_project 2>/dev/null) || _pjs_rc_val=""
   fi
   if [ -z "$_pjs_rc_val" ] || [ "$_pjs_rc_val" = "null" ]; then
     basename -- "$1"

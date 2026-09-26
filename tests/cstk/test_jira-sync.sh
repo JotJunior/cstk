@@ -705,6 +705,22 @@ scenario_enqueue_cria_outbox_com_cabecalho_e_linha_queued() {
   return 0
 }
 
+# SY-65 (task 13.3.1, data-model.md LocalWorkItem outcome precedence):
+# `enqueue --source manual --state pass|fail` NUNCA grava o sidecar de
+# outcomes (`runtime/task-outcomes.tsv`) — SOMENTE `--source
+# hook-record-task` carrega um outcome REAL de `record_task` (o UNICO
+# caller que o hook `posttooluse-jira-sync.sh` usa para esse source). Antes
+# desta tarefa, QUALQUER enqueue com --state pass/fail (inclusive o
+# reenfileiramento de `resolve --choice overwrite`, que usa `--source
+# manual`) sobrepunha em silencio o outcome REAL da ultima `record_task`.
+scenario_enqueue_source_manual_nao_grava_sidecar_outcomes() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state pass --source manual >/dev/null || return 1
+  [ -f "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv" ] \
+    && { _fail "sy65_sidecar_created" "enqueue --source manual nao deveria criar task-outcomes.tsv: $(cat "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv")"; return 1; }
+  return 0
+}
+
 scenario_enqueue_state_invalido_exit2_sem_criar_outbox() {
   cd "$TMPDIR_TEST" || return 1
   assert_exit 2 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state bogus --source manual || return 1
@@ -953,6 +969,70 @@ EOF
   return 0
 }
 
+# SY-62 (task 13.2.1, FR-011 / data-model SyncMarker written_description_sha256
+# / task 12.5.1): drain (transicao de status via `_js_process_one_event`)
+# PRESERVA `written_description_sha256` do marker lido no R6 PUT que
+# regrava o marker — a proxima `convert` da MESMA feature, com a descricao
+# REAL da issue tendo sido editada manualmente no Jira nesse meio-tempo,
+# detecta `manual_edit` (NUNCA sobrescreve a edicao em silencio via R2).
+# Antes de 13.2.1, o R6 PUT da transicao (que substitui o valor INTEIRO da
+# entity property) omitia a chave — a convert seguinte tratava a ausencia
+# de baseline como "nada a proteger" e sobrescrevia a descricao editada.
+scenario_drain_transicao_preserva_baseline_descricao_convert_seguinte_detecta_manual_edit() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  _summary="[FASE 1] 1.1 Titulo da tarefa"
+  _sha_summary=$(printf '%s' "$_summary" | "$IO_SCRIPT" sha256-stdin)
+  _sha_desc=$(printf '%s' "Criticidade: A" | "$IO_SCRIPT" sha256-stdin)
+
+  # Fase 1: transicao pending->pass via drain (evento local_key=1.1,
+  # _js_process_one_event). O marker LIDO (R6 GET) ja carrega
+  # written_description_sha256 (baseline de uma convert anterior, 12.5.1).
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<EOF
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 "{\"fields\":{\"summary\":\"$_summary\",\"status\":{\"name\":\"To Do\"}}}"
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"To Do\",\"written_description_sha256\":\"$_sha_desc\"}}"
+  _queue_push 200 '{"transitions":[{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy62_drain_calls_count" "esperado 5 chamadas, obtido $(_queue_calls_count)"; return 1; }
+  _put_desc_sha=$("$IO_SCRIPT" json-get '.written_description_sha256? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_put_desc_sha" = "$_sha_desc" ] \
+    || { _fail "sy62_marker_preserva_descricao" "R6 PUT da transicao deveria preservar written_description_sha256=$_sha_desc, obtido '$_put_desc_sha'"; return 1; }
+
+  # Fase 2: convert da MESMA feature — titulo/status da issue batem com o
+  # marker ja atualizado pela fase 1 (Done), mas a DESCRICAO atual foi
+  # editada manualmente no Jira (diverge de "Criticidade: A", a composta
+  # local). MUST detectar manual_edit e NUNCA chamar R2 (issue-update).
+  _write_tasks_1task_1sub
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1.1" subtask 20003 DEMO-3 active
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 "{\"fields\":{\"summary\":\"$_summary\",\"status\":{\"name\":\"Done\"},\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Descricao editada manualmente no Jira\"}]}]}}}"
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"Done\",\"written_description_sha256\":\"$_sha_desc\"}}"
+  _queue_push 200 '{"fields":{"summary":"Sub um"}}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_post_issue_calls_count)" = "0" ] \
+    || { _fail "sy62_convert_sem_create" "convert nao deveria criar nenhuma issue (todas ja mapeadas), obtido $(_queue_post_issue_calls_count) POST /issue"; return 1; }
+  grep -q 'demo	1\.1	DEMO-2	manual_edit	pending$' "$(_conflicts_file)" \
+    || { _fail "sy62_conflict_record" "ConflictRecord manual_edit ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  return 0
+}
+
 # SY-19 drain: titulo atual diverge do sha256 gravado no SyncMarker ->
 # ConflictRecord (reason=manual_edit), evento vira `conflict`, NUNCA
 # sobrescreve (FR-011) — so 2 chamadas de rede (R3 + R6-GET), nenhuma
@@ -1139,11 +1219,16 @@ EOF
 }
 
 # SY-25 resolve --choice keep_jira (FASE 12 tarefa 12.1.1 — efeito
-# DURAVEL): fecha o registro, NUNCA toca o outbox, mas AGORA rebaselineia
-# o SyncMarker (R3 GET + R6 PUT) para o titulo+status ATUAIS da issue —
-# antes desta tarefa nenhuma chamada de rede era feita e o marker antigo
-# permanecia, reabrindo o MESMO conflito no proximo drain (achado 12.1).
-scenario_resolve_keep_jira_fecha_registro_sem_tocar_outbox() {
+# DURAVEL): fecha o registro e rebaselineia o SyncMarker (R3 GET + R6 PUT)
+# para o titulo+status ATUAIS da issue — antes desta tarefa nenhuma chamada
+# de rede era feita e o marker antigo permanecia, reabrindo o MESMO
+# conflito no proximo drain (achado 12.1). task 13.3.1 (data-model.md
+# OutboxEvent "conflict --> [*]"): o evento outbox `conflict` do MESMO par
+# (F, K) MUST ser encerrado (status vira `done`) — antes desta tarefa ele
+# ficava `conflict` para sempre, e `_js_last_conflict_desired_state`
+# (usado por `overwrite`) continuava enxergando-o mesmo depois do conflito
+# ja fechado.
+scenario_resolve_keep_jira_fecha_registro_e_encerra_evento_conflict_do_outbox() {
   _write_full_config
   _write_credential
   cd "$TMPDIR_TEST" || return 1
@@ -1157,7 +1242,6 @@ EOF
 detected_at	feature	local_key	jira_key	reason	resolution
 2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
 EOF
-  _before_outbox=$(cat "$(_outbox_file)")
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo editado a mao no Jira","status":{"name":"In Progress"}}}'
   _queue_push 200 ''
@@ -1165,9 +1249,8 @@ EOF
   assert_stdout_contains "escolha=keep_jira" || return 1
   grep -q 'demo	1\.1	DEMO-2	manual_edit	keep_jira$' "$(_conflicts_file)" \
     || { _fail "resolve_keep_jira_resolution" "resolution nao virou keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
-  _after_outbox=$(cat "$(_outbox_file)")
-  [ "$_before_outbox" = "$_after_outbox" ] \
-    || { _fail "resolve_keep_jira_outbox_untouched" "outbox.tsv foi alterado por keep_jira"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy63_keep_jira_outbox_conflict_closed" "evento e1 (conflict) deveria virar done apos resolve: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
   [ "$(_queue_calls_count)" = "2" ] \
     || { _fail "resolve_keep_jira_calls" "esperado 2 chamadas (R3+R6 PUT), obtido $(_queue_calls_count)"; return 1; }
   _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-2.json")
@@ -1180,8 +1263,11 @@ EOF
   return 0
 }
 
-# SY-26 resolve --choice ignored: fecha o registro sem tocar o outbox.
-scenario_resolve_ignored_fecha_registro_sem_tocar_outbox() {
+# SY-26 resolve --choice ignored: fecha o registro; nenhuma escrita de
+# rede. task 13.3.1: o evento outbox `conflict` do MESMO par MUST ser
+# encerrado (status vira `done`) mesmo em `ignored` — TODA resolucao
+# encerra o(s) evento(s) conflict do par, nao so keep_jira/overwrite.
+scenario_resolve_ignored_fecha_registro_e_encerra_evento_conflict_do_outbox() {
   cd "$TMPDIR_TEST" || return 1
   mkdir -p "$(dirname "$(_outbox_file)")"
   cat > "$(_outbox_file)" <<'EOF'
@@ -1192,14 +1278,12 @@ EOF
 detected_at	feature	local_key	jira_key	reason	resolution
 2026-01-01T00:00:00Z	demo	9.9	DEMO-9	orphan	pending
 EOF
-  _before_outbox=$(cat "$(_outbox_file)")
   assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 9.9 --choice ignored || return 1
   assert_stdout_contains "escolha=ignored" || return 1
   grep -q 'demo	9\.9	DEMO-9	orphan	ignored$' "$(_conflicts_file)" \
     || { _fail "resolve_ignored_resolution" "resolution nao virou ignored: $(cat "$(_conflicts_file)")"; return 1; }
-  _after_outbox=$(cat "$(_outbox_file)")
-  [ "$_before_outbox" = "$_after_outbox" ] \
-    || { _fail "resolve_ignored_outbox_untouched" "outbox.tsv foi alterado por ignored"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy63_ignored_outbox_conflict_closed" "evento e1 (conflict) deveria virar done apos resolve --choice ignored: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
   return 0
 }
 
@@ -1237,6 +1321,54 @@ EOF
     || { _fail "resolve_overwrite_new_event" "nenhum evento novo foi enfileirado: $(cat "$(_outbox_file)")"; return 1; }
   printf '%s\n' "$_novo" | grep -q '	demo	1\.1	fail	manual	0	queued$' \
     || { _fail "resolve_overwrite_new_event_fields" "evento novo com campos inesperados: $_novo"; return 1; }
+  return 0
+}
+
+# SY-64 (task 13.3.1): DOIS conflitos SUCESSIVOS no MESMO par (feature,
+# local_key). O 1o e resolvido (`ignored`) primeiro — fecha o evento
+# outbox `conflict` dele (e1, desired_state=fail) para `done`. Um 2o
+# conflito NOVO surge depois (e2, desired_state=pass, NOVO ConflictRecord
+# pending). `resolve --choice overwrite` do 2o conflito MUST reenfileirar
+# o desired_state do 2o conflito (`pass`), NUNCA o do 1o ja resolvido
+# (`fail`) — antes de 13.3.1, o evento e1 ficava `conflict` para sempre no
+# outbox e podia ser confundido com o conflito atual.
+scenario_resolve_overwrite_2_conflitos_sucessivos_usa_desired_state_do_conflito_atual() {
+  _write_full_config
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	fail	manual	0	conflict
+EOF
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice ignored || return 1
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy64_e1_closed" "evento e1 (1o conflito) deveria estar done apos o 1o resolve: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+
+  cat >> "$(_outbox_file)" <<'EOF'
+e2	2026-01-01T00:02:00Z	demo	1.1	pass	manual	0	conflict
+EOF
+  cat >> "$(_conflicts_file)" <<'EOF'
+2026-01-01T00:02:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo editado a mao 2","status":{"name":"To Do"}}}'
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+
+  _novo=$(awk -F '\t' '$1 != "e1" && $1 != "e2" && NR > 1 { print }' "$(_outbox_file)")
+  [ -n "$_novo" ] \
+    || { _fail "sy64_new_event_missing" "nenhum evento novo foi enfileirado pelo overwrite: $(cat "$(_outbox_file)")"; return 1; }
+  printf '%s\n' "$_novo" | grep -q '	demo	1\.1	pass	manual	0	queued$' \
+    || { _fail "sy64_new_event_wrong_desired_state" "overwrite deveria reenfileirar desired_state=pass (2o conflito, ainda pendente), obtido: $_novo"; return 1; }
+  awk -F '\t' '$1=="e2"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy64_e2_closed" "evento e2 (2o conflito) deveria virar done apos o 2o resolve: $(awk -F '\t' '$1==\"e2\"' "$(_outbox_file)")"; return 1; }
   return 0
 }
 
@@ -2355,6 +2487,118 @@ EOF
   return 0
 }
 
+# Instala um stub de `state-rw.sh` (runtime agente-00c-runtime) sob
+# CSTK_LIB/../skills/agente-00c-runtime/scripts, para os cenarios SY-60/
+# SY-61 provarem que `_js_resolve_state_field` (task 13.1.1) delega o ramo
+# state.db a este helper via `get --state-dir D --field .campo`, NUNCA a
+# `sqlite3` diretamente. `$1` = valor a devolver para `.current_stage`
+# (vazio -> stub falha, simulando "campo nao encontrado").
+_install_state_rw_stub() {
+  _isrs_val="$1"
+  _isrs_scripts_dir="$TMPDIR_TEST/stubroot/skills/agente-00c-runtime/scripts"
+  mkdir -p "$TMPDIR_TEST/stubroot/lib" "$_isrs_scripts_dir"
+  cat > "$_isrs_scripts_dir/state-rw.sh" <<EOF
+#!/bin/sh
+[ "\$1" = "get" ] || exit 2
+shift
+_dir=""
+_field=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    --state-dir) _dir=\$2; shift 2 ;;
+    --field) _field=\$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -f "\$_dir/state.db" ] || exit 1
+[ "\$_field" = ".current_stage" ] || exit 1
+[ -n "$_isrs_val" ] || exit 1
+printf '%s\n' "$_isrs_val"
+EOF
+  chmod +x "$_isrs_scripts_dir/state-rw.sh"
+  export CSTK_LIB="$TMPDIR_TEST/stubroot/lib"
+}
+
+# SY-60 drain reconcile (task 13.1.1, ramo state.db de `_js_resolve_stage`
+# via `_js_resolve_state_field`/`_js_runtime_state_rw`): com
+# `.claude/feature-00c-state/demo/state.db` (backend SQLite; conteudo
+# irrelevante — jira-sync.sh NUNCA abre o arquivo, so checa presenca e
+# delega ao runtime) e um `state-rw.sh` stub (via CSTK_LIB) devolvendo
+# `execute-task`, o Epic transiciona para o status DIRETO do override
+# (`stage_status.execute-task=In Review`) — mesmo resultado de SY-58
+# (branch state.json), provando que a delegacao ao runtime funciona sem
+# jamais invocar `sqlite3`.
+scenario_drain_reconcile_state_db_via_runtime_stub_usa_stage_status() {
+  _write_full_config
+  printf 'stage_status.execute-task=In Review\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+  _write_credential
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo"
+  : > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.db"
+  _install_state_rw_stub "execute-task"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"21","to":{"name":"Done"}},{"id":"31","to":{"name":"In Review"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  _epic_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_epic_trans" = "31" ] \
+    || { _fail "sy60_transition" "esperado transition.id=31 (In Review, via stage_status/state.db+stub), obtido $_epic_trans"; return 1; }
+  return 0
+}
+
+# SY-61 drain reconcile (task 13.1.1): com `state.db` presente mas SEM
+# runtime localizavel (CSTK_LIB unset e HOME redirecionado para um
+# diretorio sem `.claude/skills/agente-00c-runtime`), `_js_resolve_stage`
+# devolve vazio -> `--stage` nunca e passado -> `stage_status.*` e
+# IGNORADO -> Epic segue a agregacao normal por tasks (mesmo veredito de
+# SY-59, agora provado para o ramo state.db). Confirma que a ausencia do
+# runtime nunca inventa uma etapa nem tenta `sqlite3` como fallback.
+scenario_drain_reconcile_state_db_sem_runtime_localizavel_ignora_stage_status() {
+  _write_full_config
+  printf 'stage_status.execute-task=In Review\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+  _write_credential
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo"
+  : > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.db"
+  unset CSTK_LIB
+  export HOME="$TMPDIR_TEST/fake-home-sem-runtime"
+  mkdir -p "$HOME"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"21","to":{"name":"Done"}},{"id":"31","to":{"name":"In Review"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  _epic_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_epic_trans" = "21" ] \
+    || { _fail "sy61_transition" "sem runtime localizavel, esperado transition.id=21 (Done, agregacao normal), obtido $_epic_trans"; return 1; }
+  return 0
+}
+
 # SY-43 drain (FR-011/FR-004): reconciliacao com 2 itens — Epic com
 # conflito (manual_edit, ConflictRecord gravado) e Task transicionando
 # normalmente. O conflito de UM item NUNCA impede o processamento dos
@@ -2440,7 +2684,9 @@ EOF
 # (`runtime/task-outcomes.tsv`) persiste independente do outbox. Sub-task
 # 1.1.1 fica deliberadamente SEM mapeamento (jira-map.tsv) para reduzir a
 # fila de rede — item nao mapeado e ignorado silenciosamente pela
-# reconciliacao.
+# reconciliacao. `--source hook-record-task` (task 13.3.1: e o UNICO source
+# que grava o sidecar de outcomes — o hook real de `record_task` sempre usa
+# este source, `posttooluse-jira-sync.sh` linha ~157/172).
 scenario_drain_reconcile_outcome_record_task_tem_precedencia_sobre_checkboxes() {
   _write_full_config
   _write_credential
@@ -2450,7 +2696,7 @@ scenario_drain_reconcile_outcome_record_task_tem_precedencia_sobre_checkboxes() 
   cd "$TMPDIR_TEST" || return 1
   export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
 
-  assert_exit 0 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state fail --source manual >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state fail --source hook-record-task >/dev/null || return 1
   [ -f "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv" ] \
     || { _fail "sy50_outcomes_file_missing" "enqueue --state fail nao gravou o sidecar de outcomes"; return 1; }
   grep -q 'demo	1\.1	fail$' "$TMPDIR_TEST/.claude/cstk-jira/runtime/task-outcomes.tsv" \
