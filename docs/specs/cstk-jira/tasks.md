@@ -1205,3 +1205,81 @@ caminho existente.
 - [x] 10.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-004`: processar `reconcile`/`local_key=*` (in_progress, Epic, Sub-tasks) e fechar o evento, com teste em `tests/cstk/test_jira-sync.sh` — implementado em `_js_process_reconcile_event` (`jira-sync.sh`), chamada pelo guard `local_key = "*"` de `_js_process_one_event` (substitui a mensagem "ainda nao implementada"): expande o evento via `jira-tasks.sh items --feature F` (Epic + Tasks + Sub-tasks, `local_state` ja derivado dos checkboxes/agregacao) e processa CADA item ja mapeado (`active` em `jira-map.tsv`) pelo MESMO nucleo R3/R6-GET/conflito/R5/R4/R6-PUT usado por um evento direto — deliberadamente duplicado (prefixo `_jspr_`) em vez de refatorar `_js_process_one_event`, para nao arriscar regressao nos cenarios ja cobertos de evento direto (SY-18..41). Item ainda sem mapeamento (nao convertido) e ignorado silenciosamente; item `orphan` vira `ConflictRecord` (reason=`orphan`) sem interromper os demais. Idempotente: item ja no status alvo (SyncMarker batendo) faz SOMENTE R3+R6-GET, sem R5/R4 (nenhuma chamada de escrita). Conflito (`marker_missing`/`manual_edit`) em um item grava `ConflictRecord` mas NUNCA impede o processamento dos demais itens (FR-011 e por item); SOMENTE `auth_failed` interrompe a reconciliacao inteira (mesmo gate FR-016/`_JSPE_BREAK` de um evento direto), marcando o evento `*` `auth_failed`. Sem `auth_failed`/`deferred` em nenhum item, o evento `*` fecha `done` (compactado no PROXIMO `drain` — a proxima reconciliacao nasce de um NOVO evento `*` enfileirado no proximo `close_wave`, sempre com o estado local mais recente). Testes: `tests/cstk/test_jira-sync.sh` SY-42 (expande Epic+Task+Sub-task, Epic e Sub-task transicionam via R5/R4/R6-PUT, Task ja no alvo fica idempotente SOMENTE R3+R6-GET, evento fecha `done`, 2a chamada de `drain` compacta o evento) + SY-43 (conflito manual_edit no Epic NAO impede a Task de transicionar; evento ainda fecha `done`; ConflictRecord do Epic gravado) + SY-44 (401 no 1o item aborta a reconciliacao inteira, evento vira `auth_failed`, Task nunca e tocada, exatamente 1 chamada) — `sh tests/run.sh jira-sync`: 58/58 PASS. `tests/cstk/test_jira-contract.sh` inalterado (mesmas operacoes R3/R5/R4/R6 ja contratadas) — 8/8 PASS. `shellcheck -s sh` limpo em `jira-sync.sh`/`test_jira-sync.sh`. `contracts/plugin-scripts.md` atualizado (`drain` documenta a expansao de `local_key=*`).
 
 <!-- converge-key: 29ad68918254 -->
+
+## FASE 11 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 11.1 Convert nunca grava o SyncMarker das issues que cria `[C]`
+
+Ref: FR-011 / plan.md Fluxo 2 grava SyncMarker (US1+US3, P1) · tipo: `partial` · severidade: `HIGH`
+
+plan.md:116-119 (Fluxo 2 "Convert") fixa "grava `jira-map.tsv` item a item;
+grava SyncMarker", e data-model.md:161-165 diz que o SyncMarker e "Gravado
+em cada issue sincronizada". O codigo presente em
+`plugins/cstk-jira/scripts/jira-sync.sh` (`_js_cmd_convert`, linhas 764-780)
+faz so R1 (POST issue) + `jira-map.sh put` — nenhuma chamada R6 PUT apos a
+criacao (o unico R6 PUT fora do drain esta em `_js_maybe_update_mapped_issue`,
+que so roda para item JA mapeado e divergente). Efeito: o 1o evento de drain
+de qualquer issue recem-criada le R6 = 404 e cai em `marker_missing`
+(`jira-sync.sh`:1180-1182) -> ConflictRecord, NUNCA transiciona: a
+sincronizacao de status da US3 so funciona apos `resolve` manual item a
+item. Completar e aditivo: apos cada R1 bem-sucedido (e do `jira-map.sh
+put`), gravar o SyncMarker inicial (`written_summary_sha256` do summary
+enviado + `written_status` LIDO da issue via R3, nunca suposto) via
+`json-build marker` + R6 PUT, com falha de R6 reportada sem desfazer a
+criacao; teste cobrindo convert -> drain sem conflito.
+
+- [ ] 11.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / plan.md Fluxo 2 grava SyncMarker`: gravar o SyncMarker inicial de cada issue criada em `convert`, com teste end-to-end convert -> drain (sem `marker_missing`) em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: 0d757d6034f9 -->
+
+### 11.2 Caminho MCP do jira-convert sem SyncMarker nem atualizacao de item mapeado `[C]`
+
+Ref: FR-003 / CHK012 / task 6.2.3 (US1, P1) · tipo: `partial` · severidade: `HIGH`
+
+tasks.md 6.2.3 e checklists/api.md CHK012 exigem que os caminhos MCP e REST
+produzam "o MESMO efeito observavel (mesmo mapeamento, mesmo SyncMarker)";
+FR-003 exige atualizar issue ja existente quando o artefato local mudar.
+Em `plugins/cstk-jira/skills/jira-convert/SKILL.md` (ETAPA 2b) o passo 1
+(linhas 116-123) documenta como "Gap conhecido" que item mapeado e SEMPRE
+pulado (sem o equivalente de `_js_maybe_update_mapped_issue`), e os passos
+6-7 (linhas 173-188) gravam so `jira-map.sh put` — nenhum SyncMarker. Os
+parametros de `editJiraIssue`/`editJiraEntityProperty` seguem `NAO
+ENCONTRADO` em `contracts/rovo-mcp.md`:69, entao a paridade NAO pode ser
+fechada inventando schema de tool (Principio VI); o caminho sem fabricacao
+e delegar ao REST ja exigido na ETAPA 1 (mesmo padrao do passo 2, que ja
+usa `jira-io.sh request`): gravar o SyncMarker inicial e checar/atualizar
+itens mapeados via os scripts do plugin. Completar e aditivo (passos novos
+na ETAPA 2b + subcomando/reuso de script se necessario).
+
+- [ ] 11.2.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-convert/SKILL.md` conforme `FR-003 / CHK012 / task 6.2.3`: caminho MCP grava o SyncMarker inicial de cada issue criada e aplica a mesma checagem/atualizacao de item mapeado do caminho REST, delegando ao REST (sem inventar `inputSchema`), removendo a nota de "Gap conhecido"
+
+<!-- converge-key: ee06652ddf72 -->
+
+### 11.3 Update de issue mapeada ignora status na deteccao de conflito `[C]`
+
+Ref: FR-011 / data-model SyncMarker deteccao de conflito / task 10.2.1 (US1, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+data-model.md:181-185 fixa que, "antes de toda escrita numa issue
+existente", o plugin le titulo + status atuais e o SyncMarker, e que
+`sha256(titulo_atual) != written_summary_sha256` OU `status_atual !=
+written_status` => NAO escrever, gerar ConflictRecord. Os dois caminhos de
+drain seguem a regra (`jira-sync.sh`:995 e :1186 comparam sha E status),
+mas `_js_maybe_update_mapped_issue` em
+`plugins/cstk-jira/scripts/jira-sync.sh` le so `?fields=summary` (linha
+544) e compara so o hash do titulo (linha 584): um card cujo status foi
+movido manualmente no Jira recebe o PUT R2 de summary sem ConflictRecord
+naquele momento. Corrigir exige mudar a leitura R3 e a condicao ja
+presentes (incluir `status` e `written_status` na comparacao).
+
+- [ ] 11.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / data-model SyncMarker deteccao de conflito / task 10.2.1`: `_js_maybe_update_mapped_issue` le `summary,status` e trata `status_atual != written_status` como `manual_edit` (sem escrever), com teste em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: ebe0be4d2d21 -->
