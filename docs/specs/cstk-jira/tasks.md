@@ -608,31 +608,31 @@ Ref: contracts/hooks.md; spec.md FR-005/FR-012/FR-018-INFRA-SCHED.
 Ref: contracts/hooks.md "Entradas do hooks.json"/"Comportamento de
 posttooluse-jira-sync.sh".
 
-- [ ] 5.1.1 `hooks/hooks.json`: matcher `PostToolUse` `mcp__.*__record_task`
+- [x] 5.1.1 `hooks/hooks.json`: matcher `PostToolUse` `mcp__.*__record_task`
       (modo `task`), `mcp__.*__close_wave` (modo `wave`), `Bash` (modo
       `bash`, so age se `tool_input.command` contem `state-ondas.sh
       record-task` ou `state-ondas.sh end`) — todos `async: true`
-- [ ] 5.1.2 No-op de inatividade como PRIMEIRA instrucao do script (FR-017/
+- [x] 5.1.2 No-op de inatividade como PRIMEIRA instrucao do script (FR-017/
       SC-006): `<cwd>/.claude/cstk-jira/config` ausente OU
       `sync_autonomous=off` => exit 0 silencioso, sem ler stdin alem do
       necessario, sem checar deps
-- [ ] 5.1.3 Resolucao da execucao ativa: exatamente um `.lock/` candidato
+- [x] 5.1.3 Resolucao da execucao ativa: exatamente um `.lock/` candidato
       (`feature-00c-state/<short>/` ou `agente-00c-state/`, mesma derivacao
       de `canonical_project` do orquestrador, READ-ONLY); zero ou mais de
       um candidato => no-op + linha em `runtime/hook.log`
-- [ ] 5.1.4 Filtro por feature convertida: sem
+- [x] 5.1.4 Filtro por feature convertida: sem
       `docs/specs/<feature>/jira-map.tsv` => no-op (US1 e pre-requisito)
-- [ ] 5.1.5 Enfileira `OutboxEvent` (`task_id`/`outcome` do modo `task`/
+- [x] 5.1.5 Enfileira `OutboxEvent` (`task_id`/`outcome` do modo `task`/
       `bash`; `reconcile` do modo `wave`) e chama `jira-sync.sh drain`
-- [ ] 5.1.6 Fail-open absoluto: qualquer falha => exit 0; hook NUNCA
+- [x] 5.1.6 Fail-open absoluto: qualquer falha => exit 0; hook NUNCA
       bloqueia/atrasa a tool do orquestrador nem grava no state da execucao
-- [ ] 5.1.7 Nao-exfiltracao: le SOMENTE `task_id`/`outcome` do
+- [x] 5.1.7 Nao-exfiltracao: le SOMENTE `task_id`/`outcome` do
       `tool_input`; NUNCA grava, loga ou repassa `session_id`
-- [ ] 5.1.8 Teste: config ausente => no-op total (nenhum arquivo criado,
+- [x] 5.1.8 Teste: config ausente => no-op total (nenhum arquivo criado,
       nenhuma rede, stdout vazio) — SC-006
-- [ ] 5.1.9 Teste: falha simulada dentro do hook (ex.: `drain` retorna erro)
+- [x] 5.1.9 Teste: falha simulada dentro do hook (ex.: `drain` retorna erro)
       => hook ainda sai `exit 0` (fail-open)
-- [ ] 5.1.10 Teste (nao-exfiltracao): stdin sintetico com `session_id`
+- [x] 5.1.10 Teste (nao-exfiltracao): stdin sintetico com `session_id`
       real => `session_id` NUNCA aparece em stdout, `hook.log` ou outbox
       (CHK013)
 

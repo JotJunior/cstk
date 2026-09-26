@@ -524,6 +524,14 @@ _is_internal_test() {
       # hooks/ esta fora do escaneio por convencao. Existence-guarded.
       [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh" ] && return 0
       return 1 ;;
+    test_posttooluse-jira-sync.sh)
+      # cobre plugins/cstk-jira/hooks/posttooluse-jira-sync.sh (hook
+      # PostToolUse do sync autonomo Jira — cstk-jira FASE 5.1) — mesma razao
+      # dos casos acima: _find_scripts so escaneia plugins/cstk-jira/scripts/
+      # (nao hooks/), entao hooks/ fica fora do mapeamento 1:1. Existence-
+      # guarded: se o hook sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/hooks/posttooluse-jira-sync.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }
