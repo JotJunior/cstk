@@ -1,0 +1,158 @@
+#!/bin/sh
+# test_jira-setup.sh — cobre plugins/cstk-jira/scripts/jira-setup.sh
+# (cstk-jira, FASE 6 tarefa 6.1).
+#
+# Ref: docs/specs/cstk-jira/data-model.md Entity ProjectConfig; docs/specs/
+#      cstk-jira/checklists/ux.md CHK004/CHK006; docs/specs/cstk-jira/
+#      contracts/jira-rest.md R5 (roundtrip onda-011: transitions
+#      To Do/In Progress/In Review/Done) e R8 (roundtrip onda-011:
+#      hierarchyLevel Epic=1/Subtask=-1/Task=0/Story=0); tasks.md
+#      6.1.9-6.1.10.
+#
+# Invariantes cobertos:
+#   JS-1  check-status-mapping: fail == pass -> exit 1, diagnostico LISTA
+#         os status descobertos (ux CHK004)
+#   JS-2  check-status-mapping: valor mapeado fora da lista descoberta ->
+#         exit 1, diagnostico lista os status disponiveis
+#   JS-3  check-status-mapping: mapeamento valido -> exit 0
+#   JS-4  check-status-mapping: uso incorreto (menos de 5 args) -> exit 2
+#   JS-5  write-config: campo obrigatorio ausente -> exit 1, NADA gravado
+#         no caminho final (6.1.5/6.1.10 — sem estado parcial valido)
+#   JS-6  write-config: config completo e valido -> exit 0, arquivo gravado
+#         com todos os campos
+#   JS-7  write-config: status_fail == status_pass -> exit 1 (delega a
+#         jira-config.sh validate), NADA gravado
+#   JS-8  write-config: KEY=VALUE malformado -> exit 2, NADA gravado
+#   JS-9  fixture createmeta (R8) + json-get extrai id/name/hierarchyLevel/
+#         subtask conforme schema documentado (cobre 6.1.3 indiretamente:
+#         a extracao que a skill usa para listar os tipos e confirmar)
+#   JS-10 fixture transitions (R5) + json-get extrai transitions[].to.name,
+#         e o resultado alimenta check-status-mapping (cobre 6.1.4)
+
+TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
+
+. "$TESTS_ROOT/lib/harness.sh"
+
+SCRIPT="$REPO_ROOT/plugins/cstk-jira/scripts/jira-setup.sh"
+JIRA_IO="$REPO_ROOT/plugins/cstk-jira/scripts/jira-io.sh"
+
+# Fixture R8 (createmeta) — valores REAIS do roundtrip onda-011
+# (contracts/jira-rest.md R8: cstk.atlassian.net projeto SCRUM).
+_FIXTURE_CREATEMETA='{
+  "issueTypes": [
+    {"id": "10000", "name": "Epic", "hierarchyLevel": 1, "subtask": false},
+    {"id": "10001", "name": "Story", "hierarchyLevel": 0, "subtask": false},
+    {"id": "10002", "name": "Task", "hierarchyLevel": 0, "subtask": false},
+    {"id": "10003", "name": "Subtask", "hierarchyLevel": -1, "subtask": true}
+  ]
+}'
+
+# Fixture R5 (transitions) — nomes de status REAIS do roundtrip onda-011
+# (contracts/jira-rest.md R5: GET /rest/api/3/issue/SCRUM-6/transitions).
+_FIXTURE_TRANSITIONS='{
+  "transitions": [
+    {"id": "11", "name": "To Do", "to": {"id": "1", "name": "To Do"}, "isLooped": false},
+    {"id": "21", "name": "In Progress", "to": {"id": "2", "name": "In Progress"}, "isLooped": false},
+    {"id": "31", "name": "In Review", "to": {"id": "3", "name": "In Review"}, "isLooped": false},
+    {"id": "41", "name": "Done", "to": {"id": "4", "name": "Done"}, "isLooped": false}
+  ]
+}'
+
+scenario_check_status_mapping_fail_igual_pass_exit1_lista_status() {
+  assert_exit 1 "$SCRIPT" check-status-mapping \
+    "To Do" "In Progress" "Done" "Done" \
+    "To Do" "In Progress" "In Review" "Done" || return 1
+  assert_stderr_contains "status_fail e status_pass" || return 1
+  assert_stderr_contains "To Do, In Progress, In Review, Done" || return 1
+}
+
+scenario_check_status_mapping_valor_fora_da_lista_exit1() {
+  assert_exit 1 "$SCRIPT" check-status-mapping \
+    "To Do" "In Progress" "Done" "Cancelado" \
+    "To Do" "In Progress" "In Review" "Done" || return 1
+  assert_stderr_contains "nao esta entre os status descobertos" || return 1
+  assert_stderr_contains "To Do, In Progress, In Review, Done" || return 1
+}
+
+scenario_check_status_mapping_valido_exit0() {
+  assert_exit 0 "$SCRIPT" check-status-mapping \
+    "To Do" "In Progress" "Done" "In Review" \
+    "To Do" "In Progress" "In Review" "Done" || return 1
+}
+
+scenario_check_status_mapping_uso_incorreto_exit2() {
+  assert_exit 2 "$SCRIPT" check-status-mapping "To Do" "In Progress" || return 1
+}
+
+scenario_write_config_campo_obrigatorio_ausente_exit1_nada_gravado() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK \
+    issue_type_epic=1 issue_type_task=2 issue_type_subtask=3 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail=Failed sync_autonomous=on || return 1
+  assert_stderr_contains "NADA foi gravado" || return 1
+  [ ! -e "$TMPDIR_TEST/.claude/cstk-jira/config" ] \
+    || { _fail "nada_gravado" "config final foi criado apesar da falha de validacao"; return 1; }
+}
+
+scenario_write_config_completo_valido_exit0_grava_todos_campos() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK board_id=42 \
+    issue_type_epic=10000 issue_type_task=10002 issue_type_subtask=10003 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail="In Review" sync_autonomous=on || return 1
+  [ -f "$TMPDIR_TEST/.claude/cstk-jira/config" ] \
+    || { _fail "gravado" "config final nao foi criado"; return 1; }
+  grep -q '^board_id=42$' "$TMPDIR_TEST/.claude/cstk-jira/config" \
+    || { _fail "conteudo" "board_id ausente/incorreto no config gravado"; return 1; }
+}
+
+scenario_write_config_fail_igual_pass_exit1_nada_gravado() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK board_id=42 \
+    issue_type_epic=10000 issue_type_task=10002 issue_type_subtask=10003 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail=Done sync_autonomous=on || return 1
+  [ ! -e "$TMPDIR_TEST/.claude/cstk-jira/config" ] \
+    || { _fail "nada_gravado" "config final foi criado com status_fail == status_pass"; return 1; }
+}
+
+scenario_write_config_kv_malformado_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host_sem_igual || return 1
+  [ ! -e "$TMPDIR_TEST/.claude/cstk-jira/config" ] \
+    || { _fail "nada_gravado" "config final foi criado apesar de KEY=VALUE malformado"; return 1; }
+}
+
+scenario_fixture_createmeta_extrai_campos_do_schema_r8() {
+  _out=$(printf '%s' "$_FIXTURE_CREATEMETA" \
+    | "$JIRA_IO" json-get '.issueTypes[] | "\(.id)\t\(.name)\t\(.hierarchyLevel)\t\(.subtask)"')
+  printf '%s\n' "$_out" | grep -q '^10000	Epic	1	false$' \
+    || { _fail "epic" "linha de Epic nao extraida como esperado: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -q '^10003	Subtask	-1	true$' \
+    || { _fail "subtask" "linha de Subtask nao extraida como esperado: $_out"; return 1; }
+}
+
+scenario_fixture_transitions_alimenta_check_status_mapping() {
+  _statuses_raw=$(printf '%s' "$_FIXTURE_TRANSITIONS" \
+    | "$JIRA_IO" json-get '.transitions[].to.name')
+  # Split so por linha (NUNCA por espaco — nomes de status como "To Do" tem
+  # espaco interno; IFS=newline preserva cada status como 1 argumento).
+  _old_ifs=$IFS
+  IFS='
+'
+  # shellcheck disable=SC2086 # split intencional por linha (IFS=newline)
+  set -- $_statuses_raw
+  IFS=$_old_ifs
+  assert_exit 0 "$SCRIPT" check-status-mapping \
+    "To Do" "In Progress" "Done" "In Review" "$@" || return 1
+  assert_exit 1 "$SCRIPT" check-status-mapping \
+    "To Do" "In Progress" "Done" "Done" "$@" || return 1
+}
+
+run_all_scenarios

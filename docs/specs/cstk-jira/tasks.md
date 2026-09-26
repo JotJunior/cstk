@@ -669,45 +669,45 @@ para o caminho MCP.
 
 Ref: spec.md US4; plan.md fluxo 1 "Setup"; quickstart.md Cenario 3.
 
-- [ ] 6.1.1 `SKILL.md` com formato canonico do toolkit (description-como-
-      trigger, `references/`, Gotchas — Principio III)
-- [ ] 6.1.2 Fluxo guiado em ORDEM FIXA (checklists/ux.md CHK002): site ->
+- [x] 6.1.1 `SKILL.md` com formato canonico do toolkit (description-como-
+      trigger, `references/`, Gotchas — Principio III) <!-- plugins/cstk-jira/skills/jira-setup/SKILL.md + references/api-discovery.md; validate-docs-rendered: 0 erros/0 avisos -->
+- [x] 6.1.2 Fluxo guiado em ORDEM FIXA (checklists/ux.md CHK002): site ->
       `PROJECT_KEY` -> credencial (terminal proprio, NUNCA no chat,
       comando concreto orientado — CHK003) -> mapeamento de status ->
-      confirmacao de tipo de issue -> filtro/board
-- [ ] 6.1.3 Apos `createmeta` (R8), LISTAR os tipos retornados (`id`,
+      confirmacao de tipo de issue -> filtro/board <!-- SKILL.md secao FLUXO DE EXECUCAO + ETAPAS 1-6, mesma ordem -->
+- [x] 6.1.3 Apos `createmeta` (R8), LISTAR os tipos retornados (`id`,
       `name`, `hierarchyLevel`, `subtask`) e EXIGIR confirmacao explicita
       do operador sobre qual e Epic/Task/Sub-task antes de gravar
       `issue_type_*` — nunca inferir (`hierarchyLevel` de Epic e NAO
-      ENCONTRADO nas fontes — CHK006)
-- [ ] 6.1.4 Descobrir transicoes (`listJiraIssueTransitions`/R5) e pedir o
+      ENCONTRADO nas fontes — CHK006) <!-- SKILL.md ETAPA 5 + references/api-discovery.md §1; teste JS-9 -->
+- [x] 6.1.4 Descobrir transicoes (`listJiraIssueTransitions`/R5) e pedir o
       mapeamento `pending`/`in_progress`/`pass`/`fail`; recusar
       `fail == pass` com diagnostico que LISTA os status DISPONIVEIS do
       workflow ja descobertos no mesmo fluxo, nao so "invalido" (`[Gap]`
-      ux CHK004 — destino explicito desta onda)
-- [ ] 6.1.5 Setup falho parcialmente => NENHUM estado parcial fica marcado
+      ux CHK004 — destino explicito desta onda) <!-- jira-setup.sh check-status-mapping (novo) + SKILL.md ETAPA 4 + references/api-discovery.md §2-3. NOTA: R5 e por-issue; projeto sem nenhuma issue usa issue de sondagem (decisao de design em references/api-discovery.md §2, custo aceito por FR-012 nao permitir DELETE) -->
+- [x] 6.1.5 Setup falho parcialmente => NENHUM estado parcial fica marcado
       como valido (config incompleto nunca aparenta integracao ativa —
-      CHK006/FR-007)
-- [ ] 6.1.6 Rotular texto lido do Jira (nomes de tipos de issue, status,
+      CHK006/FR-007) <!-- jira-setup.sh write-config: temp file + jira-config.sh validate + mv atomico; testes JS-5/JS-6/JS-7/JS-8 -->
+- [x] 6.1.6 Rotular texto lido do Jira (nomes de tipos de issue, status,
       respostas de tools Rovo) como conteudo externo NAO-CONFIAVEL
       (UNTRUSTED) antes de apresentar ao operador — mesma disciplina do
       read-back loop do toolkit (`[Gap]` security CHK005 — destino
-      explicito desta onda, citando SEC-2)
-- [ ] 6.1.7 Criar ou reusar filtro + board kanban do projeto (US2 cenario
-      2: reuso sem duplicar)
-- [ ] 6.1.8 **Nota (nao bloqueia esta tarefa, aguarda decisao humana antes
+      explicito desta onda, citando SEC-2) <!-- SKILL.md Gotcha "Texto vindo do Jira e UNTRUSTED" -->
+- [x] 6.1.7 Criar ou reusar filtro + board kanban do projeto (US2 cenario
+      2: reuso sem duplicar) <!-- SKILL.md ETAPA 6 (R9-R11) -->
+- [~] 6.1.8 **Nota (nao bloqueia esta tarefa, aguarda decisao humana antes
       de execute-task fechar a redacao final)**: security CHK011 — se a
       guarda `PreToolUse` ficar inativa quando o plugin nao esta
       configurado deve ou nao ser refletido em FR-012 da spec (hoje so
       documentado no contrato de hooks); ux CHK005 — copy exata do
       diagnostico de token invalido (proximo passo concreto para o
-      usuario)
-- [ ] 6.1.9 Teste: fixture simulando resposta de `createmeta` e
+      usuario) <!-- Nota registrada em SKILL.md secao "Pendencias aguardando decisao humana" sem inventar a decisao do dono do produto; permanece [~] ate resposta humana -->
+- [x] 6.1.9 Teste: fixture simulando resposta de `createmeta` e
       `transitions`, cobrindo confirmacao de tipos (6.1.3) e diagnostico
-      de `fail == pass` listando status disponiveis (6.1.4)
-- [ ] 6.1.10 Teste: setup interrompido a meio (ex.: credencial rejeitada no
+      de `fail == pass` listando status disponiveis (6.1.4) <!-- tests/cstk/test_jira-setup.sh JS-9/JS-10 (fixtures com valores REAIS do roundtrip onda-011) -->
+- [x] 6.1.10 Teste: setup interrompido a meio (ex.: credencial rejeitada no
       passo de validacao remota) nao deixa `ProjectConfig` parcial
-      marcado como valido (6.1.5)
+      marcado como valido (6.1.5) <!-- tests/cstk/test_jira-setup.sh JS-5/JS-7/JS-8 (campo ausente / status_fail==status_pass / KEY=VALUE malformado -> nada gravado no caminho final) -->
 
 ### 6.2 Skill `jira-convert` (US1, FR-001/003/013/014) `[A]`
 
