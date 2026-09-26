@@ -1702,3 +1702,70 @@ Credential difere do ProjectConfig (12.9.1). Completar e aditivo
 - [x] 13.5.1 Implementar/corrigir `docs/specs/cstk-jira/data-model.md` conforme `data-model + contracts/plugin-scripts.md FASE 12 sync / tasks 12.1.1 12.4.1 12.8.1 12.9.1 12.10.1 12.12.1`: documentar `token_expires_at`, `task-outcomes.tsv`, `hook.log`, fonte da etapa do Epic, relink com `--new-local-key` e rebaseline do `resolve`; atualizar as linhas `resolve`/`drain`/`request` de `contracts/plugin-scripts.md` — `data-model.md`: Credential ganhou `token_expires_at` (opcional, texto livre do operador, 12.12.1); tabela de entidades ganhou linhas para os sidecars `task-outcomes.tsv` e `hook.log`; LocalWorkItem ganhou paragrafos documentando o sidecar de outcomes (upsert por feature+task_id, so `source=hook-record-task`) e a fonte READ-ONLY da etapa do Epic (`current_stage` de feature-00c/agente-00c, state.json ou state.db via runtime); SyncMapping corrigiu a regra de renumeracao (relink MOVE a linha, nao cria item novo) e SyncMarker ganhou o paragrafo de rebaseline por `resolve` (keep_jira/overwrite, nunca ignored); ConflictRecord documentou o fechamento do evento outbox por `resolve` (13.3.1) e o sidecar `hook.log` (3 usos: diagnostico do drain, resumo pos-drain, candidatos ambiguos). `contracts/plugin-scripts.md`: linhas `request` (exit 4 por site_host divergente, 12.9.1), `drain` (ordem completa do lock: compactacao, mark-orphans, gate auth_failed, elegibilidade, deps-check exit 5, validate, `--stage`) e `resolve` (rebaseline + fechamento dos eventos outbox conflict) reescritas; novo subcomando `resolve-state-field` documentado. Testes: `tests/cstk/test_jira-contract.sh` 8/8 e `tests/test_doc-subcommands.sh` 4/4 (sem subcomando fantasma nem invocacao bare nao documentada)
 
 <!-- converge-key: a19e516c6b14 -->
+
+## FASE 14 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 14.1 Ramo `state.db` do hook le `.canonical_project` (top-level, sempre null) em vez de `.execution.canonical_project`: agente-00c sob SQLite cai sempre no basename `[C]`
+
+Ref: contracts/hooks.md passo 2 canonical_project / task 13.1.1 (US3, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+`contracts/hooks.md` (passo 2, "Resolucao da execucao ativa") fixa que, com
+`.claude/agente-00c-state/.lock/`, a feature e o nome canonico do projeto
+pela MESMA derivacao do orquestrador: `.execution.canonical_project` com
+fallback de basename. A 13.1.1 trocou a query SQL direta
+(`SELECT canonical_project FROM execution`, que lia o campo certo) pela
+delegacao `jira-sync.sh resolve-state-field --dir ... --field canonical_project`
+(`plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` linha 109), e
+`_js_resolve_state_field` monta `state-rw.sh get --field ".$F"`
+(`plugins/cstk-jira/scripts/jira-sync.sh` linha 372) — so campo top-level.
+Sonda empirica nesta onda contra um state.db real do runtime:
+`state-rw.sh get --field .canonical_project` => `null`;
+`--field .execution.canonical_project` => `cstk`. Efeito: sob backend
+`state.db` (default atual das execucoes 00c) o hook SEMPRE cai no fallback
+`basename(cwd)`; quando o nome canonico difere do diretorio (worktree, o
+caso que motivou `canonical_project`), a feature resolvida nao tem
+`jira-map.tsv` e o sync autonomo vira no-op silencioso. O ramo `state.json`
+nao sofre (o grep de `_pjs_json_str` casa a chave em qualquer nivel), o que
+torna os dois backends divergentes. Nenhum teste cobre o ramo `state.db` do
+hook (o stub de `state-rw.sh` dos SY-60/61 so responde `.current_stage`).
+Corrigir exige MUDAR logica presente: `resolve-state-field` aceitar caminho
+pontuado (`execution.canonical_project`) nos DOIS backends (no ramo
+`state.json`, sem casar a chave em nivel errado), o hook pedir o caminho
+correto, e validar `--field` por allowlist `[A-Za-z0-9_.]` antes de
+interpola-lo no filtro repassado ao `state-rw.sh` (hoje so rejeita
+TAB/newline, linha 2360).
+
+- [ ] 14.1.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `contracts/hooks.md passo 2 canonical_project / task 13.1.1`: resolver `.execution.canonical_project` no ramo `state.db` (via `jira-sync.sh resolve-state-field` com caminho pontuado + allowlist de `--field`), com teste em `tests/test_posttooluse-jira-sync.sh` (agente-00c com `state.db` + stub de `state-rw.sh` que so responde `.execution.canonical_project` => feature = nome canonico, NAO o basename) e teste direto do subcomando `resolve-state-field` em `tests/cstk/test_jira-sync.sh` (campo pontuado nos 2 backends; `--field` com caractere fora da allowlist => exit 2)
+
+<!-- converge-key: 410b9f657931 -->
+
+### 14.2 `contracts/hooks.md` 5.bis e o SyncMarker do `data-model.md` nao refletem 13.2.1/13.4.1 `[A]`
+
+Ref: contracts/hooks.md 5.bis + data-model SyncMarker / tasks 13.2.1 13.4.1 · tipo: `partial` · severidade: `MEDIUM`
+
+`docs/specs/cstk-jira/contracts/hooks.md` passo 5.bis ainda diz que a
+linha de resumo sai "quando `conflict`/`auth_failed`/`deferred` do outbox
+nao estao todos zerados"; desde 13.4.1 o hook usa, para conflito, o
+`pending=N` de ConflictRecords PENDENTES (`runtime/conflicts.tsv`) e so
+`deferred`/`auth_failed` do outbox. `docs/specs/cstk-jira/data-model.md`
+(Entity SyncMarker) documenta a baseline `written_description_sha256` e o
+rebaseline por `resolve`, mas nao que as transicoes de status do `drain`
+(evento direto e reconciliacao `local_key=*`) CARREGAM ADIANTE a chave lida
+do marker (o R6 PUT substitui o valor inteiro — `contracts/jira-rest.md`
+R6); a linha `drain` de `contracts/plugin-scripts.md` tambem nao cita essa
+preservacao. Cosmetico no mesmo lote: o usage de `jira-sync.sh`
+(`resolve-state-field`, linha 214) diz "ou, so D/state.db existir". Completar
+e aditivo (documentacao, sem mudar comportamento).
+
+- [ ] 14.2.1 Implementar/corrigir `docs/specs/cstk-jira/contracts/hooks.md` conforme `contracts/hooks.md 5.bis + data-model SyncMarker / tasks 13.2.1 13.4.1`: 5.bis descreve a fonte `pending=N` (ConflictRecords pendentes) + `deferred`/`auth_failed` do outbox; `data-model.md` (SyncMarker) e a linha `drain` de `contracts/plugin-scripts.md` documentam a preservacao de `written_description_sha256` nas transicoes do drain; corrigir o typo do usage de `resolve-state-field`; validar com `tests/cstk/test_jira-contract.sh` e `tests/test_doc-subcommands.sh`
+
+<!-- converge-key: 253a7d7fb318 -->
