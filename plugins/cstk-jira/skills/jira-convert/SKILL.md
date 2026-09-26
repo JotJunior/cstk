@@ -56,7 +56,10 @@ CHK005; `checklists/ux.md` CHK013; `contracts/rovo-mcp.md`;
      |                   (ETAPA 2a)
 3b. CAMINHO MCP         Loop item a item: jira-tasks.sh items -> skip se
      |                   ja mapeado -> jira-title.sh compose -> tool MCP
-     |                   createJiraIssue -> jira-map.sh put (ETAPA 2b)
+     |                   createJiraIssue -> jira-map.sh put -> SyncMarker
+     |                   inicial via jira-io.sh REST (ETAPA 2b passos 1-7b);
+     |                   ao final do loop, jira-sync.sh convert 1x para
+     |                   fechar paridade de itens ja mapeados (passo 8)
      |
 4. RELATORIO FINAL      Quantos criados / quantos ja existiam (pulados)
 ```
@@ -113,14 +116,21 @@ depois cada Task com suas Sub-tasks logo em seguida — mesma ordem que
    verificar existencia por JQL/titulo (`searchJiraIssuesUsingJql` e so
    para conferencia manual do operador, `contracts/rovo-mcp.md` — a
    localizacao autoritativa e sempre o mapeamento).
-   **Gap conhecido (FR-003, feature cstk-jira FASE 10 tarefa 10.2)**: o
-   caminho REST (`jira-sync.sh convert`) ja checa, para item `active`, se o
-   summary/description compostos AGORA divergem do que esta no Jira e
-   atualiza via R2 respeitando FR-011 (`_js_maybe_update_mapped_issue`,
-   `contracts/plugin-scripts.md`). O caminho MCP desta skill AINDA nao tem
-   o equivalente — item mapeado e SEMPRE pulado, mesmo se o titulo local
-   mudou. Ate essa paridade ser fechada, uma reconversao apos editar
-   titulo/criticidade/dependencia so propaga via caminho REST.
+   **Paridade de atualizacao (FR-003, feature cstk-jira FASE 10 tarefa
+   10.2, fechada na FASE 11 tarefa 11.2.1)**: o caminho REST
+   (`jira-sync.sh convert`) checa, para item `active`, se o summary/
+   description compostos AGORA divergem do que esta no Jira e atualiza via
+   R2 respeitando FR-011 (`_js_maybe_update_mapped_issue`,
+   `contracts/plugin-scripts.md`). O caminho MCP fecha essa paridade
+   delegando ao MESMO motor REST, sem reimplementar a logica nem inventar
+   `inputSchema` para uma tool de edicao (`editJiraIssue`/
+   `editJiraEntityProperty` seguem `NAO ENCONTRADO` em
+   `contracts/rovo-mcp.md`): ver ETAPA 2b passo 8 ("Fechamento de
+   paridade") — roda `jira-sync.sh convert --feature <feature>` UMA vez
+   apos o loop MCP terminar de criar os itens novos. Como todo item ja
+   esta mapeado nesse ponto, essa chamada NUNCA cria nada por REST — so
+   aplica `_js_maybe_update_mapped_issue` a cada item, item a item, com o
+   MESMO efeito observavel do caminho REST puro.
 2. **Resolver `project.id`**: `jira-io.sh request GET
    /rest/api/3/project/<project_key>` + `jira-io.sh json-get '.id'` — a
    MESMA chamada que o caminho REST faz (nao ha vantagem MCP para esta
@@ -185,6 +195,51 @@ depois cada Task com suas Sub-tasks logo em seguida — mesma ordem que
    criada no Jira mas falha ao gravar jira-map.tsv para <local_key> —
    religar manualmente (`jira-map.sh put`)". Nunca tente adivinhar/
    recriar o registro sozinho.
+7b. **Gravar o SyncMarker inicial (FR-011, feature cstk-jira FASE 11 tarefa
+    11.2.1)**: sem isto, o 1o `jira-sync.sh drain` desta issue leria o
+    SyncMarker ausente (404) e cairia em `marker_missing` (mesmo achado
+    `converge` FASE 11 11.1, agora fechado tambem no caminho MCP). A tool
+    MCP `createJiraIssue` NAO devolve o status inicial da issue
+    (`contracts/jira-rest.md` R1 — so `id`/`key`/`self`), entao a leitura
+    do status e sempre via REST puro (`jira-io.sh`), MESMO padrao ja usado
+    no passo 2 (resolucao de `project.id`) — nenhum `inputSchema` de tool
+    de edicao e necessario nem inventado:
+    ```sh
+    _status_resp=$(jira-io.sh request GET \
+      "/rest/api/3/issue/<key-do-jira>?fields=status" --op R3)
+    _status=$(printf '%s' "$_status_resp" | jira-io.sh json-get '.fields.status.name')
+    _sha=$(printf '%s' "<summary-enviado-na-criacao>" | jira-io.sh sha256-stdin)
+    _marker=$(jira-io.sh json-build marker --local-key <key> --feature <feature> \
+      --written-summary-sha256 "$_sha" --written-status "$_status" \
+      --written-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+    printf '%s' "$_marker" > "$_marker_body_file"   # arquivo temporario
+    jira-io.sh request PUT \
+      "/rest/api/3/issue/<key-do-jira>/properties/cstk-jira.sync" \
+      --body-file "$_marker_body_file" --op R6
+    ```
+    `<summary-enviado-na-criacao>` e EXATAMENTE o `summary` que este loop
+    compos no passo 3 e enviou a `createJiraIssue` — nunca um valor lido de
+    volta (mesma disciplina de `_js_write_initial_marker` em
+    `jira-sync.sh`). Falha em qualquer uma das 2 chamadas: diagnostico ao
+    operador, NAO desfaz a criacao nem o `jira-map.sh put` ja gravado — o
+    proximo `drain` detecta o SyncMarker ausente e reporta
+    `marker_missing`, exatamente como uma falha equivalente no caminho REST
+    ja se comporta.
+8. **Fechamento de paridade (FR-003, 11.2.1)**: apos o loop terminar de
+   processar TODOS os itens (novos criados + mapeados pulados), rode:
+   ```sh
+   jira-sync.sh convert --feature <feature>
+   ```
+   uma unica vez. Como todo item ja esta em `jira-map.tsv` neste ponto
+   (os novos acabaram de ser gravados no passo 6, os ja mapeados ja
+   estavam), esta chamada NUNCA cria nenhuma issue nova por REST — ela so
+   aplica, item a item, a MESMA checagem de divergencia/atualizacao de
+   conteudo que o passo 1 delega (`_js_maybe_update_mapped_issue`): titulo/
+   descricao local mudado e sem edicao manual no Jira -> R2 PUT + SyncMarker
+   regravado; titulo OU status divergentes do SyncMarker -> ConflictRecord,
+   NUNCA sobrescreve (FR-011). Isto fecha CHK012 ("os dois caminhos produzem
+   o MESMO efeito observavel") sem duplicar `_js_maybe_update_mapped_issue`
+   nesta skill.
 
 ## ETAPA 3: Relatorio final
 

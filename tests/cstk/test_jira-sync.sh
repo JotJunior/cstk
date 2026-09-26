@@ -444,9 +444,18 @@ scenario_convert_sucesso_cria_epic_task_subtask_com_parent_correto() {
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  # Epic: R1 create + R3 (status inicial, 11.1.1) + R6 PUT (SyncMarker inicial)
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  # Task: idem
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  # Sub-task: idem
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
   [ "$(_queue_post_issue_calls_count)" = "3" ] \
@@ -463,16 +472,28 @@ scenario_convert_sucesso_cria_epic_task_subtask_com_parent_correto() {
   _epic_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-3.json")
   [ "$_epic_parent" = "none" ] || { _fail "convert_epic_no_parent" "epic nao deveria ter fields.parent (obtido $_epic_parent)"; return 1; }
 
-  # corpo da 4a chamada (task, call index 4): parent = key do epic recem-criado
-  _task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  # corpo da 6a chamada (task create, call index 6: 3=R1 epic,4=R3 epic,5=R6
+  # epic): parent = key do epic recem-criado
+  _task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-6.json")
   [ "$_task_parent" = "DEMO-1" ] || { _fail "convert_task_parent_is_epic" "esperado parent=DEMO-1, obtido $_task_parent"; return 1; }
-  _task_summary=$("$IO_SCRIPT" json-get '.fields.summary' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  _task_summary=$("$IO_SCRIPT" json-get '.fields.summary' < "$TMPDIR_TEST/queue-curl-body-6.json")
   [ "$_task_summary" = "[FASE 1] 1.1 Titulo da tarefa" ] \
     || { _fail "convert_task_summary_format" "esperado '[FASE 1] 1.1 Titulo da tarefa', obtido '$_task_summary'"; return 1; }
 
-  # corpo da 5a chamada (sub-task, call index 5): parent = key da task recem-criada
-  _sub_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  # corpo da 9a chamada (sub-task create, call index 9: 6=R1 task,7=R3
+  # task,8=R6 task): parent = key da task recem-criada
+  _sub_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-9.json")
   [ "$_sub_parent" = "DEMO-2" ] || { _fail "convert_subtask_parent_is_task" "esperado parent=DEMO-2, obtido $_sub_parent"; return 1; }
+
+  # corpo da 5a chamada (R6 PUT do marker inicial do epic): hash do summary
+  # enviado no R1 + status lido via R3 (11.1.1 — nunca suposto).
+  _epic_marker_sha=$("$IO_SCRIPT" json-get '.written_summary_sha256' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  _epic_sha_esperado=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  [ "$_epic_marker_sha" = "$_epic_sha_esperado" ] \
+    || { _fail "convert_epic_marker_sha" "esperado hash de 'demo', obtido '$_epic_marker_sha'"; return 1; }
+  _epic_marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_epic_marker_status" = "To Do" ] \
+    || { _fail "convert_epic_marker_status" "esperado written_status='To Do', obtido '$_epic_marker_status'"; return 1; }
   return 0
 }
 
@@ -485,12 +506,19 @@ scenario_convert_idempotente_10x_3_criacoes_no_total() {
   cd "$TMPDIR_TEST" || return 1
   export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
   _bin="$(_init_queue_stub)"
-  # 1a execucao: myself + project + 3 creates
+  # 1a execucao: myself + project + 3x (create + R3 status + R6 PUT marker
+  # inicial, 11.1.1)
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   # execucoes 2-10: myself + project + 1 GET R3 por item ja mapeado (FR-003,
   # feature cstk-jira FASE 10 tarefa 10.2 — _js_maybe_update_mapped_issue
   # checa divergencia antes de decidir nao-criar); summary devolvido IDENTICO
@@ -529,8 +557,14 @@ scenario_convert_task_nova_cria_somente_a_nova() {
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
   _append_task_1_2
@@ -542,16 +576,20 @@ scenario_convert_task_nova_cria_somente_a_nova() {
   _queue_push 200 '{"fields":{"summary":"demo"}}'
   _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo da tarefa"}}'
   _queue_push 200 '{"fields":{"summary":"Sub um"}}'
+  # task 1.2 (nova): create + R3 status + R6 PUT marker inicial (11.1.1)
   _queue_push 201 '{"id":"20004","key":"DEMO-4"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
   [ "$(_queue_post_issue_calls_count)" = "4" ] \
     || { _fail "convert_new_task_total_creates" "esperado 4 POST /issue no total, obtido $(_queue_post_issue_calls_count)"; return 1; }
   grep -q '^1\.2	task	20004	DEMO-4	active$' "$(_map_file)" \
     || { _fail "convert_new_task_mapped" "task nova (1.2) nao foi mapeada corretamente"; return 1; }
-  # a nova task usa o Epic ja existente como parent (call index 11: 6=myself,
-  # 7=project, 8/9/10=R3 dos 3 itens ja mapeados (FR-003), 11=create)
-  _new_task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-11.json")
+  # a nova task usa o Epic ja existente como parent (2a execucao comeca na
+  # call 12: 12=myself, 13=project, 14/15/16=R3 dos 3 itens ja mapeados
+  # (FR-003, no-op), 17=create da task 1.2)
+  _new_task_parent=$("$IO_SCRIPT" json-get '.fields.parent.key? // "none"' < "$TMPDIR_TEST/queue-curl-body-17.json")
   [ "$_new_task_parent" = "DEMO-1" ] \
     || { _fail "convert_new_task_parent_is_existing_epic" "esperado parent=DEMO-1 (epic existente), obtido $_new_task_parent"; return 1; }
   return 0
@@ -1324,18 +1362,26 @@ scenario_convert_description_com_criticidade_sem_matriz() {
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
   _epic_desc=$("$IO_SCRIPT" json-get '.fields.description? // "none"' < "$TMPDIR_TEST/queue-curl-body-3.json")
   [ "$_epic_desc" = "none" ] || { _fail "sy36_epic_no_description" "Epic nao deveria ter fields.description (obtido $_epic_desc)"; return 1; }
 
-  _task_desc_text=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  # chamada 6 = R1 da task (3=R1 epic,4=R3 epic,5=R6 epic, 11.1.1)
+  _task_desc_text=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-6.json")
   [ "$_task_desc_text" = "Criticidade: A" ] \
     || { _fail "sy36_task_description" "esperado 'Criticidade: A', obtido '$_task_desc_text'"; return 1; }
 
-  _sub_desc=$("$IO_SCRIPT" json-get '.fields.description? // "none"' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  # chamada 9 = R1 da sub-task (6=R1 task,7=R3 task,8=R6 task)
+  _sub_desc=$("$IO_SCRIPT" json-get '.fields.description? // "none"' < "$TMPDIR_TEST/queue-curl-body-9.json")
   [ "$_sub_desc" = "none" ] || { _fail "sy36_subtask_no_description" "Sub-task nao deveria ter fields.description (obtido $_sub_desc)"; return 1; }
   return 0
 }
@@ -1347,23 +1393,36 @@ scenario_convert_description_com_criticidade_e_dependencia_da_matriz() {
   cd "$TMPDIR_TEST" || return 1
   export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
   _bin="$(_init_queue_stub)"
-  # myself + project + 5 creates (epic, task1.1, sub1.1.1, task2.1, sub2.1.1)
+  # myself + project + 5x (create + R3 status + R6 PUT, 11.1.1) — epic,
+  # task1.1, sub1.1.1, task2.1, sub2.1.1
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20004","key":"DEMO-4"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20005","key":"DEMO-5"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
-  # chamada 4 = task 1.1 (FASE 1, sem aresta de entrada na Matriz)
-  _t1_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  # chamada 6 = R1 da task 1.1 (FASE 1, sem aresta de entrada na Matriz;
+  # 3=R1 epic,4=R3 epic,5=R6 epic)
+  _t1_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-6.json")
   [ "$_t1_desc" = "Criticidade: A" ] \
     || { _fail "sy37_fase1_sem_dependencia" "esperado 'Criticidade: A', obtido '$_t1_desc'"; return 1; }
 
-  # chamada 6 = task 2.1 (FASE 2, aresta F1-->F2 na Matriz)
-  _t2_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  # chamada 12 = R1 da task 2.1 (FASE 2, aresta F1-->F2 na Matriz; 6/7/8=
+  # task1.1, 9/10/11=sub1.1.1)
+  _t2_desc=$("$IO_SCRIPT" json-get '.fields.description.content[0].content[0].text' < "$TMPDIR_TEST/queue-curl-body-12.json")
   [ "$_t2_desc" = "Criticidade: A | Depende de: FASE 1 - Fundacao" ] \
     || { _fail "sy37_fase2_com_dependencia" "esperado 'Criticidade: A | Depende de: FASE 1 - Fundacao', obtido '$_t2_desc'"; return 1; }
   return 0
@@ -1379,11 +1438,18 @@ scenario_convert_description_omitida_sem_criticidade_e_sem_dependencia() {
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
-  _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-4.json" | tr '\n' ',')
+  # chamada 6 = R1 da task (3=R1 epic,4=R3 epic,5=R6 epic, 11.1.1)
+  _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-6.json" | tr '\n' ',')
   [ "$_task_fields" = "issuetype,parent,project,summary," ] \
     || { _fail "sy38_task_sem_description" "esperado issuetype,parent,project,summary (sem description) — obtido $_task_fields"; return 1; }
   return 0
@@ -1431,7 +1497,7 @@ scenario_convert_atualiza_summary_via_r2_sem_conflito() {
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 200 '{"fields":{"summary":"demo"}}'
-  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo","status":{"name":"To Do"}}}'
   _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\"}}"
   _queue_push 204 ''
   _queue_push 200 ''
@@ -1510,6 +1576,95 @@ scenario_convert_manual_edit_vira_conflict_sem_sobrescrever() {
     || { _fail "sy41_calls_count" "esperado 5 chamadas (nenhuma escrita apos detectar manual_edit), obtido $(_queue_calls_count)"; return 1; }
   grep -q 'demo	1\.1	DEMO-2	manual_edit	pending$' "$(_conflicts_file)" \
     || { _fail "sy41_conflict_record" "ConflictRecord manual_edit ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# SY-45 (FASE 11 tarefa 11.3.1, FR-011): titulo local mudou (R2 seria
+# tentado), o summary ATUAL no Jira bate com o hash do SyncMarker (sem
+# edicao manual de TITULO), mas o STATUS atual da issue diverge do
+# written_status do SyncMarker (transicao manual via UI desde a ultima
+# sync) -> `_js_maybe_update_mapped_issue` MUST tratar isso como
+# `manual_edit` e NUNCA disparar o PUT R2 — mesmo que o hash do titulo
+# sozinho batesse. Antes de 11.3.1 esta funcao lia so `fields=summary` e
+# ignorava `status`, deixando esse caso passar como "seguro" (achado
+# converge FASE 11 11.3).
+scenario_convert_status_divergente_vira_conflict_mesmo_com_titulo_batendo() {
+  _write_full_config
+  _write_tasks_titulo_mudado
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _sha_antigo=$(printf '%s' "[FASE 1] 1.1 Titulo antigo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  # summary atual = EXATAMENTE o que o SyncMarker gravou (sha vai bater),
+  # mas status atual = "In Progress" != written_status = "To Do".
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo","status":{"name":"In Progress"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\"}}"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy45_calls_count" "esperado 5 chamadas (nenhuma escrita apos detectar status divergente), obtido $(_queue_calls_count)"; return 1; }
+  grep -q 'demo	1\.1	DEMO-2	manual_edit	pending$' "$(_conflicts_file)" \
+    || { _fail "sy45_conflict_record" "ConflictRecord manual_edit ausente/incorreto (status divergente): $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# SY-46 (FASE 11 tarefa 11.1.1, FR-011): end-to-end convert -> drain. Antes
+# de 11.1.1, `convert` nunca gravava o SyncMarker inicial das issues criadas
+# -> o 1o `drain` de qualquer issue recem-criada lia R6=404 e virava
+# `marker_missing` (achado converge FASE 11 11.1). O stub de fila nao
+# persiste o que `convert` de fato enviou no R6 PUT — o cenario simula a
+# persistencia respondendo ao R3/R6-GET do `drain` com os MESMOS
+# summary/status/hash que `convert` compos (mesma `jira-title.sh compose` +
+# `jira-io.sh sha256-stdin`), provando que os dois lados usam a MESMA
+# composicao e que, com o marker de fato persistido, `drain` NUNCA reporta
+# marker_missing e transiciona normalmente.
+scenario_convert_depois_drain_end_to_end_sem_marker_missing() {
+  _write_full_config
+  _write_tasks_1task_1sub
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  assert_exit 0 "$SCRIPT" enqueue --feature demo --local-key 1.1 --state pass --source manual >/dev/null || return 1
+
+  # drain: titulo/status atuais IDENTICOS ao que convert gravaria via R6 PUT
+  # (mesma composicao "[FASE N] N.M <titulo>" + hash do summary) -> SyncMarker
+  # BATE -> nenhum ConflictRecord, transiciona normalmente.
+  _task_summary="[FASE 1] 1.1 Titulo da tarefa"
+  _sha_task=$(printf '%s' "$_task_summary" | "$IO_SCRIPT" sha256-stdin)
+  _queue_push 200 "{\"fields\":{\"summary\":\"$_task_summary\",\"status\":{\"name\":\"To Do\"}}}"
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  if [ -f "$(_conflicts_file)" ] && grep -q 'marker_missing' "$(_conflicts_file)"; then
+    _fail "sy46_no_marker_missing" "drain reportou marker_missing apos convert ja ter gravado o SyncMarker inicial (11.1.1): $(cat "$(_conflicts_file)")"
+    return 1
+  fi
+  _outbox_row=$(awk -F '\t' '$4=="1.1"' "$(_outbox_file)")
+  printf '%s' "$_outbox_row" | grep -q 'done$' \
+    || { _fail "sy46_drain_done" "evento 1.1 nao foi marcado done: $_outbox_row"; return 1; }
   return 0
 }
 

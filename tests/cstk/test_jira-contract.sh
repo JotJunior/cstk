@@ -232,17 +232,26 @@ scenario_ct_r1_convert_metodo_path_corpo_batem_contrato() {
   cd "$TMPDIR_TEST" || return 1
   export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
   _bin="$(_init_queue_stub)"
+  # myself + project + 3x (create + R3 status + R6 PUT marker inicial,
+  # 11.1.1) — epic, task, sub-task
   _queue_push 200 '{"accountId":"acc-1"}'
   _queue_push 200 '{"id":"10000","key":"DEMO"}'
   _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
   # contracts/jira-rest.md R1: "POST /rest/api/3/issue" — metodo+path
-  # EXATOS, sem query, para as 3 criacoes (chamadas 3/4/5: 1=myself,
-  # 2=GET project, 3=epic, 4=task, 5=subtask).
-  _l3=$(_queue_call_line 3); _l4=$(_queue_call_line 4); _l5=$(_queue_call_line 5)
+  # EXATOS, sem query, para as 3 criacoes (chamadas 3/6/9: 1=myself, 2=GET
+  # project, 3=epic create, 4=R3 epic, 5=R6 epic, 6=task create, 7=R3 task,
+  # 8=R6 task, 9=subtask create — 11.1.1 intercala R3/R6 apos cada create).
+  _l3=$(_queue_call_line 3); _l4=$(_queue_call_line 6); _l5=$(_queue_call_line 9)
   [ "$_l3" = "POST https://cstk-test.atlassian.net/rest/api/3/issue" ] \
     || { _fail "ct_r1_epic_url" "obtido: $_l3"; return 1; }
   [ "$_l4" = "POST https://cstk-test.atlassian.net/rest/api/3/issue" ] \
@@ -263,7 +272,8 @@ scenario_ct_r1_convert_metodo_path_corpo_batem_contrato() {
   _epic_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-3.json" | tr '\n' ',')
   [ "$_epic_fields" = "issuetype,project,summary," ] \
     || { _fail "ct_r1_epic_fields" "esperado issuetype,project,summary — obtido $_epic_fields"; return 1; }
-  _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-4.json" | tr '\n' ',')
+  # corpo da chamada 6 = create da task (3=R1 epic,4=R3 epic,5=R6 epic)
+  _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-6.json" | tr '\n' ',')
   [ "$_task_fields" = "description,issuetype,parent,project,summary," ] \
     || { _fail "ct_r1_task_fields" "esperado description,issuetype,parent,project,summary — obtido $_task_fields"; return 1; }
 
@@ -273,6 +283,16 @@ scenario_ct_r1_convert_metodo_path_corpo_batem_contrato() {
   _proj_id=$("$IO_SCRIPT" json-get '.fields.project.id' < "$TMPDIR_TEST/queue-curl-body-3.json")
   [ "$_proj_id" = "10000" ] \
     || { _fail "ct_r1_project_id_shape" "fields.project.id deveria vir da resposta de GET /project (nota 'Resolucao do project.id')"; return 1; }
+
+  # 11.1.1 (FR-011): apos R1, o motor grava o SyncMarker inicial via R6 PUT
+  # (contracts/jira-rest.md R6 — "o corpo da requisicao E o value CRU").
+  # Chamada 5 = R6 PUT do marker do Epic (3=R1,4=R3,5=R6).
+  _l5_marker=$(_queue_call_line 5)
+  [ "$_l5_marker" = "PUT https://cstk-test.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync" ] \
+    || { _fail "ct_r1_marker_r6_url" "obtido: $_l5_marker"; return 1; }
+  _epic_marker_keys=$("$IO_SCRIPT" json-get 'keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-5.json" | tr '\n' ',')
+  [ "$_epic_marker_keys" = "feature,local_key,schema,written_at,written_status,written_summary_sha256," ] \
+    || { _fail "ct_r1_marker_shape" "R6 PUT corpo (value cru, SEM envelope key/value — contracts/jira-rest.md R6) esperado com as 6 chaves do SyncMarker (data-model.md), obtido $_epic_marker_keys"; return 1; }
   return 0
 }
 

@@ -1237,7 +1237,7 @@ enviado + `written_status` LIDO da issue via R3, nunca suposto) via
 `json-build marker` + R6 PUT, com falha de R6 reportada sem desfazer a
 criacao; teste cobrindo convert -> drain sem conflito.
 
-- [ ] 11.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / plan.md Fluxo 2 grava SyncMarker`: gravar o SyncMarker inicial de cada issue criada em `convert`, com teste end-to-end convert -> drain (sem `marker_missing`) em `tests/cstk/test_jira-sync.sh`
+- [x] 11.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / plan.md Fluxo 2 grava SyncMarker`: gravar o SyncMarker inicial de cada issue criada em `convert`, com teste end-to-end convert -> drain (sem `marker_missing`) em `tests/cstk/test_jira-sync.sh`
 
 <!-- converge-key: 0d757d6034f9 -->
 
@@ -1260,7 +1260,7 @@ usa `jira-io.sh request`): gravar o SyncMarker inicial e checar/atualizar
 itens mapeados via os scripts do plugin. Completar e aditivo (passos novos
 na ETAPA 2b + subcomando/reuso de script se necessario).
 
-- [ ] 11.2.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-convert/SKILL.md` conforme `FR-003 / CHK012 / task 6.2.3`: caminho MCP grava o SyncMarker inicial de cada issue criada e aplica a mesma checagem/atualizacao de item mapeado do caminho REST, delegando ao REST (sem inventar `inputSchema`), removendo a nota de "Gap conhecido"
+- [x] 11.2.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-convert/SKILL.md` conforme `FR-003 / CHK012 / task 6.2.3`: caminho MCP grava o SyncMarker inicial de cada issue criada e aplica a mesma checagem/atualizacao de item mapeado do caminho REST, delegando ao REST (sem inventar `inputSchema`), removendo a nota de "Gap conhecido"
 
 <!-- converge-key: ee06652ddf72 -->
 
@@ -1280,6 +1280,6 @@ movido manualmente no Jira recebe o PUT R2 de summary sem ConflictRecord
 naquele momento. Corrigir exige mudar a leitura R3 e a condicao ja
 presentes (incluir `status` e `written_status` na comparacao).
 
-- [ ] 11.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / data-model SyncMarker deteccao de conflito / task 10.2.1`: `_js_maybe_update_mapped_issue` le `summary,status` e trata `status_atual != written_status` como `manual_edit` (sem escrever), com teste em `tests/cstk/test_jira-sync.sh`
+- [x] 11.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / data-model SyncMarker deteccao de conflito / task 10.2.1`: `_js_maybe_update_mapped_issue` le `summary,status` e trata `status_atual != written_status` como `manual_edit` (sem escrever), com teste em `tests/cstk/test_jira-sync.sh`
 
 <!-- converge-key: ebe0be4d2d21 -->
