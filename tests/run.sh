@@ -223,6 +223,15 @@ _is_internal_test() {
       # (mesmo tratamento de test_plugin-hooks-manifest.sh). tasks.md
       # cstk-jira FASE 1.1.3.
       return 0 ;;
+    test_jira-convert-parity.sh)
+      # Prova a paridade CHK012 (caminho MCP vs REST) descrita em
+      # plugins/cstk-jira/skills/jira-convert/SKILL.md — exercita 2 scripts
+      # (jira-title.sh, jira-map.sh) + o motor jira-sync.sh, nao um unico
+      # script "dono" sob a convencao de FASE 9.3. Existence-guarded ao
+      # SKILL.md que documenta o algoritmo do caminho MCP (cstk-jira FASE 6
+      # tarefa 6.2.8). Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/skills/jira-convert/SKILL.md" ] && return 0
+      return 1 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.

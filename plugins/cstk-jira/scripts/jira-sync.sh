@@ -470,6 +470,7 @@ _js_cmd_convert() {
   _jsc_tasks="$_jsc_dir/jira-tasks.sh"
   _jsc_map="$_jsc_dir/jira-map.sh"
   _jsc_io="$_jsc_dir/jira-io.sh"
+  _jsc_title_sh="$_jsc_dir/jira-title.sh"
 
   # Pre-condicoes COMPLETAS (US1 cenario 3) — cada uma e um comando simples
   # sob 'set -e': falha aqui aborta o script INTEIRO com o MESMO exit code
@@ -514,15 +515,15 @@ _js_cmd_convert() {
     case "$_jsc_kind" in
       epic)
         _jsc_issuetype_id="$_jsc_issuetype_epic"
-        _jsc_summary="$_jsc_title"
+        _jsc_summary=$("$_jsc_title_sh" compose --kind epic --title "$_jsc_title")
         ;;
       task)
         _jsc_issuetype_id="$_jsc_issuetype_task"
         _jsc_epic_line=$("$_jsc_map" get --feature "$_jsc_feature" --local-key "$_jsc_feature") \
           || _js_die "Epic ainda nao mapeado ao tentar criar a task $_jsc_key (era esperado ja criado)" 1
         _jsc_parent_key=$(printf '%s' "$_jsc_epic_line" | cut -f4)
-        _jsc_phase_tag=$(printf '%s' "$_jsc_phase" | awk '{print $1, $2}')
-        _jsc_summary="[$_jsc_phase_tag] $_jsc_key $_jsc_title"
+        _jsc_summary=$("$_jsc_title_sh" compose --kind task --phase "$_jsc_phase" \
+          --local-key "$_jsc_key" --title "$_jsc_title")
         ;;
       subtask)
         _jsc_issuetype_id="$_jsc_issuetype_subtask"
@@ -530,7 +531,7 @@ _js_cmd_convert() {
         _jsc_parent_line=$("$_jsc_map" get --feature "$_jsc_feature" --local-key "$_jsc_parent_local") \
           || _js_die "Task pai ($_jsc_parent_local) ainda nao mapeada ao tentar criar a sub-task $_jsc_key" 1
         _jsc_parent_key=$(printf '%s' "$_jsc_parent_line" | cut -f4)
-        _jsc_summary="$_jsc_title"
+        _jsc_summary=$("$_jsc_title_sh" compose --kind subtask --title "$_jsc_title")
         ;;
       *)
         _js_die "kind desconhecido retornado por jira-tasks.sh items: $_jsc_kind" 1

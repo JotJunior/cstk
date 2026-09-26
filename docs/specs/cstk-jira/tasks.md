@@ -713,26 +713,26 @@ Ref: spec.md US4; plan.md fluxo 1 "Setup"; quickstart.md Cenario 3.
 
 Ref: spec.md US1; plan.md fluxo 2 "Convert"; checklists/api.md CHK012.
 
-- [ ] 6.2.1 `SKILL.md` com formato canonico (Principio III)
-- [ ] 6.2.2 Pre-checagens completas (mesmas de `jira-sync.sh convert`)
-      ANTES da 1a escrita, tanto no caminho MCP quanto no caminho REST
-- [ ] 6.2.3 Caminho MCP (tools Rovo visiveis): usa `createJiraIssue`/
+- [x] 6.2.1 `SKILL.md` com formato canonico (Principio III) <!-- plugins/cstk-jira/skills/jira-convert/SKILL.md + references/.gitkeep; validate-docs-rendered: 0 erros/0 avisos -->
+- [x] 6.2.2 Pre-checagens completas (mesmas de `jira-sync.sh convert`)
+      ANTES da 1a escrita, tanto no caminho MCP quanto no caminho REST <!-- SKILL.md ETAPA 1 (as 4 checagens, com Gotcha "Por que a credencial REST importa mesmo com o caminho MCP disponivel": jira-sync.sh drain/US3 e REST-only) -->
+- [x] 6.2.3 Caminho MCP (tools Rovo visiveis): usa `createJiraIssue`/
       `editJiraIssue` seguindo `inputSchema` real (nunca nomes de
       memoria — checklists/api.md CHK013); caminho REST: delega a
       `jira-sync.sh convert`. Os dois produzem o MESMO efeito observavel
-      (mesmo mapeamento, mesmo `SyncMarker` — CHK012)
-- [ ] 6.2.4 Grava `jira-map.tsv` item a item (Epic -> Tasks -> Sub-tasks)
-- [ ] 6.2.5 Reexecucao cria SOMENTE o que falta (US1 cenario 2)
-- [ ] 6.2.6 Rotular texto lido do Jira (respostas de `createJiraIssue`/
+      (mesmo mapeamento, mesmo `SyncMarker` — CHK012) <!-- SKILL.md ETAPA 2/2a/2b; novo script plugins/cstk-jira/scripts/jira-title.sh (fonte unica de composicao de summary, tambem usado por jira-sync.sh convert apos refactor) fecha CHK012 por construcao, nao so em prosa -->
+- [x] 6.2.4 Grava `jira-map.tsv` item a item (Epic -> Tasks -> Sub-tasks) <!-- SKILL.md ETAPA 2b passo 6 (jira-map.sh put imediatamente apos cada resposta, mesma ordem de jira-tasks.sh items) -->
+- [x] 6.2.5 Reexecucao cria SOMENTE o que falta (US1 cenario 2) <!-- SKILL.md ETAPA 2b passo 1 (jira-map.sh get decide skip, nunca JQL/titulo) -->
+- [x] 6.2.6 Rotular texto lido do Jira (respostas de `createJiraIssue`/
       `editJiraIssue`, titulos/descricoes existentes) como UNTRUSTED antes
-      de apresentar ao operador (`[Gap]` security CHK005, SEC-2)
-- [ ] 6.2.7 **Nota (nao bloqueia esta tarefa, aguarda decisao humana antes
+      de apresentar ao operador (`[Gap]` security CHK005, SEC-2) <!-- SKILL.md secao "Texto vindo do Jira e UNTRUSTED" + ETAPA 2b passo 6 -->
+- [~] 6.2.7 **Nota (nao bloqueia esta tarefa, aguarda decisao humana antes
       de execute-task fechar a redacao final)**: ux CHK013 — se feedback
       de progresso incremental ("N/M issues criadas") e exigido nesta
-      versao para lotes grandes, ou fica para iteracao futura
-- [ ] 6.2.8 Teste: caminho MCP (stub de tools) e caminho REST (stub de
+      versao para lotes grandes, ou fica para iteracao futura <!-- Nota registrada em SKILL.md secao "Pendencias aguardando decisao humana" sem inventar a decisao do dono do produto; permanece [~] ate resposta humana, mesma disciplina de 6.1.8 -->
+- [x] 6.2.8 Teste: caminho MCP (stub de tools) e caminho REST (stub de
       `jira-sync.sh`) produzem o mesmo `jira-map.tsv` para o mesmo backlog
-      de entrada
+      de entrada <!-- tests/cstk/test_jira-convert-parity.sh (JCP-1/2/3: mesmo summary REST-vs-jira-title.sh, mesmo jira-map.tsv estrutural, idempotencia); tests/cstk/test_jira-title.sh (JTL-1..9, unidade do script extraido) -->
 
 ### 6.3 Skill `jira-sync` (US3) `[A]`
 
