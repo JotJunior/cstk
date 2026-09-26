@@ -833,11 +833,11 @@ Ref: plan.md Test Strategy (tabela completa). **Depende de** FASE 3, 4 e 5
 
 Ref: plan.md Test Strategy "Contrato"; checklists/api.md CHK001/CHK002.
 
-- [ ] 8.1.1 Stub do cliente HTTP grava metodo, path e corpo de cada
+- [x] 8.1.1 Stub do cliente HTTP grava metodo, path e corpo de cada
       requisicao emitida pelo motor
-- [ ] 8.1.2 Assert que R1-R11 (contracts/jira-rest.md, pos-FASE 0) batem
+- [x] 8.1.2 Assert que R1-R11 (contracts/jira-rest.md, pos-FASE 0) batem
       exatamente com o que o motor de fato emite — sem excecao
-- [ ] 8.1.3 Teste dedicado cobrindo CHK001 (11 endpoints documentados e
+- [x] 8.1.3 Teste dedicado cobrindo CHK001 (11 endpoints documentados e
       exercitados) e CHK002 (campos de corpo/resposta usados tem fonte)
 
 ### 8.2 Suite de idempotencia (SC-002) `[C]`

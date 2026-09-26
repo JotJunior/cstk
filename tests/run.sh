@@ -232,6 +232,17 @@ _is_internal_test() {
       # tarefa 6.2.8). Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk-jira/skills/jira-convert/SKILL.md" ] && return 0
       return 1 ;;
+    test_jira-contract.sh)
+      # Suite cross-cutting de CONTRATO REST (cstk-jira FASE 8 tarefa 8.1):
+      # compara metodo/path/corpo de R1-R11 contra
+      # docs/specs/cstk-jira/contracts/jira-rest.md, exercitando jira-io.sh
+      # + jira-sync.sh + a skill jira-setup (via reproducao do algoritmo de
+      # referencia board-setup.md/api-discovery.md) — nao um unico script
+      # "dono" sob a convencao de FASE 9.3. Existence-guarded ao proprio
+      # contrato que documenta as 11 operacoes. Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/docs/specs/cstk-jira/contracts/jira-rest.md" ] && return 0
+      return 1 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.
