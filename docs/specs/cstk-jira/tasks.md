@@ -1124,3 +1124,84 @@ flowchart TD
 | Feedback de progresso incremental em `jira-convert` | Contagem "N/M issues criadas" durante lotes grandes | ux CHK013 `{humano}`: decisao de produto pendente, registrada como nota em 6.2.7, nao fechada nesta onda |
 | Copy exata do diagnostico de token invalido | Texto literal da mensagem de erro de credencial | ux CHK005 `{humano}`: decisao de copy/produto pendente, registrada como nota em 6.1.8 |
 | Elevar CHK011 a FR-012 da spec | Explicitar na spec que a guarda so e ativa com config presente | security CHK011 `{humano}`: decisao de escopo pendente, registrada como nota em 6.1.8 |
+
+
+## FASE 10 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 10.1 Convert nao grava criticidade/dependencias na descricao da Task `[C]`
+
+Ref: FR-001 (US1, P1) · tipo: `partial` · severidade: `HIGH`
+
+FR-001 exige que as Tasks espelhem "fases, dependencias e criticidade
+quando existirem"; data-model.md:117-121 e tasks.md 2.2.5 fixam que
+dependencias/criticidade entram na DESCRICAO da Task. O codigo presente em
+`plugins/cstk-jira/scripts/jira-sync.sh` (`_js_cmd_convert`, linhas
+541-548) monta o corpo de R1 so com `--project-id`/`--issuetype-id`/
+`--summary`/`--parent-key` — nunca passa `--description`, embora
+`jira-io.sh json-build issue` ja aceite `--description` (ADF) e
+`jira-tasks.sh items` ja emita a coluna `criticality` (coluna 4, lida e
+descartada em convert). Dependencias (Matriz de Dependencias) nao sao
+extraidas por nenhum script. O caminho MCP
+(`plugins/cstk-jira/skills/jira-convert/SKILL.md` ETAPA 2b) tem a mesma
+lacuna. Completar e aditivo: compor a descricao (criticidade + dependencias
+da task) e passa-la nos dois caminhos, com teste.
+
+- [ ] 10.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` (e `skills/jira-convert/SKILL.md` ETAPA 2b) conforme `FR-001`: descricao da Task com criticidade e dependencias, coberta por teste em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: 7dadd8bdeb4e -->
+
+### 10.2 Issue ja mapeada nunca e atualizada quando o artefato local muda `[C]`
+
+Ref: FR-003 (US1, P1) · tipo: `partial` · severidade: `HIGH`
+
+FR-003 exige "atualizar os issues Jira ja existentes quando o artefato local
+correspondente mudar"; plan.md (fluxo 2 "Convert", FR-001/003/013/014) e
+research.md:66 mapeiam FR-003 para editar issue (R2/`editJiraIssue`). O
+codigo presente em `plugins/cstk-jira/scripts/jira-sync.sh`
+(`_js_cmd_convert`, linhas 508-512) pula todo `local_key` ja mapeado
+("NENHUMA chamada de criacao") sem nenhum caminho de atualizacao: renomear
+uma tarefa no `tasks.md` nunca chega ao `summary` do Jira. R2 nao tem
+consumidor em producao (dec-104; so a allowlist `_ji_op_allowed`,
+`jira-io.sh`:415-420). A parte de STATUS (FR-004) existe via drain, a de
+conteudo nao. Completar e aditivo: detectar divergencia de summary contra o
+SyncMarker (`written_summary_sha256`) e emitir R2 respeitando FR-011
+(nunca sobrescrever edicao manual) e regravar o SyncMarker.
+
+- [ ] 10.2.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-003`: atualizar summary de issue ja mapeada via R2 quando o titulo local mudar, com checagem de conflito FR-011 e teste
+
+<!-- converge-key: a8482095dfaf -->
+
+### 10.3 Reconciliacao da feature inteira (local_key=*) nunca processada `[C]`
+
+Ref: FR-004 (US3, P1) · tipo: `partial` · severidade: `HIGH`
+
+FR-004 exige refletir "iniciada, concluida com sucesso, concluida com falha"
+no card; US3 cenario 1 exige o card em "em andamento" quando a tarefa
+comeca; US2 cenario 1 espera Epics na coluna do estagio atual. O unico
+gatilho que carrega `in_progress`/estado de Epic/Sub-task e o evento
+`reconcile` com `local_key=*` que o hook enfileira no `close_wave`
+(`plugins/cstk-jira/hooks/posttooluse-jira-sync.sh`:155-158) —
+`record_task` so traz `pass`/`fail`. Em
+`plugins/cstk-jira/scripts/jira-sync.sh` (`_js_process_one_event`,
+linhas 687-691) esse evento e deixado `queued` com o diagnostico
+"reconciliacao de feature inteira (local_key=*) ainda nao implementada"
+(limitacao registrada em tasks.md 4.2 sem tarefa de seguimento), e
+`desired_state=reconcile` nao tem status alvo (linhas 715-718). Efeitos:
+card nunca vai para "em andamento"; Epic/Sub-tasks nunca mudam de coluna;
+o outbox acumula 1 evento `queued` por onda, nunca compactado. Completar
+e aditivo: expandir `*` em eventos por item a partir de
+`jira-tasks.sh items` (local_state ja derivado) e processa-los pelo
+caminho existente.
+
+- [ ] 10.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-004`: processar `reconcile`/`local_key=*` (in_progress, Epic, Sub-tasks) e fechar o evento, com teste em `tests/cstk/test_jira-sync.sh`
+
+<!-- converge-key: 29ad68918254 -->
