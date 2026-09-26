@@ -42,6 +42,17 @@
 #         hook AINDA sai exit 0 (fail-open, 5.1.9)
 #   HS-12 nao-exfiltracao: session_id sintetico no tool_input NUNCA aparece
 #         em stdout, hook.log ou outbox.tsv (5.1.10/CHK013)
+#   HS-13 diagnostico do drain (FASE 12 tarefa 12.7.1): ProjectConfig
+#         invalido (fixture so tem config_version/sync_autonomous) ->
+#         drain nao roda, diagnostico "ProjectConfig invalido/ausente" e
+#         anexado a runtime/hook.log (antes era descartado)
+#   HS-14 resumo pos-drain: outbox com evento auth_failed pre-existente ->
+#         hook.log ganha linha "resumo pos-drain" citando
+#         auth_failed=1 (data-model.md ConflictRecord "resumo emitido pelo
+#         hook")
+#   HS-15 resumo pos-drain OMITIDO quando outbox esta saudavel
+#         (deferred=0 conflict=0 auth_failed=0) — sem ruido no caminho
+#         feliz
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -244,6 +255,50 @@ scenario_nao_exfiltra_session_id() {
     _fail "leak_files" "session_id vazou em algum arquivo sob .claude/cstk-jira"
     return 1
   fi
+  return 0
+}
+
+scenario_diagnostico_drain_nao_e_descartado() {
+  _config_on "$TMPDIR_TEST"
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  # _config_on so grava config_version/sync_autonomous — jira-config.sh
+  # validate falha por campos obrigatorios ausentes; o drain emite o
+  # diagnostico em stderr e (12.7.1) ele passa a ser anexado ao hook.log.
+  grep -q '^.*drain:.*ProjectConfig invalido/ausente' "$(_hooklog "$TMPDIR_TEST")" \
+    || { _fail "drain_diag_missing" "diagnostico do drain nao apareceu em hook.log: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+scenario_resumo_pos_drain_com_auth_failed() {
+  _config_on "$TMPDIR_TEST"
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$(_outbox "$TMPDIR_TEST")" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	1	auth_failed
+EOF
+  _J=$(_json_task "$TMPDIR_TEST" 5.2 fail)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  grep -q 'resumo pos-drain (demo):.*auth_failed=1' "$(_hooklog "$TMPDIR_TEST")" \
+    || { _fail "resumo_missing" "resumo pos-drain com auth_failed=1 nao apareceu em hook.log: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+scenario_resumo_pos_drain_omitido_quando_saudavel() {
+  _config_on "$TMPDIR_TEST"
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  # outbox so tem o evento recem-enfileirado (queued=1), sem
+  # conflict/auth_failed/deferred — nenhuma linha "resumo pos-drain" deve
+  # aparecer (evita ruido no caminho feliz).
+  grep -q 'resumo pos-drain' "$(_hooklog "$TMPDIR_TEST")" \
+    && { _fail "resumo_noise" "resumo pos-drain apareceu com outbox saudavel: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
   return 0
 }
 

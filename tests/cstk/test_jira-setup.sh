@@ -28,6 +28,13 @@
 #         a extracao que a skill usa para listar os tipos e confirmar)
 #   JS-10 fixture transitions (R5) + json-get extrai transitions[].to.name,
 #         e o resultado alimenta check-status-mapping (cobre 6.1.4)
+#   JS-11 write-config bem-sucedido devolve eventos `auth_failed` do outbox
+#         a `queued` (FASE 12 tarefa 12.6.1, FR-016 / data-model.md
+#         OutboxEvent auth_failed->queued), delegando a
+#         `jira-sync.sh requeue-auth-failed`
+#   JS-12 write-config que FALHA (config invalido) NAO reenfileira nada —
+#         o outbox permanece intocado (reenfileirar so faz sentido apos
+#         reconfiguracao bem-sucedida)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -153,6 +160,41 @@ scenario_fixture_transitions_alimenta_check_status_mapping() {
     "To Do" "In Progress" "Done" "In Review" "$@" || return 1
   assert_exit 1 "$SCRIPT" check-status-mapping \
     "To Do" "In Progress" "Done" "Done" "$@" || return 1
+}
+
+scenario_write_config_sucesso_reenfileira_auth_failed() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "./.claude/cstk-jira/runtime"
+  cat > "./.claude/cstk-jira/runtime/outbox.tsv" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	1	auth_failed
+EOF
+  assert_exit 0 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK board_id=42 \
+    issue_type_epic=10000 issue_type_task=10002 issue_type_subtask=10003 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail="In Review" sync_autonomous=on || return 1
+  assert_stdout_contains "1 evento(s) auth_failed reenfileirado(s) para queued" || return 1
+  awk -F '\t' '$1=="e1"' "./.claude/cstk-jira/runtime/outbox.tsv" | grep -q '	queued$' \
+    || { _fail "write_config_requeues_auth_failed" "evento e1 continua auth_failed apos write-config bem-sucedido"; return 1; }
+  return 0
+}
+
+scenario_write_config_falho_nao_reenfileira_auth_failed() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "./.claude/cstk-jira/runtime"
+  cat > "./.claude/cstk-jira/runtime/outbox.tsv" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	1	auth_failed
+EOF
+  assert_exit 1 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK \
+    issue_type_epic=1 issue_type_task=2 issue_type_subtask=3 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail=Failed sync_autonomous=on || return 1
+  awk -F '\t' '$1=="e1"' "./.claude/cstk-jira/runtime/outbox.tsv" | grep -q '	auth_failed$' \
+    || { _fail "write_config_failed_no_requeue" "evento e1 foi reenfileirado apesar de write-config ter falhado"; return 1; }
+  return 0
 }
 
 run_all_scenarios

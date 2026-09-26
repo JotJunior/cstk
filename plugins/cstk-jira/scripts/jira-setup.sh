@@ -36,7 +36,10 @@
 #         caminho final. Se a validacao falhar, o arquivo temporario e
 #         removido e o caminho final NUNCA e tocado — nenhum config parcial
 #         ou invalido chega a existir como arquivo "final" (ux CHK006/FR-007,
-#         tasks.md 6.1.5).
+#         tasks.md 6.1.5). Apos gravar com sucesso, devolve (best-effort)
+#         eventos `auth_failed` do outbox a `queued` via
+#         `jira-sync.sh requeue-auth-failed` (FR-016 / data-model.md
+#         OutboxEvent auth_failed->queued, tasks.md 12.6.1).
 #
 # Convencoes (Principio II / mesmas de jira-config.sh):
 #   `#!/bin/sh`, `set -eu`, sem bash-isms; dados em stdout, diagnostico em
@@ -79,6 +82,13 @@ _js_script_dir() {
 }
 
 _JS_JIRA_CONFIG_SCRIPT="$(_js_script_dir)/jira-config.sh"
+
+# FASE 12 tarefa 12.6.1 (FR-016 / data-model.md OutboxEvent
+# auth_failed->queued): apos `write-config` gravar com sucesso, devolve
+# eventos `auth_failed` a `queued` — a credencial e GLOBAL ao projeto
+# (`_JS_CONFIG_FILE` acima), entao uma reconfiguracao bem-sucedida vale
+# para todas as features do outbox compartilhado (sem --feature).
+_JS_JIRA_SYNC_SCRIPT="$(_js_script_dir)/jira-sync.sh"
 
 # Mesmo path/convencao de _JC_CONFIG_FILE em jira-config.sh — as duas
 # ferramentas MUST concordar sobre onde o ProjectConfig vive.
@@ -157,6 +167,24 @@ _js_cmd_write_config() {
 
   mv -- "$_jswc_tmp" "$_JS_CONFIG_FILE"
   trap - EXIT INT TERM
+
+  # FASE 12 tarefa 12.6.1 (FR-016 / data-model.md OutboxEvent
+  # auth_failed->queued): ProjectConfig acabou de ser gravado com sucesso —
+  # a skill so chega ate aqui (ETAPA 7) apos a credencial ja ter sido
+  # validada na ETAPA 2 (`jira-io.sh request GET /rest/api/3/myself`).
+  # Devolve qualquer evento `auth_failed` a `queued` para o proximo drain
+  # reprocessar. Best-effort/aditivo: nunca desfaz a gravacao acima nem
+  # falha write-config caso o outbox nao exista ou jira-sync.sh nao esteja
+  # disponivel (ex.: ambiente de teste isolado sem o script irmao).
+  if [ -x "$_JS_JIRA_SYNC_SCRIPT" ]; then
+    if _jswc_requeue_out=$("$_JS_JIRA_SYNC_SCRIPT" requeue-auth-failed 2>&1); then
+      printf '%s\n' "$_jswc_requeue_out"
+    else
+      printf '%s: aviso — requeue-auth-failed falhou apos gravar config (nao bloqueia a reconfiguracao): %s\n' \
+        "$_JS_NAME" "$_jswc_requeue_out" >&2
+    fi
+  fi
+
   return 0
 }
 

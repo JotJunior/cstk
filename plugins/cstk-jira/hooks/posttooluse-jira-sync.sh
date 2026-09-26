@@ -185,12 +185,36 @@ esac
 
 # ==== 5. Drenar (subshell: cwd real, nunca o do processo do hook) ====
 
-(
+# FASE 12 tarefa 12.7.1 (FR-016 / data-model.md Entity ConflictRecord —
+# "consumido ... pelo resumo emitido pelo hook no fechamento de onda"): o
+# diagnostico de stderr do drain (gate auth_failed/FR-016, ProjectConfig
+# invalido, conflito detectado) deixava de existir para o operador na
+# execucao autonoma (`>/dev/null 2>&1` descartava tudo). Agora e anexado a
+# `runtime/hook.log`, junto de um resumo curto (conflict/auth_failed/
+# deferred) via `jira-sync.sh status` — subcomando 100% LOCAL, sem
+# rede/titulo do Jira (mesma garantia documentada em `_js_cmd_status`), por
+# isso nada aqui precisa do rotulo UNTRUSTED (nunca se ecoa texto do Jira).
+# `_pjs_log` ja e best-effort (mkdir/redirect com `|| :`) — continua
+# fail-open, o hook NUNCA falha por causa deste passo.
+
+_PJS_DRAIN_DIAG=$(
   cd "$_PJS_CWD" 2>/dev/null || exit 0
   sh "$_PJS_ENGINE" enqueue --feature "$_PJS_FEATURE" --local-key "$_PJS_LOCAL_KEY" \
     --state "$_PJS_STATE" --source "$_PJS_SOURCE" >/dev/null 2>&1 || :
-  sh "$_PJS_ENGINE" drain --feature "$_PJS_FEATURE" >/dev/null 2>&1 || :
-) || :
+  sh "$_PJS_ENGINE" drain --feature "$_PJS_FEATURE" 2>&1 >/dev/null
+)
+if [ -n "$_PJS_DRAIN_DIAG" ]; then
+  _pjs_log "drain: $(printf '%s' "$_PJS_DRAIN_DIAG" | tr '\n' ' ' | cut -c1-500)"
+fi
+
+_PJS_STATUS_LINE=$(
+  cd "$_PJS_CWD" 2>/dev/null || exit 0
+  sh "$_PJS_ENGINE" status --feature "$_PJS_FEATURE" 2>/dev/null | grep '^queued='
+)
+case "$_PJS_STATUS_LINE" in
+  '' | *'deferred=0 conflict=0 auth_failed=0') : ;;
+  *) _pjs_log "resumo pos-drain ($_PJS_FEATURE): $_PJS_STATUS_LINE" ;;
+esac
 
 # ==== 6. Fail-open absoluto ====
 exit 0

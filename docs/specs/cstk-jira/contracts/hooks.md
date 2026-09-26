@@ -58,7 +58,17 @@ condicao b: so `scripts/jira-io.sh` referencia essas ferramentas).
 5. **Drenar** via `scripts/jira-sync.sh drain --feature <f>` com lock proprio
    (`runtime/.drain.lock/`, `mkdir` atomico): escritas serializadas por
    projeto (research Decision 3: transicoes simultaneas na mesma issue
-   falham). Lock ocupado => sai; o proximo gatilho drena.
+   falham). Lock ocupado => sai; o proximo gatilho drena. O diagnostico de
+   stderr do drain (gate `auth_failed`/FR-016, ProjectConfig invalido,
+   conflito detectado) e anexado a `runtime/hook.log` (nao descartado) —
+   FASE 12 tarefa 12.7.1.
+5.bis **Resumo** (`data-model.md` Entity ConflictRecord — "consumido ...
+   pelo resumo emitido pelo hook no fechamento de onda"): apos o drain, um
+   `scripts/jira-sync.sh status --feature <f>` (100% LOCAL, sem rede/titulo
+   do Jira) alimenta uma linha de resumo em `runtime/hook.log` quando
+   `conflict`/`auth_failed`/`deferred` do outbox nao estao todos zerados —
+   sinaliza credencial expirada ou conflito pendente sem exigir `jira-sync
+   status` manual.
 6. **Fail-open absoluto**: qualquer falha => exit 0. O hook NUNCA bloqueia,
    atrasa ou falha a tool do orquestrador e NUNCA escreve no state da execucao
    (mesma politica de `posttooluse-tool-call-tick.sh`, que documenta a corrida

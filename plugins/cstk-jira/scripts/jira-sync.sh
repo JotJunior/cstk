@@ -202,6 +202,13 @@ USO:
       jira-map.sh relink --feature F --local-key K --jira-key KEY
   para reativar o mapeamento por decisao humana explicita (CHK012).
 
+  jira-sync.sh requeue-auth-failed [--feature F]
+      Devolve eventos `auth_failed` a `queued` (data-model.md OutboxEvent
+      auth_failed->queued) apos reconfiguracao bem-sucedida da credencial
+      (chamado por `jira-setup.sh write-config`). Sem --feature, reenfileira
+      para TODAS as features (credencial e global ao projeto). Idempotente;
+      sem eventos auth_failed, imprime contagem 0 e sai exit 0.
+
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
@@ -296,6 +303,48 @@ _JS_DEFERRED_HEADER='event_id	available_at_epoch'
 # Chave da entity property do SyncMarker (data-model.md) — DESIGN do
 # plugin, nao dado externo.
 _JS_MARKER_PROPERTY_KEY="cstk-jira.sync"
+
+# _js_json_str JSON KEY -> valor de um campo string simples ("key":"value"),
+# 1a ocorrencia. Mesma tecnica de hooks/posttooluse-jira-sync.sh
+# `_pjs_json_str` (grep/sed puros — carve-out 1.1.0 condicao b, jq fica
+# exclusivo de jira-io.sh).
+_js_json_str() {
+  printf '%s\n' "$1" | tr -d '\n' \
+    | sed -n 's/.*"'"$2"'"[ 	]*:[ 	]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+# _js_resolve_stage FEATURE -> etapa corrente (`current_stage`) da execucao
+# ativa, READ-ONLY (FASE 12 tarefa 12.8.1; data-model.md ProjectConfig
+# `stage_status.<stage>` / US2 cenario 1). Mesma convencao de namespace do
+# hook (`contracts/hooks.md` "Resolucao da execucao ativa"): FEATURE e o
+# MESMO short-name de `docs/specs/FEATURE`, que por convencao do plugin e
+# tambem o de `.claude/feature-00c-state/FEATURE` quando essa execucao
+# existe. Ordem de fontes (a 1a que existir vence, nunca as duas
+# combinadas): feature-00c (pipeline desta feature) -> agente-00c
+# (pipeline do projeto inteiro). Sem nenhuma das duas, ou sem
+# `current_stage` legivel, imprime string vazia — o chamador trata vazio
+# como "sem override" (mesmo efeito de `stage_status.<stage>` ausente do
+# ProjectConfig, nunca inventa uma etapa). Nunca escreve nada.
+_js_resolve_stage() {
+  _jsrs_feature="$1"
+  _jsrs_dir=""
+  if [ -f "./.claude/feature-00c-state/$_jsrs_feature/state.json" ] \
+     || [ -f "./.claude/feature-00c-state/$_jsrs_feature/state.db" ]; then
+    _jsrs_dir="./.claude/feature-00c-state/$_jsrs_feature"
+  elif [ -f "./.claude/agente-00c-state/state.json" ] \
+     || [ -f "./.claude/agente-00c-state/state.db" ]; then
+    _jsrs_dir="./.claude/agente-00c-state"
+  else
+    return 0
+  fi
+  if [ -f "$_jsrs_dir/state.json" ]; then
+    _js_json_str "$(cat "$_jsrs_dir/state.json" 2>/dev/null)" current_stage 2>/dev/null
+  elif [ -f "$_jsrs_dir/state.db" ] && command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 -readonly -noheader "$_jsrs_dir/state.db" \
+      'SELECT current_stage FROM execution LIMIT 1;' 2>/dev/null
+  fi
+  return 0
+}
 
 # _js_script_dir -> diretorio deste script (para localizar os irmaos
 # jira-config.sh/jira-tasks.sh/jira-map.sh/jira-io.sh — mesmo padrao de
@@ -1262,9 +1311,22 @@ _js_process_reconcile_event() {
   # `local_state` (`jira-tasks.sh items --outcomes-file`, kind=task) — sem
   # isto, esta reconciliacao podia desfazer o outcome que o proprio
   # record_task acabou de levar ao Jira (achado 12.4).
+  # 12.8.1: `--stage` (etapa corrente, READ-ONLY via `_js_resolve_stage`)
+  # habilita `stage_status.<stage>` (data-model.md ProjectConfig / US2
+  # cenario 1) para o Epic — omitido quando nao ha execucao ativa legivel
+  # (mesmo efeito de "nao configurado" em `jira-tasks.sh items`).
   _jspr_outcomes_file=$(_js_outcomes_file_for_feature "$_jsd_feature")
-  if ! _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
-      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null); then
+  _jspr_stage=$(_js_resolve_stage "$_jsd_feature")
+  if [ -n "$_jspr_stage" ]; then
+    _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
+      --outcomes-file "$_jspr_outcomes_file" --stage "$_jspr_stage" 2>/dev/null)
+    _jspr_items_ok=$?
+  else
+    _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
+      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null)
+    _jspr_items_ok=$?
+  fi
+  if [ "$_jspr_items_ok" -ne 0 ]; then
     rm -f "$_jspr_outcomes_file"
     printf '%s: jira-tasks.sh items falhou para %s — evento %s permanece na fila\n' \
       "$_JS_NAME" "$_jsd_feature" "$_jspr_eid" >&2
@@ -1281,6 +1343,7 @@ _js_process_reconcile_event() {
   while IFS= read -r _jspr_line; do
     [ -n "$_jspr_line" ] || continue
     _jspr_lkey=$(printf '%s' "$_jspr_line" | cut -f1)
+    _jspr_kind=$(printf '%s' "$_jspr_line" | cut -f2)
     _jspr_lstate=$(printf '%s' "$_jspr_line" | cut -f5)
 
     # Item sem mapeamento (ainda nao convertido): nada a reconciliar no
@@ -1305,7 +1368,22 @@ _js_process_reconcile_event() {
       pass)        _jspr_target="$_jsd_status_pass" ;;
       fail)        _jspr_target="$_jsd_status_fail" ;;
       *)
-        continue
+        # 12.8.1 (data-model.md ProjectConfig stage_status.<stage> / US2
+        # cenario 1): quando `--stage` foi passado acima E o item e o Epic
+        # (kind=epic), um local_state fora do enum pending/in_progress/
+        # pass/fail e o VALOR do override — nome de status Jira REAL
+        # escolhido pelo operador em jira-setup (`jira-tasks.sh items`
+        # END{} "epic_state = stage_override"), nunca um erro. Tratar como
+        # status alvo DIRETO (sem passar pelo mapeamento pending/
+        # in_progress/pass/fail -> status_*). Qualquer outro kind com
+        # local_state fora do enum nunca deveria ocorrer (tasks/subtasks
+        # so saem de jira-tasks.sh com um dos 4 enums) — permanece
+        # ignorado.
+        if [ "$_jspr_kind" = "epic" ] && [ -n "$_jspr_lstate" ]; then
+          _jspr_target="$_jspr_lstate"
+        else
+          continue
+        fi
         ;;
     esac
 
@@ -2031,6 +2109,60 @@ _js_cmd_resolve() {
   esac
 }
 
+# _js_cmd_requeue_auth_failed [--feature F] — FASE 12 tarefa 12.6.1
+# (data-model.md OutboxEvent "auth_failed --> queued: operador reconfigura
+# (jira-setup)"): devolve TODOS os eventos `auth_failed` (opcionalmente
+# filtrados por --feature) a `queued`, para que o proximo drain os
+# reprocesse. Chamado por `jira-setup.sh write-config` apos reconfiguracao
+# bem-sucedida — a credencial (`.claude/cstk-jira/config` /
+# `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials`) e GLOBAL ao
+# projeto (nao por feature), entao sem --feature reenfileira para todas as
+# features do outbox compartilhado (mesmo arquivo, coluna `feature`
+# filtra). `attempts` NUNCA e resetado (data-model.md nao especifica reset;
+# nao inventa esse comportamento). Idempotente: sem eventos auth_failed
+# (outbox ausente ou vazio de auth_failed), imprime contagem 0 e sai exit 0
+# — nunca falha por "nada para fazer" (aditivo, nao gateia jira-setup).
+_js_cmd_requeue_auth_failed() {
+  _jsraf_feature=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _js_die_usage "requeue-auth-failed: --feature requer valor"
+        _jsraf_feature="$2"
+        shift 2
+        ;;
+      *)
+        _js_die_usage "requeue-auth-failed: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  if [ -n "$_jsraf_feature" ] && ! _js_is_safe_feature "$_jsraf_feature"; then
+    _js_die_usage "requeue-auth-failed: --feature invalido: $_jsraf_feature"
+  fi
+
+  if [ ! -f "$_JS_OUTBOX_FILE" ]; then
+    printf 'requeue-auth-failed: 0 evento(s) auth_failed reenfileirado(s) (outbox inexistente)\n'
+    return 0
+  fi
+
+  _jsraf_ids=$(awk -F '\t' -v f="$_jsraf_feature" '
+    NR > 1 && $8 == "auth_failed" && (f == "" || $3 == f) { print $1 }
+  ' "$_JS_OUTBOX_FILE")
+
+  if [ -z "$_jsraf_ids" ]; then
+    printf 'requeue-auth-failed: 0 evento(s) auth_failed reenfileirado(s)\n'
+    return 0
+  fi
+
+  _jsraf_count=0
+  for _jsraf_id in $_jsraf_ids; do
+    _js_set_event_status "$_jsraf_id" queued
+    _jsraf_count=$((_jsraf_count + 1))
+  done
+  printf 'requeue-auth-failed: %s evento(s) auth_failed reenfileirado(s) para queued\n' "$_jsraf_count"
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _js_sub="${1:-}"
@@ -2059,7 +2191,10 @@ case "$_js_sub" in
   resolve)
     _js_cmd_resolve "$@"
     ;;
+  requeue-auth-failed)
+    _js_cmd_requeue_auth_failed "$@"
+    ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed)"
     ;;
 esac

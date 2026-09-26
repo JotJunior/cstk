@@ -1433,7 +1433,7 @@ valida reconfigurada. Completar e aditivo: apos o setup validar a credencial
 (`GET /rest/api/3/myself`), reenfileirar (`auth_failed` -> `queued`) os
 eventos, via subcomando novo no motor ou passo do setup.
 
-- [ ] 12.6.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-setup.sh` conforme `FR-016 / data-model OutboxEvent auth_failed->queued`: reconfiguracao bem-sucedida devolve eventos `auth_failed` a `queued`, com teste
+- [x] 12.6.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-setup.sh` conforme `FR-016 / data-model OutboxEvent auth_failed->queued`: reconfiguracao bem-sucedida devolve eventos `auth_failed` a `queued`, com teste
 
 <!-- converge-key: dfa8fab2ef16 -->
 
@@ -1453,7 +1453,7 @@ sem quebrar o fail-open (exit 0 sempre): anexar stderr do drain e um resumo
 (conflitos pendentes/`auth_failed`) em `runtime/hook.log` e/ou emitir o
 resumo no fechamento de onda.
 
-- [ ] 12.7.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `FR-016 / data-model ConflictRecord resumo do hook`: diagnostico do drain + resumo de conflitos/`auth_failed` persistidos/emitidos no fechamento de onda, mantendo fail-open, com teste
+- [x] 12.7.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `FR-016 / data-model ConflictRecord resumo do hook`: diagnostico do drain + resumo de conflitos/`auth_failed` persistidos/emitidos no fechamento de onda, mantendo fail-open, com teste
 
 <!-- converge-key: c935b453652f -->
 
@@ -1472,7 +1472,7 @@ Completar e aditivo: obter a etapa corrente (fonte real, ex.: o state da
 execucao ativa lido READ-ONLY, sem inventar) e tratar o override como status
 alvo direto na reconciliacao.
 
-- [ ] 12.8.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model ProjectConfig stage_status / US2 cenario 1`: reconciliacao aplica `stage_status.<stage>` ao Epic quando configurado, com teste em `tests/cstk/test_jira-sync.sh`
+- [x] 12.8.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model ProjectConfig stage_status / US2 cenario 1`: reconciliacao aplica `stage_status.<stage>` ao Epic quando configurado, com teste em `tests/cstk/test_jira-sync.sh`
 
 <!-- converge-key: 39dbe81777b3 -->
 

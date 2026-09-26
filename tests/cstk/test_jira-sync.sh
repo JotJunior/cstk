@@ -112,6 +112,16 @@
 #         stderr citando FR-016 (4.2.6)
 #   SY-17 drain: evento `auth_failed` de OUTRA feature nao bloqueia o drain
 #         da feature corrente (gate e por feature, nao global)
+#   SY-55 requeue-auth-failed: outbox ausente ou sem eventos auth_failed ->
+#         exit 0, stdout "0 evento(s)... reenfileirado(s)", nada alterado
+#         (FASE 12 tarefa 12.6.1, data-model.md OutboxEvent
+#         auth_failed->queued)
+#   SY-56 requeue-auth-failed sem --feature: reenfileira eventos
+#         auth_failed de TODAS as features (credencial e global ao
+#         projeto), preserva demais colunas (attempts NUNCA resetado)
+#   SY-57 requeue-auth-failed --feature F: reenfileira SOMENTE os eventos
+#         auth_failed da feature F; auth_failed de outra feature permanece
+#         intacto
 #   SY-18 drain (4.2.5): sem conflito -> resolve transition.id via R5,
 #         executa R4, regrava o SyncMarker via R6 PUT, marca `done` (5
 #         chamadas de rede na ordem R3/R6-GET/R5/R4/R6-PUT)
@@ -190,6 +200,16 @@
 #         `*` vira `auth_failed` (mesmo gate FR-016 de um evento direto) e a
 #         reconciliacao para IMEDIATAMENTE — o 2o item (Task) nunca e
 #         tocado (exatamente 1 chamada de rede)
+#   SY-58 drain reconcile (FASE 12 tarefa 12.8.1, data-model.md
+#         ProjectConfig stage_status.<stage> / US2 cenario 1): execucao
+#         feature-00c ativa com current_stage=execute-task + config
+#         stage_status.execute-task=<status> -> Epic transiciona para o
+#         status DIRETO do override, NAO para o que a agregacao por tasks
+#         produziria
+#   SY-59 drain reconcile: sem execucao ativa legivel -> `--stage` nunca e
+#         passado a `jira-tasks.sh items` -> stage_status.* configurado e
+#         IGNORADO, Epic segue a agregacao normal por tasks (Principio VI —
+#         nunca inventa uma etapa)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -758,6 +778,65 @@ EOF
     *FR-016*) _fail "drain_cross_feature_gate" "gate auth_failed vazou de outra feature"; return 1 ;;
   esac
   grep -q '^e2	' "$(_outbox_file)" || { _fail "drain_cross_feature_queued_kept" "evento queued da feature corrente sumiu"; return 1; }
+  return 0
+}
+
+# =========================== requeue-auth-failed (12.6.1) ===================
+
+scenario_requeue_auth_failed_sem_outbox_exit0_zero() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" requeue-auth-failed || return 1
+  assert_stdout_contains "0 evento(s) auth_failed reenfileirado(s)" || return 1
+  [ -f "$(_outbox_file)" ] && { _fail "requeue_no_outbox_created" "outbox.tsv foi criado por requeue-auth-failed sem eventos"; return 1; }
+  return 0
+}
+
+scenario_requeue_auth_failed_sem_eventos_exit0_zero() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  assert_exit 0 "$SCRIPT" requeue-auth-failed || return 1
+  assert_stdout_contains "0 evento(s) auth_failed reenfileirado(s)" || return 1
+  grep -q '	queued$' "$(_outbox_file)" \
+    || { _fail "requeue_none_untouched" "evento queued foi alterado sem nenhum auth_failed presente"; return 1; }
+  return 0
+}
+
+scenario_requeue_auth_failed_sem_feature_reenfileira_todas() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	2	auth_failed
+e2	2026-01-01T00:00:01Z	outra	9.9	fail	manual	1	auth_failed
+e3	2026-01-01T00:00:02Z	demo	1.2	pending	manual	0	queued
+EOF
+  assert_exit 0 "$SCRIPT" requeue-auth-failed || return 1
+  assert_stdout_contains "2 evento(s) auth_failed reenfileirado(s) para queued" || return 1
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q '^e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	2	queued$' \
+    || { _fail "requeue_all_e1" "e1 nao foi reenfileirado preservando attempts/demais colunas: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  awk -F '\t' '$1=="e2"' "$(_outbox_file)" | grep -q '^e2	2026-01-01T00:00:01Z	outra	9.9	fail	manual	1	queued$' \
+    || { _fail "requeue_all_e2" "e2 (outra feature) nao foi reenfileirado: $(awk -F '\t' '$1==\"e2\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+scenario_requeue_auth_failed_com_feature_filtra() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	auth_failed
+e2	2026-01-01T00:00:01Z	outra	9.9	fail	manual	0	auth_failed
+EOF
+  assert_exit 0 "$SCRIPT" requeue-auth-failed --feature demo || return 1
+  assert_stdout_contains "1 evento(s) auth_failed reenfileirado(s) para queued" || return 1
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q '	queued$' \
+    || { _fail "requeue_filter_e1_queued" "e1 (feature filtrada) nao foi reenfileirado"; return 1; }
+  awk -F '\t' '$1=="e2"' "$(_outbox_file)" | grep -q '	auth_failed$' \
+    || { _fail "requeue_filter_e2_untouched" "e2 (outra feature) foi alterado apesar do filtro --feature"; return 1; }
   return 0
 }
 
@@ -2191,6 +2270,88 @@ EOF
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
   awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q . \
     && { _fail "sy42_compacted" "evento e1 deveria ter sido compactado (removido) na 2a chamada de drain"; return 1; }
+  return 0
+}
+
+# SY-58 drain reconcile (FASE 12 tarefa 12.8.1, data-model.md ProjectConfig
+# `stage_status.<stage>` / US2 cenario 1): com `stage_status.execute-task`
+# configurado e uma execucao feature-00c ativa (`.claude/feature-00c-state/
+# demo/state.json` `current_stage=execute-task`), o Epic transiciona para o
+# status DIRETO do override ("In Review"), NAO para o alvo que a agregacao
+# por tasks produziria (unica task 100% pass -> "Done", `status_pass` do
+# ProjectConfig). So o Epic e mapeado (Task/Sub-task ficam fora do
+# jira-map.tsv de proposito — sem mapeamento, item e ignorado — reduz o
+# cenario a 5 chamadas: R3/R6-GET/R5/R4/R6-PUT).
+scenario_drain_reconcile_epic_usa_stage_status_do_stage_ativo() {
+  _write_full_config
+  printf 'stage_status.execute-task=In Review\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+  _write_credential
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo"
+  printf '{"current_stage":"execute-task"}' > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): "To Do" atual. Sem stage_status seria "pass" -> "Done"
+  # (unica task 100% pass); com o override o alvo passa a ser "In Review"
+  # diretamente (nao passa pelo mapeamento status_pass).
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"21","to":{"name":"Done"}},{"id":"31","to":{"name":"In Review"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy58_calls_count" "esperado 5 chamadas (R3,R6get,R5,R4,R6put), obtido $(_queue_calls_count)"; return 1; }
+  _epic_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_epic_trans" = "31" ] \
+    || { _fail "sy58_transition" "esperado transition.id=31 (In Review, via stage_status), obtido $_epic_trans"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_marker_status" = "In Review" ] \
+    || { _fail "sy58_marker_status" "esperado written_status=In Review no SyncMarker, obtido '$_marker_status'"; return 1; }
+  return 0
+}
+
+# SY-59 drain reconcile (mesmo achado 12.8.1): SEM execucao ativa legivel
+# (nem feature-00c nem agente-00c) `_js_resolve_stage` retorna vazio ->
+# `--stage` nunca e passado a `jira-tasks.sh items` -> `stage_status.*`
+# configurado no ProjectConfig e IGNORADO -> Epic segue a agregacao normal
+# por tasks (unica task 100% pass -> "Done", `status_pass`). Prova que o
+# override so se aplica quando a etapa corrente e de fato resolvivel
+# (Principio VI: nunca inventar uma etapa).
+scenario_drain_reconcile_sem_execucao_ativa_ignora_stage_status() {
+  _write_full_config
+  printf 'stage_status.execute-task=In Review\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+  _write_credential
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"21","to":{"name":"Done"}},{"id":"31","to":{"name":"In Review"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  _epic_trans=$("$IO_SCRIPT" json-get '.transition.id' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_epic_trans" = "21" ] \
+    || { _fail "sy59_transition" "sem execucao ativa, esperado transition.id=21 (Done, agregacao normal), obtido $_epic_trans"; return 1; }
   return 0
 }
 
