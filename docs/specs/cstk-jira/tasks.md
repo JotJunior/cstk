@@ -738,21 +738,21 @@ Ref: spec.md US1; plan.md fluxo 2 "Convert"; checklists/api.md CHK012.
 
 Ref: spec.md US3; plan.md fluxo 3 "Sync autonomo"; checklists/ux.md CHK011.
 
-- [ ] 6.3.1 `SKILL.md` com formato canonico (Principio III)
-- [ ] 6.3.2 Modo `status`: expõe `jira-sync.sh status` (conflitos, orfaos,
+- [x] 6.3.1 `SKILL.md` com formato canonico (Principio III) <!-- plugins/cstk-jira/skills/jira-sync/SKILL.md + references/.gitkeep; validate-docs-rendered: 0 erros/0 avisos -->
+- [x] 6.3.2 Modo `status`: expõe `jira-sync.sh status` (conflitos, orfaos,
       `auth_failed`) como comando claro documentado no fluxo de UX
-      (CHK011 — nao so no data-model interno)
-- [ ] 6.3.3 Modo `resolve`: expõe `jira-sync.sh resolve` para o operador
-      decidir `keep_jira`/`overwrite`/`ignored` por conflito
-- [ ] 6.3.4 Modo `relink`: expõe `jira-map.sh relink` para o operador
-      religar um orfao (CHK012)
-- [ ] 6.3.5 Rotular texto lido do Jira (titulo/descricao/status/comentarios
+      (CHK011 — nao so no data-model interno) <!-- SKILL.md ETAPA 1 -->
+- [x] 6.3.3 Modo `resolve`: expõe `jira-sync.sh resolve` para o operador
+      decidir `keep_jira`/`overwrite`/`ignored` por conflito <!-- SKILL.md ETAPA 2 passos 3-4 -->
+- [x] 6.3.4 Modo `relink`: expõe `jira-map.sh relink` para o operador
+      religar um orfao (CHK012) <!-- SKILL.md ETAPA 3 -->
+- [x] 6.3.5 Rotular texto lido do Jira (titulo/descricao/status/comentarios
       exibidos ao mostrar um conflito) como UNTRUSTED (`[Gap]` security
       CHK005, SEC-2) — nenhuma decisao de sync e derivada desse texto,
-      so da escolha humana explicita
-- [ ] 6.3.6 Teste: exibicao de um conflito simulado rotula corretamente o
+      so da escolha humana explicita <!-- novo script plugins/cstk-jira/scripts/jira-conflict-view.sh (caminho REST, banner UNTRUSTED por construcao) + SKILL.md ETAPA 2 passo 1 (caminho MCP via getJiraIssue) e secao "Texto vindo do Jira e UNTRUSTED" -->
+- [x] 6.3.6 Teste: exibicao de um conflito simulado rotula corretamente o
       titulo/descricao do Jira como conteudo externo antes de pedir a
-      escolha do operador
+      escolha do operador <!-- tests/cstk/test_jira-conflict-view.sh (CV-7 scenario_show_conflito_pendente_rotula_conteudo_untrusted: summary/status/description/comment simulados, banner UNTRUSTED confirmado, conflicts.tsv permanece pending) -->
 
 ---
 
