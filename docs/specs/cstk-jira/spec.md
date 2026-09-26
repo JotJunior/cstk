@@ -192,6 +192,21 @@ nenhum passo de configuracao adicional nao coberto pelo fluxo guiado.
 - O que acontece se algum componente da integracao tentar enviar dados
   de rede para um dominio diferente do dominio Jira configurado pelo
   usuario?
+- O que acontece quando a sincronizacao de um marco (Release/Fix
+  Version) roda novamente sobre a mesma release/round que ja tinha um
+  marco criado anteriormente? (nao pode criar um marco duplicado — ver
+  FR-020, FR-021)
+- Como o sistema decide a label de fase a aplicar numa Task/Subtask
+  quando o backlog local reorganiza tarefas entre fases num round
+  posterior? (ver FR-022)
+- O que acontece quando o roadmap sincronizado abrange mais de uma
+  feature do mesmo projeto-alvo — o sistema cria um Epic por feature ou
+  um unico Epic para o repositorio inteiro? (ver FR-023)
+- O que acontece quando o usuario configura a integracao mas ainda nao
+  tem nenhum projeto Jira dedicado ao board do CSTK? (ver FR-024)
+- O que acontece quando uma dependencia da Matriz de Dependencias nao
+  tem tipo de link equivalente disponivel na instancia Jira do usuario?
+  (ver FR-025)
 
 ## Requirements
 
@@ -292,6 +307,48 @@ execucoes autonomas potencialmente longas.
   nao for possivel": rejeicao de autenticacao = credencial invalida
   (FR-016), com suspensao explicita da sincronizacao.]
 
+**Incremento round r02 (2026-09-26)** — cobertura de um projeto completo
+no Jira: nivel de marco acima do Epic, labels de fase, granularidade de
+Epic no roadmap, criacao de projeto e dependencias como links.
+
+- **FR-020**: O sistema MUST criar, no Jira, um nivel de marco acima do
+  Epic — representado por uma Release/Fix Version do Jira — e MUST
+  associar esse marco a cada Epic (e, quando aplicavel, as Tasks/
+  Subtasks) sincronizado que pertenca ao mesmo marco. Um marco
+  corresponde a uma release do toolkit ou a um round de reabertura de
+  uma feature, conforme a granularidade em que a sincronizacao esta
+  operando.
+- **FR-021**: O sistema MUST reusar o marco (Release/Fix Version) ja
+  existente com o mesmo identificador de release/round em vez de criar
+  um marco duplicado quando a sincronizacao rodar novamente sobre a
+  mesma release/round (mesmo criterio de idempotencia de FR-013).
+- **FR-022**: O sistema MUST aplicar, a cada Task e Subtask sincronizada
+  no Jira, uma marcacao (label) que identifique a FASE do backlog local
+  a que ela pertence, permitindo agrupar/filtrar issues por fase
+  diretamente no Jira.
+- **FR-023**: Quando a sincronizacao for disparada a partir de uma
+  execucao que abrange multiplas features do roadmap de um
+  projeto-alvo, o sistema MUST criar/atualizar um Epic por FEATURE do
+  roadmap sincronizada, em vez de consolidar todas as features do mesmo
+  projeto-alvo num unico Epic compartilhado.
+- **FR-024**: Quando o usuario ainda nao possuir um projeto Jira
+  dedicado para o board do CSTK (FR-002/FR-007), o sistema MUST
+  oferecer a criacao desse projeto como parte do fluxo de configuracao
+  guiada, usando o mecanismo de criacao de projeto exposto pela conexao
+  Jira configurada (MCP ou API REST, conforme FR-006); quando o
+  mecanismo escolhido nao suportar a criacao do projeto no tipo
+  desejado, o sistema MUST orientar explicitamente o usuario a criar o
+  projeto manualmente (MCP/UI do Jira) antes de prosseguir, em vez de
+  falhar silenciosamente.
+- **FR-025**: O sistema MUST representar cada dependencia declarada na
+  Matriz de Dependencias do backlog local como um link entre os issues
+  Jira correspondentes, quando a instancia Jira do usuario tiver um
+  tipo de link cuja semantica corresponda a "depende de/bloqueia";
+  quando nenhum tipo de link compativel existir na instancia Jira
+  configurada, o sistema MUST sinalizar essa dependencia como
+  nao-representavel nesse Jira em vez de criar ou forcar um tipo de
+  link inexistente.
+
 ### Key Entities
 
 - **Feature (local)**: unidade de trabalho documentada em
@@ -338,7 +395,4 @@ execucoes autonomas potencialmente longas.
 
 ## Delta Requirements
 
-**Skip**: feature puramente nova (novo plugin `cstk-jira`); nao altera,
-remove nem renomeia nenhuma capacidade hoje documentada em
-`docs/specs/current/` — o corpus canonico atual nao cobre integracao
-com sistemas de rastreamento de issues. — agente-00c-feature-orchestrator, 2026-09-24
+**Skip**: feature puramente nova (novo plugin `cstk-jira`, incluindo o incremento do round r02 — FR-020 a FR-025); nao altera, remove nem renomeia nenhuma capacidade hoje documentada em `docs/specs/current/` — o corpus canonico atual nao cobre integracao com sistemas de rastreamento de issues — agente-00c-feature-orchestrator, 2026-09-26
