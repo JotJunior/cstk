@@ -1550,3 +1550,155 @@ lembrete, sem gravar segredo.
 - [x] 12.12.1 Implementar/corrigir `plugins/cstk-jira/skills/jira-setup/SKILL.md` conforme `plan.md risco 5 / FR-019-INFRA-REFRESH lembrete de validade`: coletar/exibir a data de validade do API token informada pelo operador
 
 <!-- converge-key: 56ce1b369eea -->
+
+## FASE 13 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 13.1 `sqlite3` referenciado em 2 arquivos do plugin e nao declarado no plan: viola o carve-out 1.1.0 do Principio II `[C]`
+
+Ref: Constitution II carve-out 1.1.0 (b)(c) / task 12.8.1 · tipo: `contradicts` · severidade: `CRITICAL`
+
+A constitution (Principio II, NON-NEGOTIABLE) so admite ferramenta
+nao-POSIX sob o carve-out 1.1.0 com as 3 condicoes CUMULATIVAS: (a)
+fallback coberto por teste, (b) toda mencao ao executavel confinada em UM
+arquivo, (c) dep declarada em `spec.md`/`plan.md`. O `plan.md` (Constitution
+Check, linha do Principio II, e Complexity Tracking) declara SO `jq` +
+cliente HTTP, confinados em `jira-io.sh`. A 12.8.1 introduziu
+`sqlite3 -readonly` em `plugins/cstk-jira/scripts/jira-sync.sh`
+(`_js_resolve_stage`, linhas 342-344), somando-se ao uso ja existente em
+`plugins/cstk-jira/hooks/posttooluse-jira-sync.sh`
+(`_pjs_resolve_canonical_project`, linhas 103-105): dois arquivos (viola b),
+nenhuma declaracao em spec/plan/research (viola c), e o ramo `state.db`
+(backend default das execucoes 00c atuais) nao tem teste — os cenarios de
+`tests/cstk/test_jira-sync.sh` so exercitam `state.json` (a sem cobertura).
+O carve-out 1.3.0 (camada de estado transacional) nao se aplica: e
+RESTRITO ao runtime `agente-00c`/`feature-00c` e veda que hooks exijam a
+ferramenta. Corrigir exige MUDAR o codigo presente: confinar toda leitura de
+`state.db` num unico arquivo (ex.: um helper READ-ONLY chamado pelos dois
+call-sites), declarar a dep no `plan.md` (Constitution Check + Complexity
+Tracking) com justificativa, arquivo confinado e fallback, e cobrir o
+fallback (sem `sqlite3` no PATH => sem override de stage / basename como
+canonical_project) com teste.
+
+- [ ] 13.1.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `Constitution II carve-out 1.1.0 (b)(c) / task 12.8.1`: `sqlite3` confinado em UM arquivo (inclui a mencao do hook), declarado em `docs/specs/cstk-jira/plan.md` (Constitution Check + Complexity Tracking) e com testes do ramo `state.db` com e sem `sqlite3` no PATH
+
+<!-- converge-key: bd2d90d7861a -->
+
+### 13.2 Toda regravacao de SyncMarker fora do convert apaga `written_description_sha256`: protecao da descricao some apos a 1a transicao `[C]`
+
+Ref: FR-011 / data-model SyncMarker written_description_sha256 / task 12.5.1 (US3, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+data-model.md (Entity SyncMarker, Deteccao de conflito) fixa que, com
+baseline `written_description_sha256`, uma descricao alterada no Jira conta
+como edicao manual e NUNCA e sobrescrita; a ausencia da chave fica restrita
+a markers anteriores a 12.5.1 ou a itens sem descricao. Em
+`plugins/cstk-jira/scripts/jira-sync.sh`, os tres outros escritores do
+marker montam o corpo SEM essa chave — `_js_process_reconcile_event`
+(linhas 1495-1496), `_js_process_one_event` (linhas 1732-1733) e
+`_js_rebaseline_marker` (linhas 546-547) — e o R6 PUT substitui o valor
+inteiro da propriedade (overwrite total, nao merge: `contracts/jira-rest.md`
+R6, roundtrip onda-022). Efeito: a 1a transicao de status de uma Task (o
+caso comum, a cada `record_task`/`close_wave`) ou um `resolve` apaga a
+baseline; na proxima `convert`, uma descricao editada manualmente no Jira
+passa a ser sobrescrita em silencio (`_js_maybe_update_mapped_issue`,
+linhas 836-843, trata marker sem a chave como "sem baseline"). Pior no
+`resolve --choice keep_jira` de um conflito causado justamente por edicao
+de descricao: o operador escolhe manter o Jira e a convert seguinte
+sobrescreve. Corrigir exige MUDAR os tres escritores: carregar adiante o
+`written_description_sha256` do marker lido (drain ja faz R6 GET antes de
+escrever) e, no rebaseline de `keep_jira`, gravar o hash da descricao ATUAL
+(R3 `fields=summary,status,description`, mesmo mecanismo de 12.5.1) quando
+o item carrega descricao composta.
+
+- [ ] 13.2.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `FR-011 / data-model SyncMarker written_description_sha256 / task 12.5.1`: drain (one_event + reconcile) preserva `written_description_sha256` do marker lido e `resolve keep_jira`/`overwrite` rebaselineia a descricao atual, com teste em `tests/cstk/test_jira-sync.sh` (convert com descricao -> drain transiciona -> edicao manual da descricao -> convert gera `manual_edit`, NAO R2)
+
+<!-- converge-key: ceeff0b91d42 -->
+
+### 13.3 `resolve` nao encerra o evento outbox `conflict` e o `overwrite` reenfileira estado desejado de fonte errada `[C]`
+
+Ref: data-model OutboxEvent conflict->[*] + LocalWorkItem outcome precedence / tasks 12.1.1 12.4.1 (US3, P1) · tipo: `contradicts` · severidade: `HIGH`
+
+data-model.md (OutboxEvent) fixa `conflict --> [*]: operador decide
+(jira-sync resolve)` e (LocalWorkItem) que so o outcome REGISTRADO de
+`record_task`/`record-task` tem precedencia sobre os checkboxes. Em
+`plugins/cstk-jira/scripts/jira-sync.sh`: (1) `_js_cmd_resolve` (linhas
+2017-2110) fecha so o ConflictRecord; nenhum call-site de
+`_js_set_event_status` tira um evento do status `conflict` e a compactacao
+do drain (linhas 1816-1819) so remove `done` — eventos `conflict` ficam no
+outbox para sempre; (2) por isso `_js_last_conflict_desired_state` (linhas
+508-514) devolve o ULTIMO evento `conflict` do par, que pode ser de um
+conflito ANTERIOR ja resolvido, e o `overwrite` reenfileira um estado
+velho; (3) o fallback (linhas 2075-2076) deriva de `jira-tasks.sh items`
+SEM `--outcomes-file`/`--stage`, divergindo da derivacao da reconciliacao
+(12.4.1/12.8.1); (4) o reenfileiramento usa `_js_cmd_enqueue --source
+manual`, e `_js_cmd_enqueue` (linhas 1243-1252) grava `pass`/`fail` em
+`runtime/task-outcomes.tsv` para QUALQUER source — um valor derivado de
+checkbox (ou um `enqueue --source manual`) passa a valer como se fosse
+outcome de `record_task` e sobrepoe o outcome real nas reconciliacoes
+seguintes. Corrigir exige MUDAR logica presente: `resolve` encerra os
+eventos `conflict` do par; `overwrite` usa como fonte o evento que originou
+o conflito pendente (ou a mesma derivacao da reconciliacao, com outcomes e
+stage); o sidecar de outcomes so e gravado para `--source hook-record-task`.
+
+- [ ] 13.3.1 Implementar/corrigir `plugins/cstk-jira/scripts/jira-sync.sh` conforme `data-model OutboxEvent conflict->[*] + LocalWorkItem outcome precedence / tasks 12.1.1 12.4.1`: `resolve` encerra os eventos outbox `conflict` do par, `overwrite` nao usa `desired_state` de conflito ja resolvido nem derivacao divergente da reconciliacao, e `task-outcomes.tsv` so recebe outcome de `source=hook-record-task`, com testes em `tests/cstk/test_jira-sync.sh` (2 conflitos sucessivos no mesmo par; `enqueue --source manual --state pass` nao altera o sidecar)
+
+<!-- converge-key: 76f6525d51c9 -->
+
+### 13.4 Resumo pos-drain do hook le a contagem errada: conflito de reconciliacao nunca aparece e conflito resolvido nunca some `[A]`
+
+Ref: FR-016 / data-model ConflictRecord resumo do hook / task 12.7.1 (US4, P2) · tipo: `contradicts` · severidade: `MEDIUM`
+
+data-model.md (Entity ConflictRecord) diz que o registro e consumido "pelo
+resumo emitido pelo hook no fechamento de onda", e `contracts/hooks.md`
+(passo 5.bis) promete sinalizar "credencial expirada ou conflito pendente
+sem exigir `jira-sync status` manual". Em
+`plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` (linhas 210-216) o resumo
+vem SO da linha `queued=... conflict=...` de `jira-sync.sh status`, que
+conta eventos do OUTBOX. Conflitos da reconciliacao `local_key=*` (o caminho
+do `close_wave`) e da `convert` gravam ConflictRecord sem evento outbox
+`conflict` e sem stderr (`jira-sync.sh` linhas 1361/1445 e 822/853): nunca
+entram no `hook.log`. No sentido inverso, eventos `conflict` ja resolvidos
+nunca saem do outbox (13.3), entao o resumo acusa conflito para sempre.
+Corrigir exige MUDAR a fonte do resumo para os ConflictRecords PENDENTES de
+`runtime/conflicts.tsv` (mais `auth_failed`/`deferred` do outbox), mantendo
+o fail-open e sem ecoar texto do Jira.
+
+- [ ] 13.4.1 Implementar/corrigir `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme `FR-016 / data-model ConflictRecord resumo do hook / task 12.7.1`: resumo pos-drain conta ConflictRecords pendentes (inclui os de reconcile/convert) e nao reporta conflito ja resolvido, com teste
+
+<!-- converge-key: 940206dce843 -->
+
+### 13.5 `data-model.md` e `contracts/plugin-scripts.md` nao refletem os comportamentos introduzidos na FASE 12 `[A]`
+
+Ref: data-model + contracts/plugin-scripts.md FASE 12 sync / tasks 12.1.1 12.4.1 12.8.1 12.9.1 12.10.1 12.12.1 · tipo: `partial` · severidade: `MEDIUM`
+
+`docs/specs/cstk-jira/data-model.md`: a Entity Credential lista so
+`site_host`/`email`/`api_token` (falta `token_expires_at` opcional, 12.12.1);
+a tabela de entidades e a derivacao de `local_state` de task nao citam o
+sidecar `runtime/task-outcomes.tsv` (12.4.1) nem `runtime/hook.log`; a
+derivacao do Epic nao diz de onde vem a "etapa corrente" (`current_stage`
+da execucao ativa, leitura READ-ONLY, 12.8.1); as regras de SyncMapping
+ainda afirmam "Arquivo so muda quando uma issue e criada ou um item vira
+`orphan`" e "Renumeracao local = linha antiga vira `orphan` + item novo e
+criado", mas `jira-map.sh relink` reativa a linha e, com `--new-local-key`,
+MOVE-a (12.10.1); o efeito de `resolve keep_jira`/`overwrite` (rebaseline
+do SyncMarker, 12.1.1) nao aparece em SyncMarker/ConflictRecord.
+`docs/specs/cstk-jira/contracts/plugin-scripts.md`: a linha `resolve`
+continua "fecha ConflictRecord por decisao humana" (sem rebaseline nem
+fonte de `desired_state`); a linha `drain` nao cita `deps-check` com exit 5
+e eventos intocados (12.3.1) nem a resolucao de `--stage`; a linha
+`request` do `jira-io.sh` nao cita a recusa exit 4 quando o `site_host` da
+Credential difere do ProjectConfig (12.9.1). Completar e aditivo
+(documentacao, sem mudar codigo), refletindo o comportamento FINAL apos
+13.1-13.4.
+
+- [ ] 13.5.1 Implementar/corrigir `docs/specs/cstk-jira/data-model.md` conforme `data-model + contracts/plugin-scripts.md FASE 12 sync / tasks 12.1.1 12.4.1 12.8.1 12.9.1 12.10.1 12.12.1`: documentar `token_expires_at`, `task-outcomes.tsv`, `hook.log`, fonte da etapa do Epic, relink com `--new-local-key` e rebaseline do `resolve`; atualizar as linhas `resolve`/`drain`/`request` de `contracts/plugin-scripts.md`
+
+<!-- converge-key: a19e516c6b14 -->
