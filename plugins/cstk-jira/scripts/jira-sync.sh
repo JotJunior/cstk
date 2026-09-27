@@ -1593,7 +1593,11 @@ _js_maybe_update_mapped_issue() {
 # NESTA criacao E o item e o Epic, data-model.md SyncMarker
 # `written_fix_version_id`: "so no Epic"): quando nao-vazio, grava tambem
 # `written_fix_version_id` no marker, estabelecendo a baseline que
-# `_js_reconcile_epic_milestone` compara depois.
+# `_js_reconcile_epic_milestone` compara depois. PHASE_LABEL (r02 FASE 17
+# task 17.2.3, opcional — so quando o chamador aplicou um label NESTA
+# criacao, Task/Sub-task com `labels_enabled=on`): quando nao-vazio, grava
+# tambem `written_phase_label` no marker, estabelecendo a baseline que a
+# reconciliacao de troca de fase (task 17.3) compara depois.
 _js_write_initial_marker() {
   _jwim_io="$1"
   _jwim_feature="$2"
@@ -1602,6 +1606,7 @@ _js_write_initial_marker() {
   _jwim_summary="$5"
   _jwim_description="${6:-}"
   _jwim_fix_version_id="${7:-}"
+  _jwim_phase_label="${8:-}"
 
   if _jwim_issue_resp=$("$_jwim_io" request GET "/rest/api/3/issue/$_jwim_jkey?fields=status" --op R3 2>/dev/null); then
     :
@@ -1622,6 +1627,9 @@ _js_write_initial_marker() {
   fi
   if [ -n "$_jwim_fix_version_id" ]; then
     set -- "$@" --written-fix-version-id "$_jwim_fix_version_id"
+  fi
+  if [ -n "$_jwim_phase_label" ]; then
+    set -- "$@" --written-phase-label "$_jwim_phase_label"
   fi
   _jwim_marker_body=$("$_jwim_io" json-build marker "$@")
   _jwim_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
@@ -1703,6 +1711,14 @@ _js_cmd_convert() {
   _jsc_fix_versions_on_subtask=$("$_jsc_config" get fix_versions_on_subtask 2>/dev/null) \
     || _jsc_fix_versions_on_subtask="off"
   [ -n "$_jsc_fix_versions_on_subtask" ] || _jsc_fix_versions_on_subtask="off"
+
+  # r02 FASE 17 task 17.2.3 (data-model.md ProjectConfig `labels_enabled`,
+  # default "on"): Task/Sub-task recebem `--label phase-<N>` na criacao SO
+  # se `labels_enabled=on`; `off` e gravado pelo setup (check-field-support,
+  # FASE 6/20) quando `labels` nao esta na tela de criacao (R8) — este
+  # trecho so CONSOME o resultado, nao decide.
+  _jsc_labels_enabled=$("$_jsc_config" get labels_enabled 2>/dev/null) || _jsc_labels_enabled="on"
+  [ -n "$_jsc_labels_enabled" ] || _jsc_labels_enabled="on"
 
   _jsc_items=$("$_jsc_tasks" items --feature "$_jsc_feature") \
     || _js_die "jira-tasks.sh items falhou para a feature: $_jsc_feature" 1
@@ -1802,6 +1818,24 @@ _js_cmd_convert() {
       esac
     fi
 
+    # r02 FASE 17 task 17.2.1/17.2.2 (data-model.md LocalWorkItem
+    # `phase_number`/`phase_label`): `phase_number` e derivado da coluna
+    # `phase` (2a palavra, ex. "FASE 6 - Skills Interativas" -> "6") — MESMA
+    # regra ja usada por `jira-tasks.sh phase-deps` (`items` continua
+    # inalterado, contracts/plugin-scripts.md); Epic sempre tem `phase=""`
+    # (jira-tasks.sh items), entao nunca resolve numero e nunca recebe
+    # label. `phase_label = phase-<N>` (SEC-1) so quando `labels_enabled=on`.
+    _jsc_phase_num=$(printf '%s' "$_jsc_phase" | awk '{print $2}')
+    case "$_jsc_phase_num" in
+      ''|*[!0-9]*) _jsc_phase_num="" ;;
+    esac
+    _jsc_apply_label=""
+    if [ -n "$_jsc_phase_num" ] && [ "$_jsc_labels_enabled" = "on" ]; then
+      case "$_jsc_kind" in
+        task|subtask) _jsc_apply_label="phase-$_jsc_phase_num" ;;
+      esac
+    fi
+
     set -- --project-id "$_jsc_project_id" --issuetype-id "$_jsc_issuetype_id" \
       --summary "$_jsc_summary"
     if [ -n "$_jsc_parent_key" ]; then
@@ -1812,6 +1846,9 @@ _js_cmd_convert() {
     fi
     if [ -n "$_jsc_apply_fixver" ]; then
       set -- "$@" --fix-version-id "$_jsc_apply_fixver"
+    fi
+    if [ -n "$_jsc_apply_label" ]; then
+      set -- "$@" --label "$_jsc_apply_label"
     fi
     _jsc_body=$("$_jsc_io" json-build issue "$@")
 
@@ -1850,7 +1887,7 @@ _js_cmd_convert() {
     _jsc_marker_fixver=""
     [ "$_jsc_kind" = "epic" ] && _jsc_marker_fixver="$_jsc_apply_fixver"
     _js_write_initial_marker "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_new_key" \
-      "$_jsc_summary" "$_jsc_description" "$_jsc_marker_fixver"
+      "$_jsc_summary" "$_jsc_description" "$_jsc_marker_fixver" "$_jsc_apply_label"
   done
 }
 

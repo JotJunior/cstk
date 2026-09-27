@@ -2122,38 +2122,63 @@ plan.md SEC-1 extensao. **Depende de FASE 15** (roundtrip 15.2) e FASE 4
 Ref: contracts/plugin-scripts.md `jira-io.sh` r02; plan.md SEC-1 extensao
 (`phase-<N>`).
 
-- [ ] 17.1.1 `json-build issue ... --label LABEL`: acrescenta
+- [x] 17.1.1 `json-build issue ... --label LABEL`: acrescenta
       `fields.labels:[LABEL]` (R14); `LABEL` validado por SEC-1
       (`[A-Za-z0-9_-]`) ANTES de montar o corpo; omitido => corpo
-      identico ao r01
-- [ ] 17.1.2 `json-build issue-update ... --add-label L --remove-label L`:
+      identico ao r01 — implementado em `jira-io.sh`
+      `_ji_cmd_json_build_issue --label` (tambem `json-build marker
+      --written-phase-label`, mesma disciplina de campo opcional de
+      `--written-fix-version-id`)
+- [x] 17.1.2 `json-build issue-update ... --add-label L --remove-label L`:
       acrescenta `update.labels` `[{"add":L}]`/`[{"remove":L}]`; NUNCA
-      emite `labels` em `fields` e `update` simultaneamente
-- [ ] 17.1.3 Teste: `--label` com valor fora de `[A-Za-z0-9_-]` (ex.:
+      emite `labels` em `fields` e `update` simultaneamente —
+      implementado em `_ji_cmd_json_build_issue_update
+      --add-label/--remove-label` (ordem fixa remove-antes-de-add,
+      mesmo padrao de `--add-fix-version-id/--remove-fix-version-id`)
+- [x] 17.1.3 Teste: `--label` com valor fora de `[A-Za-z0-9_-]` (ex.:
       `phase 3`, `fase-3!`) e recusado sem montar corpo; `--label
-      phase-3` produz `fields.labels:["phase-3"]` byte-a-byte
-- [ ] 17.1.4 Mutation test: reverter a validacao de 17.1.1 (aceitar
-      qualquer string) faz o teste de 17.1.3 falhar
+      phase-3` produz `fields.labels:["phase-3"]` byte-a-byte —
+      `tests/cstk/test_jira-io.sh` JI-93..JI-96 (12 cenarios novos,
+      112/112 verdes: `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C sh
+      tests/cstk/test_jira-io.sh`)
+- [x] 17.1.4 Mutation test: reverter a validacao de 17.1.1 (aceitar
+      qualquer string) faz o teste de 17.1.3 falhar —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_17_1_4_label_allowlist`
+      (10/10 verdes)
 
 ### 17.2 Derivacao de `phase_number`/`phase_label` e criacao com label `[A]`
 
 Ref: data-model.md LocalWorkItem `phase_number`/`phase_label`; research.md
 Decision R2-5; Clarification r02 FR-022.
 
-- [ ] 17.2.1 Derivar `phase_number` do heading `### FASE N` que contem a
+- [x] 17.2.1 Derivar `phase_number` do heading `### FASE N` que contem a
       task em `tasks.md` (2a palavra do heading, mesma regra ja usada por
       `phase-deps`); Sub-task herda o `phase_number` da task-pai; Epic:
-      vazio (sem label)
-- [ ] 17.2.2 `phase_label = phase-<phase_number>` (SEC-1); vazio quando
-      `labels_enabled=off` ou item e Epic
-- [ ] 17.2.3 `convert --feature F`: Task/Sub-task criadas com `--label
+      vazio (sem label) — `jira-tasks.sh items` permanece INALTERADO
+      (contracts/plugin-scripts.md: "phase_number e derivado por quem
+      consome"); a extracao vive em `jira-sync.sh _js_cmd_convert`
+      (`_jsc_phase_num`, 2a palavra da coluna `phase` via awk, mesma
+      tecnica de `_jt_cmd_phase_deps`)
+- [x] 17.2.2 `phase_label = phase-<phase_number>` (SEC-1); vazio quando
+      `labels_enabled=off` ou item e Epic — `_jsc_apply_label` em
+      `_js_cmd_convert` (ProjectConfig `labels_enabled`, default `on`
+      quando ausente)
+- [x] 17.2.3 `convert --feature F`: Task/Sub-task criadas com `--label
       <phase_label>` (R1) quando `labels_enabled=on`; setup grava
       `labels_enabled=off` (via `check-field-support`, FASE 6/20) quando
       `labels` nao esta na tela de criacao (R8) — este passo so consome o
-      resultado, nao decide
-- [ ] 17.2.4 Teste: task da FASE 3 gera `phase-3`; sub-task herda
+      resultado, nao decide — marker inicial grava `written_phase_label`
+      (`_js_write_initial_marker` 8o parametro)
+- [x] 17.2.4 Teste: task da FASE 3 gera `phase-3`; sub-task herda
       `phase-3` da task-pai; Epic nunca recebe label; `labels_enabled=off`
-      => nenhuma chamada com `--label`
+      => nenhuma chamada com `--label` —
+      `tests/cstk/test_jira-tasks.sh::scenario_items_phase_number_extraivel_2a_palavra_epic_vazio`
+      (contrato da extracao, 23/23 verdes) e
+      `tests/cstk/test_jira-sync.sh::scenario_convert_labels_enabled_task_e_subtask_recebem_phase_label`/
+      `scenario_convert_labels_enabled_off_nenhuma_chamada_com_label`
+      (87/87 verdes); `test_jira-contract.sh` (8/8) e
+      `test_jira-convert-parity.sh` (2/2) atualizados/verdes (labels_enabled
+      default "on" acrescenta `fields.labels` as bodies de Task existentes)
 
 ### 17.3 Reconciliacao de troca de fase (`update.labels` add/remove, SEC-10) `[A]`
 

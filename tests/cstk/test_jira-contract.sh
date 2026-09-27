@@ -278,10 +278,12 @@ scenario_ct_r1_convert_metodo_path_corpo_batem_contrato() {
   _epic_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-3.json" | tr '\n' ',')
   [ "$_epic_fields" = "issuetype,project,summary," ] \
     || { _fail "ct_r1_epic_fields" "esperado issuetype,project,summary — obtido $_epic_fields"; return 1; }
-  # corpo da chamada 6 = create da task (3=R1 epic,4=R3 epic,5=R6 epic)
+  # corpo da chamada 6 = create da task (3=R1 epic,4=R3 epic,5=R6 epic).
+  # r02 FASE 17 (labels_enabled default "on"): soma fields.labels:["phase-1"]
+  # aos campos ja existentes (description/issuetype/parent/project/summary).
   _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-6.json" | tr '\n' ',')
-  [ "$_task_fields" = "description,issuetype,parent,project,summary," ] \
-    || { _fail "ct_r1_task_fields" "esperado description,issuetype,parent,project,summary — obtido $_task_fields"; return 1; }
+  [ "$_task_fields" = "description,issuetype,labels,parent,project,summary," ] \
+    || { _fail "ct_r1_task_fields" "esperado description,issuetype,labels,parent,project,summary — obtido $_task_fields"; return 1; }
 
   # fields.project.id (contracts/jira-rest.md: "{"id": "<string>"}
   # CONFIRMADO roundtrip onda-011") vem da resolucao via GET /project

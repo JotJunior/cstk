@@ -570,4 +570,36 @@ scenario_mutation_16_4_7_milestone_id_known_sec10() {
   return 0
 }
 
+# scenario_mutation_17_1_4_label_allowlist — r02 FASE 17 task 17.1.4
+# (plan.md SEC-1 extensao `phase-<N>`): mira DIRETAMENTE a guarda de
+# `_ji_cmd_json_build_issue` que valida `--label` via `_ji_charset_ok`
+# ANTES de montar o corpo (task 17.1.1). Reverter essa guarda (aceitar
+# qualquer string) faz o teste negativo de 17.1.3
+# (scenario_json_build_issue_label_invalido_exit2, tests/cstk/test_jira-io.sh)
+# falhar — um label com espaco/caractere fora da allowlist deixaria de ser
+# recusado e entraria no corpo `fields.labels`.
+scenario_mutation_17_1_4_label_allowlist() {
+  # -- controle: original recusa --label com espaco (exit 2, SEC-1) --
+  assert_exit 2 "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-build issue \
+    --project-id 1 --issuetype-id 1 --summary x --label "phase 3" || return 1
+
+  # -- mutante: neutraliza a checagem de --label em json-build issue,
+  # aceitando qualquer string (equivalente a "reverter a validacao de
+  # 17.1.1") --
+  _mp=$(_mut_copy_plugin)
+  _io="$_mp/scripts/jira-io.sh"
+  grep -q '_ji_charset_ok "\$_jbi_label"' "$_io" \
+    || { _fail "mutant_stale" "guarda --label de json-build issue nao encontrada — repo mudou"; return 1; }
+  sed 's/_ji_charset_ok "\$_jbi_label" \\/true \\/' "$_io" > "$_io.mut" && mv "$_io.mut" "$_io"
+  grep -q '^    true \\$' "$_io" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao da allowlist de --label"; return 1; }
+  chmod +x "$_io"
+
+  capture "$_io" json-build issue \
+    --project-id 1 --issuetype-id 1 --summary x --label "phase 3"
+  [ "$_CAPTURED_EXIT" != "2" ] \
+    || { _fail "mutant_exit" "esperado exit != 2 (regressao: --label com espaco aceito pela allowlist mutada), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
 run_all_scenarios

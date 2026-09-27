@@ -411,4 +411,35 @@ EOF
   assert_exit 2 "$SCRIPT" phase-deps --feature demo --phase "" || return 1
 }
 
+# r02 FASE 17 task 17.2.1/17.2.4 (data-model.md LocalWorkItem
+# `phase_number`/`phase_label`; contracts/plugin-scripts.md `items`
+# "inalterado — phase_number e derivado por quem consome"): `items`
+# permanece SEM colunas novas; este teste TRAVA o contrato do qual
+# `jira-sync.sh _js_cmd_convert` depende (mesma tecnica de extracao de
+# `jira-tasks.sh phase-deps`, 2a palavra da coluna `phase`) — task/subtask
+# carregam a coluna `phase` completa ("FASE 12 - Fase Dupla Digito", 2a
+# palavra "12"); Epic sempre tem a coluna `phase` vazia (nunca resolve
+# numero, nunca receberia label).
+scenario_items_phase_number_extraivel_2a_palavra_epic_vazio() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 12 - Fase Dupla Digito `[A]`
+
+### 12.1 Tarefa `[M]`
+
+- [ ] 12.1.1 sub um
+EOF
+  assert_exit 0 "$SCRIPT" items --feature demo || return 1
+  assert_stdout_match '^12\.1	task	FASE 12 - Fase Dupla Digito	M	pending	Tarefa$' || return 1
+  assert_stdout_match '^12\.1\.1	subtask	FASE 12 - Fase Dupla Digito		pending	sub um$' || return 1
+  # coluna phase do Epic e vazia (campos 3 totalmente ausentes: epic\t\t\t)
+  assert_stdout_match '^demo	epic			pending	demo$' || return 1
+  # 2a palavra da coluna phase da task/subtask == "12" (a mesma extracao
+  # usada por jira-sync.sh _js_cmd_convert para derivar phase_number)
+  _phase_col=$(printf '%s' "$_CAPTURED_STDOUT" | awk -F '\t' '$1 == "12.1" {print $3}')
+  _num=$(printf '%s' "$_phase_col" | awk '{print $2}')
+  [ "$_num" = "12" ] \
+    || { _fail "items_phase_number_extraivel" "esperado 2a palavra=12, obtido '$_num' (coluna phase='$_phase_col')"; return 1; }
+}
+
 run_all_scenarios

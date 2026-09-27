@@ -296,10 +296,14 @@ USO:
   jira-io.sh json-build issue --project-id ID --issuetype-id ID
                              --summary TEXT [--parent-key KEY]
                              [--description TEXT] [--fix-version-id ID]
+                             [--label LABEL]
       Monta o corpo de R1 (criar issue). ID/KEY passam pela allowlist
       [A-Za-z0-9_-] (SEC-1); summary/description sao texto livre, escapado
       via jq --arg. --fix-version-id (digitos, R14) acrescenta
-      fields.fixVersions:[{"id":ID}].
+      fields.fixVersions:[{"id":ID}]. --label LABEL (r02 FASE 17, R14
+      CONFIRMADO) valida LABEL contra a allowlist [A-Za-z0-9_-] (SEC-1)
+      ANTES de montar o corpo e acrescenta fields.labels:[LABEL]; omitido =
+      corpo identico ao r01/r02-sem-labels.
 
   jira-io.sh json-build filter --name TEXT --project-key KEY
       Monta o corpo de R9 (criar filtro): {"name":..., "jql":...}. KEY
@@ -324,6 +328,7 @@ USO:
                               --written-at T
                               [--written-description-sha256 H2]
                               [--written-fix-version-id ID]
+                              [--written-phase-label LABEL]
       Monta o VALOR CRU do SyncMarker (R6 PUT, sem envelope {key,value} —
       a chave ja vai na URL): {"schema":1,"local_key":K,"feature":F,
       "written_summary_sha256":H,"written_status":S,"written_at":T}.
@@ -335,10 +340,17 @@ USO:
       descricao composta nunca gravam este campo). --written-fix-version-id
       e OPCIONAL (r02 FASE 16, so o Epic carrega este campo) — mesma
       disciplina: omitido = chave ausente, nunca string vazia.
+      --written-phase-label e OPCIONAL (r02 FASE 17, data-model.md
+      SyncMarker written_phase_label): omitido = chave ausente do JSON
+      (Epic e itens com labels_enabled=off nunca gravam este campo); toda
+      regravacao do marker MUST carregar adiante o valor lido do marker
+      anterior, mesma disciplina de written_fix_version_id.
 
   jira-io.sh json-build issue-update --summary TEXT [--description TEXT]
                                     [--add-fix-version-id ID]
                                     [--remove-fix-version-id ID]
+                                    [--add-label LABEL]
+                                    [--remove-label LABEL]
       Monta o corpo de R2 (editar issue, FR-003): {"fields":{"summary":...}}
       (+ "description" em ADF, opcional). SEM project/issuetype/parent —
       um update so envia os campos que mudam. summary/description texto
@@ -347,7 +359,12 @@ USO:
       acrescentam update.fixVersions:[{"remove":{"id":...}},{"add":{"id":...}}]
       (ordem fixa remove-antes-de-add quando ambos presentes) — NUNCA
       fields.fixVersions numa edicao (clobbaria versoes humanas).
-      --summary passa a ser OPCIONAL quando ha ao menos uma dessas 2 flags.
+      --add-label/--remove-label (r02 FASE 17, R14 CONFIRMADO; ambos
+      validados pela allowlist [A-Za-z0-9_-] SEC-1 ANTES de montar o corpo)
+      acrescentam update.labels:[{"remove":"L"},{"add":"L"}] (mesma ordem
+      fixa remove-antes-de-add) — NUNCA fields.labels numa edicao (clobbaria
+      labels humanos). --summary passa a ser OPCIONAL quando ha ao menos uma
+      dessas 4 flags (fix-version ou label).
 
   jira-io.sh json-build version --name N --project-id DIGITS
                                 [--description TEXT]
@@ -958,6 +975,10 @@ _ji_cmd_json_build() {
 # ainda — a issue nao existe). ID MUST casar `_ji_digits_ok` (Version.id e
 # sempre numerico no schema do Jira, ex. "10001") ANTES de entrar no corpo —
 # recusado SEM montar corpo algum, mesma disciplina de SEC-1.
+# `--label LABEL` — r02 FASE 17 task 17.1.1 (contracts/jira-rest.md R14,
+# plan.md SEC-1 extensao `phase-<N>`): acrescenta `fields.labels:[LABEL]` na
+# CRIACAO. LABEL MUST casar `_ji_charset_ok` (allowlist [A-Za-z0-9_-])
+# ANTES de entrar no corpo — recusado (exit 2) SEM montar corpo algum.
 _ji_cmd_json_build_issue() {
   _jbi_project_id=""
   _jbi_issuetype_id=""
@@ -965,10 +986,12 @@ _ji_cmd_json_build_issue() {
   _jbi_parent_key=""
   _jbi_description=""
   _jbi_fix_version_id=""
+  _jbi_label=""
   _jbi_have_summary="no"
   _jbi_have_parent="no"
   _jbi_have_description="no"
   _jbi_have_fix_version="no"
+  _jbi_have_label="no"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1006,6 +1029,12 @@ _ji_cmd_json_build_issue() {
         _jbi_have_fix_version="yes"
         shift 2
         ;;
+      --label)
+        [ "$#" -ge 2 ] || _ji_die_usage "--label requer argumento"
+        _jbi_label="$2"
+        _jbi_have_label="yes"
+        shift 2
+        ;;
       *)
         _ji_die_usage "json-build issue: argumento desconhecido: $1"
         ;;
@@ -1033,6 +1062,10 @@ _ji_cmd_json_build_issue() {
     _ji_digits_ok "$_jbi_fix_version_id" \
       || _ji_die_usage "--fix-version-id fora da allowlist [0-9] (SEC-1)"
   fi
+  if [ "$_jbi_have_label" = "yes" ]; then
+    _ji_charset_ok "$_jbi_label" \
+      || _ji_die_usage "--label fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+  fi
 
   _ji_require_jq
 
@@ -1042,6 +1075,8 @@ _ji_cmd_json_build_issue() {
   [ "$_jbi_have_description" = "yes" ] && _jbi_have_description_json="true"
   _jbi_have_fix_version_json="false"
   [ "$_jbi_have_fix_version" = "yes" ] && _jbi_have_fix_version_json="true"
+  _jbi_have_label_json="false"
+  [ "$_jbi_have_label" = "yes" ] && _jbi_have_label_json="true"
 
   jq -n \
     --arg pid "$_jbi_project_id" \
@@ -1050,9 +1085,11 @@ _ji_cmd_json_build_issue() {
     --arg parent_key "$_jbi_parent_key" \
     --arg description "$_jbi_description" \
     --arg fix_version_id "$_jbi_fix_version_id" \
+    --arg label "$_jbi_label" \
     --argjson have_parent "$_jbi_have_parent_json" \
     --argjson have_description "$_jbi_have_description_json" \
     --argjson have_fix_version "$_jbi_have_fix_version_json" \
+    --argjson have_label "$_jbi_have_label_json" \
     '{fields: {project: {id: $pid}, issuetype: {id: $tid}, summary: $summary}}
      | if $have_parent then .fields.parent = {key: $parent_key} else . end
      | if $have_description then
@@ -1062,7 +1099,8 @@ _ji_cmd_json_build_issue() {
            content: [{type: "paragraph", content: [{type: "text", text: $description}]}]
          }
        else . end
-     | if $have_fix_version then .fields.fixVersions = [{id: $fix_version_id}] else . end'
+     | if $have_fix_version then .fields.fixVersions = [{id: $fix_version_id}] else . end
+     | if $have_label then .fields.labels = [$label] else . end'
 }
 
 # _ji_cmd_json_build_issue_update --summary TEXT [--description TEXT]
@@ -1094,10 +1132,14 @@ _ji_cmd_json_build_issue_update() {
   _jbu_description=""
   _jbu_add_fix_version_id=""
   _jbu_remove_fix_version_id=""
+  _jbu_add_label=""
+  _jbu_remove_label=""
   _jbu_have_summary="no"
   _jbu_have_description="no"
   _jbu_have_add_fix_version="no"
   _jbu_have_remove_fix_version="no"
+  _jbu_have_add_label="no"
+  _jbu_have_remove_label="no"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1125,6 +1167,18 @@ _ji_cmd_json_build_issue_update() {
         _jbu_have_remove_fix_version="yes"
         shift 2
         ;;
+      --add-label)
+        [ "$#" -ge 2 ] || _ji_die_usage "--add-label requer argumento"
+        _jbu_add_label="$2"
+        _jbu_have_add_label="yes"
+        shift 2
+        ;;
+      --remove-label)
+        [ "$#" -ge 2 ] || _ji_die_usage "--remove-label requer argumento"
+        _jbu_remove_label="$2"
+        _jbu_have_remove_label="yes"
+        shift 2
+        ;;
       *)
         _ji_die_usage "json-build issue-update: argumento desconhecido: $1"
         ;;
@@ -1135,8 +1189,13 @@ _ji_cmd_json_build_issue_update() {
   { [ "$_jbu_have_add_fix_version" = "yes" ] || [ "$_jbu_have_remove_fix_version" = "yes" ]; } \
     && _jbu_have_fixversion_op="yes"
 
-  if [ "$_jbu_have_summary" != "yes" ] && [ "$_jbu_have_fixversion_op" != "yes" ]; then
-    _ji_die_usage "json-build issue-update requer --summary (ou ao menos uma de --add-fix-version-id/--remove-fix-version-id)"
+  _jbu_have_label_op="no"
+  { [ "$_jbu_have_add_label" = "yes" ] || [ "$_jbu_have_remove_label" = "yes" ]; } \
+    && _jbu_have_label_op="yes"
+
+  if [ "$_jbu_have_summary" != "yes" ] && [ "$_jbu_have_fixversion_op" != "yes" ] \
+     && [ "$_jbu_have_label_op" != "yes" ]; then
+    _ji_die_usage "json-build issue-update requer --summary (ou ao menos uma de --add-fix-version-id/--remove-fix-version-id/--add-label/--remove-label)"
   fi
 
   if [ "$_jbu_have_add_fix_version" = "yes" ]; then
@@ -1146,6 +1205,14 @@ _ji_cmd_json_build_issue_update() {
   if [ "$_jbu_have_remove_fix_version" = "yes" ]; then
     _ji_digits_ok "$_jbu_remove_fix_version_id" \
       || _ji_die_usage "--remove-fix-version-id fora da allowlist [0-9] (SEC-1)"
+  fi
+  if [ "$_jbu_have_add_label" = "yes" ]; then
+    _ji_charset_ok "$_jbu_add_label" \
+      || _ji_die_usage "--add-label fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+  fi
+  if [ "$_jbu_have_remove_label" = "yes" ]; then
+    _ji_charset_ok "$_jbu_remove_label" \
+      || _ji_die_usage "--remove-label fora da allowlist [A-Za-z0-9_-] (SEC-1)"
   fi
 
   _ji_require_jq
@@ -1180,6 +1247,20 @@ _ji_cmd_json_build_issue_update() {
     fi
     _jbu_body=$(printf '%s' "$_jbu_body" | jq -c --argjson ops "$_jbu_fv_ops" \
       '.update.fixVersions = $ops')
+  fi
+
+  if [ "$_jbu_have_label_op" = "yes" ]; then
+    _jbu_lbl_ops="[]"
+    if [ "$_jbu_have_remove_label" = "yes" ]; then
+      _jbu_lbl_ops=$(printf '%s' "$_jbu_lbl_ops" | jq -c --arg l "$_jbu_remove_label" \
+        '. + [{remove: $l}]')
+    fi
+    if [ "$_jbu_have_add_label" = "yes" ]; then
+      _jbu_lbl_ops=$(printf '%s' "$_jbu_lbl_ops" | jq -c --arg l "$_jbu_add_label" \
+        '. + [{add: $l}]')
+    fi
+    _jbu_body=$(printf '%s' "$_jbu_body" | jq -c --argjson ops "$_jbu_lbl_ops" \
+      '.update.labels = $ops')
   fi
 
   printf '%s' "$_jbu_body"
@@ -1350,6 +1431,8 @@ _ji_cmd_json_build_marker() {
   _jbm_have_desc_sha="no"
   _jbm_fix_version_id=""
   _jbm_have_fix_version="no"
+  _jbm_phase_label=""
+  _jbm_have_phase_label="no"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --local-key)
@@ -1373,6 +1456,9 @@ _ji_cmd_json_build_marker() {
       --written-fix-version-id)
         [ "$#" -ge 2 ] || _ji_die_usage "--written-fix-version-id requer argumento"
         _jbm_fix_version_id="$2"; _jbm_have_fix_version="yes"; shift 2 ;;
+      --written-phase-label)
+        [ "$#" -ge 2 ] || _ji_die_usage "--written-phase-label requer argumento"
+        _jbm_phase_label="$2"; _jbm_have_phase_label="yes"; shift 2 ;;
       *)
         _ji_die_usage "json-build marker: argumento desconhecido: $1"
         ;;
@@ -1389,6 +1475,8 @@ _ji_cmd_json_build_marker() {
   [ "$_jbm_have_desc_sha" = "yes" ] && _jbm_have_desc_sha_json="true"
   _jbm_have_fix_version_json="false"
   [ "$_jbm_have_fix_version" = "yes" ] && _jbm_have_fix_version_json="true"
+  _jbm_have_phase_label_json="false"
+  [ "$_jbm_have_phase_label" = "yes" ] && _jbm_have_phase_label_json="true"
   jq -n --argjson schema 1 \
     --arg local_key "$_jbm_local_key" \
     --arg feature "$_jbm_feature" \
@@ -1399,10 +1487,13 @@ _ji_cmd_json_build_marker() {
     --argjson have_desc_sha "$_jbm_have_desc_sha_json" \
     --arg fix_version_id "$_jbm_fix_version_id" \
     --argjson have_fix_version "$_jbm_have_fix_version_json" \
+    --arg phase_label "$_jbm_phase_label" \
+    --argjson have_phase_label "$_jbm_have_phase_label_json" \
     '{schema: $schema, local_key: $local_key, feature: $feature,
       written_summary_sha256: $sha, written_status: $status, written_at: $at}
      | if $have_desc_sha then .written_description_sha256 = $desc_sha else . end
-     | if $have_fix_version then .written_fix_version_id = $fix_version_id else . end'
+     | if $have_fix_version then .written_fix_version_id = $fix_version_id else . end
+     | if $have_phase_label then .written_phase_label = $phase_label else . end'
 }
 
 # _ji_cmd_json_build_version --name N --project-id DIGITS --description TEXT

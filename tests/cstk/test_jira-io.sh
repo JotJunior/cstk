@@ -1621,4 +1621,122 @@ scenario_request_op_r12_400_version_conflict_or_invalid() {
   assert_stderr_contains "classification=version_conflict_or_invalid" || return 1
 }
 
+# JI-93..JI-96 (r02 FASE 17 task 17.1, SEC-1, plan.md SEC-1 extensao
+# `phase-<N>`): `json-build issue --label`/`issue-update --add-label/
+# --remove-label`/`marker --written-phase-label`
+# (contracts/plugin-scripts.md `jira-io.sh` r02, contracts/jira-rest.md
+# R14 CONFIRMADO).
+#
+#   JI-93 json-build issue --label com valor fora de [A-Za-z0-9_-] (espaco,
+#         "!") -> exit 2, SEM montar corpo (SEC-1); --label phase-3 ->
+#         fields.labels:["phase-3"] byte-a-byte; omitido -> corpo identico
+#         ao r01
+#   JI-94 json-build issue-update --add-label/--remove-label -> monta
+#         update.labels [{"remove":L},{"add":L}] (ordem fixa
+#         remove-antes-de-add); so 1 operacao -> array de 1 elemento;
+#         --summary passa a ser opcional quando ha operacao de label; NUNCA
+#         emite fields.labels e update.labels simultaneamente
+#   JI-95 json-build issue-update --add-label/--remove-label com valor fora
+#         da allowlist -> exit 2, SEM montar corpo
+#   JI-96 json-build marker --written-phase-label: acrescenta
+#         written_phase_label ao corpo; omitido -> chave ausente
+
+scenario_json_build_issue_label_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue \
+    --project-id 1 --issuetype-id 1 --summary x --label "phase 3" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  assert_stdout_not_contains "labels" || return 1
+
+  assert_exit 2 "$SCRIPT" json-build issue \
+    --project-id 1 --issuetype-id 1 --summary x --label "fase-3!" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  assert_stdout_not_contains "labels" || return 1
+}
+
+scenario_json_build_issue_label_valido() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build issue \
+    --project-id 10000 --issuetype-id 10004 --summary "Task de teste" \
+    --label "phase-3" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n \
+    '{fields:{project:{id:"10000"},issuetype:{id:"10004"},summary:"Task de teste",labels:["phase-3"]}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_issue_label" "corpo nao bate byte-a-byte: obtido=$_got want=$_want"; return 1; }
+}
+
+scenario_json_build_issue_sem_label_corpo_identico_r01() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build issue \
+    --project-id 10000 --issuetype-id 10001 --summary "Epic minimo" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{fields:{project:{id:"10000"},issuetype:{id:"10001"},summary:"Epic minimo"}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_issue_sem_label" "corpo deveria ser identico ao r01: $_got"; return 1; }
+}
+
+scenario_json_build_issue_update_add_remove_label() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build issue-update \
+    --add-label "phase-5" --remove-label "phase-3" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{update:{labels:[{remove:"phase-3"},{add:"phase-5"}]}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_issue_update_label_add_remove" "corpo inesperado: obtido=$_got want=$_want"; return 1; }
+}
+
+scenario_json_build_issue_update_apenas_add_label() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build issue-update --add-label "phase-3" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -S -c .)
+  _want=$(jq -S -c -n '{update:{labels:[{add:"phase-3"}]}}')
+  [ "$_got" = "$_want" ] \
+    || { _fail "json_build_issue_update_label_add_only" "corpo inesperado: $_got"; return 1; }
+  # NUNCA fields.labels numa edicao (clobbaria labels humanos)
+  _has_fields=$(printf '%s' "$_CAPTURED_STDOUT" | jq 'has("fields")')
+  [ "$_has_fields" = "false" ] \
+    || { _fail "json_build_issue_update_label_no_fields" "nao deveria haver chave fields"; return 1; }
+}
+
+scenario_json_build_issue_update_label_sem_summary_permitido() {
+  cd "$TMPDIR_TEST" || return 1
+  # --summary passa a ser opcional quando ha ao menos uma operacao de label
+  assert_exit 0 "$SCRIPT" json-build issue-update --remove-label "phase-3" || return 1
+}
+
+scenario_json_build_issue_update_add_label_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue-update --add-label "phase 3" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  assert_stdout_not_contains "labels" || return 1
+}
+
+scenario_json_build_issue_update_remove_label_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build issue-update --remove-label 'phase-3" OR 1=1' || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  assert_stdout_not_contains "labels" || return 1
+}
+
+scenario_json_build_marker_com_written_phase_label() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build marker --local-key "4.2.1" --feature "cstk-jira" \
+    --written-summary-sha256 "abc123" --written-status "In Progress" \
+    --written-at "2026-01-01T00:00:00Z" --written-phase-label "phase-3" || return 1
+  _got=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.written_phase_label')
+  [ "$_got" = "phase-3" ] \
+    || { _fail "json_build_marker_written_phase_label" "esperado phase-3, obtido $_got"; return 1; }
+}
+
+scenario_json_build_marker_sem_written_phase_label_chave_ausente() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" json-build marker --local-key "4.2.1" --feature "cstk-jira" \
+    --written-summary-sha256 "abc123" --written-status "In Progress" \
+    --written-at "2026-01-01T00:00:00Z" || return 1
+  _has_key=$(printf '%s' "$_CAPTURED_STDOUT" | jq 'has("written_phase_label")')
+  [ "$_has_key" = "false" ] \
+    || { _fail "json_build_marker_sem_written_phase_label" "chave nao deveria existir quando omitida"; return 1; }
+}
+
 run_all_scenarios

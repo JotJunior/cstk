@@ -239,6 +239,14 @@ sync_autonomous=on
 EOF
 }
 
+# _write_full_config_labels_off: mesma config de _write_full_config, com
+# `labels_enabled=off` explicito (r02 FASE 17 task 17.2.3 — setup grava
+# `off` quando `labels` nao esta na tela de criacao, R8).
+_write_full_config_labels_off() {
+  _write_full_config
+  printf 'labels_enabled=off\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+}
+
 # _write_credential: credencial GLOBAL isolada (mesmo padrao de
 # test_jira-io.sh) — SEMPRE combinar com XDG_CONFIG_HOME="$TMPDIR_TEST/xdg".
 _write_credential() {
@@ -2057,10 +2065,13 @@ scenario_convert_description_omitida_sem_criticidade_e_sem_dependencia() {
   _queue_push 201 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
 
-  # chamada 6 = R1 da task (3=R1 epic,4=R3 epic,5=R6 epic, 11.1.1)
+  # chamada 6 = R1 da task (3=R1 epic,4=R3 epic,5=R6 epic, 11.1.1).
+  # r02 FASE 17 (labels_enabled default "on"): a task ganha
+  # fields.labels:["phase-1"] alem dos campos de sempre — sem
+  # description (SY-38 continua provando isso).
   _task_fields=$("$IO_SCRIPT" json-get '.fields | keys_unsorted | sort | .[]' < "$TMPDIR_TEST/queue-curl-body-6.json" | tr '\n' ',')
-  [ "$_task_fields" = "issuetype,parent,project,summary," ] \
-    || { _fail "sy38_task_sem_description" "esperado issuetype,parent,project,summary (sem description) — obtido $_task_fields"; return 1; }
+  [ "$_task_fields" = "issuetype,labels,parent,project,summary," ] \
+    || { _fail "sy38_task_sem_description" "esperado issuetype,labels,parent,project,summary (sem description) — obtido $_task_fields"; return 1; }
   return 0
 }
 
@@ -3220,6 +3231,97 @@ EOF
     || { _fail "sy81_sidecar_current" "demo-r02 deveria estar current: $(cat "$(_milestone_file)")"; return 1; }
   grep -q '30001' "$(_milestone_file)" \
     && { _fail "sy81_sidecar_no_30001" "sidecar nao deveria ter ganhado uma linha para 30001: $(cat "$(_milestone_file)")"; return 1; }
+  return 0
+}
+
+# =========================== convert: labels de FASE (r02 FASE 17 task 17.2) ====
+#
+# SY-82 convert (labels_enabled=on, default): task da FASE 1 recebe
+#       fields.labels:["phase-1"]; sub-task herda o mesmo label da task-pai
+#       (mesmo phase_number); Epic NUNCA recebe fields.labels; o marker
+#       inicial (R6 PUT) da task/sub-task grava written_phase_label.
+# SY-83 convert (labels_enabled=off): nenhuma chamada de criacao (Epic/
+#       Task/Sub-task) tem a chave fields.labels; marker inicial NUNCA
+#       grava written_phase_label.
+
+scenario_convert_labels_enabled_task_e_subtask_recebem_phase_label() {
+  _write_full_config
+  _write_tasks_1task_1sub_sem_crit
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  # Epic: R1 create + R3 + R6 PUT marker inicial
+  _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  # Task: idem
+  _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  # Sub-task: idem
+  _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  # chamada 3 = R1 do Epic: NUNCA tem fields.labels
+  _epic_has_labels=$("$IO_SCRIPT" json-get '.fields | has("labels")' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_epic_has_labels" = "false" ] \
+    || { _fail "sy82_epic_sem_labels" "Epic NUNCA deveria receber fields.labels"; return 1; }
+
+  # chamada 6 = R1 da task: fields.labels == ["phase-1"] (FASE 1)
+  _task_labels=$("$IO_SCRIPT" json-get '.fields.labels | join(",")' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_task_labels" = "phase-1" ] \
+    || { _fail "sy82_task_label" "esperado phase-1, obtido $_task_labels"; return 1; }
+  _task_labels_n=$("$IO_SCRIPT" json-get '.fields.labels | length' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_task_labels_n" = "1" ] \
+    || { _fail "sy82_task_label_n" "esperado 1 label, obtido $_task_labels_n"; return 1; }
+
+  # chamada 9 = R1 da sub-task: mesma label (herdada da task-pai)
+  _sub_labels=$("$IO_SCRIPT" json-get '.fields.labels | join(",")' < "$TMPDIR_TEST/queue-curl-body-9.json")
+  [ "$_sub_labels" = "phase-1" ] \
+    || { _fail "sy82_sub_label" "esperado phase-1 (herdado da task-pai), obtido $_sub_labels"; return 1; }
+
+  # chamada 8 = R6 PUT do marker inicial da task: written_phase_label
+  _task_marker_label=$("$IO_SCRIPT" json-get '.written_phase_label' < "$TMPDIR_TEST/queue-curl-body-8.json")
+  [ "$_task_marker_label" = "phase-1" ] \
+    || { _fail "sy82_task_marker_label" "esperado written_phase_label=phase-1, obtido $_task_marker_label"; return 1; }
+  return 0
+}
+
+scenario_convert_labels_enabled_off_nenhuma_chamada_com_label() {
+  _write_full_config_labels_off
+  _write_tasks_1task_1sub_sem_crit
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 201 '{"id":"20001","key":"DEMO-1"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  _queue_push 201 '{"id":"20002","key":"DEMO-2"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  _queue_push 201 '{"id":"20003","key":"DEMO-3"}'
+  _queue_push 200 '{"fields":{"status":{"name":"To Do"}}}'
+  _queue_push 201 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  for _n in 3 6 9; do
+    _has=$("$IO_SCRIPT" json-get '.fields | has("labels")' < "$TMPDIR_TEST/queue-curl-body-$_n.json")
+    [ "$_has" = "false" ] \
+      || { _fail "sy83_sem_labels_$_n" "chamada $_n nao deveria ter fields.labels (labels_enabled=off)"; return 1; }
+  done
+
+  # chamada 8 = R6 PUT do marker inicial da task: NUNCA written_phase_label
+  _task_marker_has_label=$("$IO_SCRIPT" json-get 'has("written_phase_label")' < "$TMPDIR_TEST/queue-curl-body-8.json")
+  [ "$_task_marker_has_label" = "false" ] \
+    || { _fail "sy83_marker_sem_label" "marker nao deveria ter written_phase_label (labels_enabled=off)"; return 1; }
   return 0
 }
 
