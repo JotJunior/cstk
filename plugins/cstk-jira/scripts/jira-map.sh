@@ -60,6 +60,27 @@
 #         registro pendente continuaria suprimindo conflitos futuros do
 #         mesmo par via `_js_conflict_pending_exists` (jira-sync.sh).
 #
+#   jira-map.sh milestone-get --feature F --name N --project-key K
+#       — Imprime a linha TSV completa (5 colunas) de
+#         `docs/specs/F/jira-milestones.tsv` cuja chave natural
+#         `(project_key, milestone_name)` casa (K, N). Exit 1 se o arquivo
+#         ou a chave nao existirem (data-model.md Entity Milestone).
+#
+#   jira-map.sh milestone-put --feature F --name N --kind round|release \
+#                              --project-key K --state current|superseded|blocked \
+#                              [--version-id ID]
+#       — Upsert atomico por `(project_key, milestone_name)` em
+#         `docs/specs/F/jira-milestones.tsv` (r02 FASE 16 task 16.3.4,
+#         research.md Decision R2-3/R2-4). `--version-id` e OBRIGATORIO
+#         para `--state current`/`superseded` (id devolvido por R12/R13);
+#         OPCIONAL (pode ser omitido/vazio) so para `--state blocked`
+#         (R12 negado antes de qualquer id existir, data-model.md coluna
+#         `jira_version_id`). Ao gravar `current`, rebaixa QUALQUER outra
+#         linha `current` do MESMO arquivo para `superseded` no MESMO
+#         write (invariante: no maximo 1 `current` por feature) — `blocked`
+#         NUNCA mexe em outras linhas (o marco anterior aplicado ao Epic
+#         continua vigente ate uma nova resolucao ter sucesso).
+#
 # Convencoes (Principio II / contracts/plugin-scripts.md):
 #   `#!/bin/sh`, `set -eu`, sem bash-isms; dados em stdout, diagnostico em
 #   stderr. Exit codes: 0 sucesso; 1 erro geral (mapeamento/chave ausente,
@@ -117,7 +138,19 @@ USO:
       com --new-local-key, move a linha para NK (renumeracao). Fecha
       (best-effort) o ConflictRecord pendente reason=orphan do par.
 
+  jira-map.sh milestone-get --feature F --name N --project-key K
+      Imprime a linha TSV de jira-milestones.tsv para (K, N); exit 1 se
+      ausente.
+
+  jira-map.sh milestone-put --feature F --name N --kind round|release \
+                             --project-key K --state current|superseded|blocked \
+                             [--version-id ID]
+      Upsert atomico por (project_key, milestone_name); --version-id
+      obrigatorio exceto para --state blocked. Gravar current rebaixa
+      qualquer outra current do arquivo para superseded no mesmo write.
+
 Arquivo: <cwd>/docs/specs/F/jira-map.tsv (TAB-separado, cabecalho na 1a linha)
+Arquivo: <cwd>/docs/specs/F/jira-milestones.tsv (idem, chave (project_key, name))
 
 EXIT CODES:
   0 sucesso   1 erro geral   2 uso incorreto   6 orfao(s) apos mark-orphans
@@ -164,6 +197,19 @@ _jm_map_file() {
 }
 
 _JM_HEADER='local_key	kind	jira_id	jira_key	state'
+
+# jira-milestones.tsv (data-model.md Entity Milestone, r02 FASE 16) —
+# arquivo/schema DISTINTO de jira-map.tsv (chave natural
+# (project_key, milestone_name), nao local_key).
+_JM_MILESTONE_HEADER='milestone_name	milestone_kind	jira_version_id	project_key	state'
+_JM_MILESTONE_KINDS="round release"
+_JM_MILESTONE_STATES="current superseded blocked"
+
+# _jm_milestone_file FEATURE -> imprime o path do jira-milestones.tsv da
+# feature (mesmo diretorio de jira-map.tsv, arquivo irmao).
+_jm_milestone_file() {
+  printf '%s\n' "./docs/specs/$1/jira-milestones.tsv"
+}
 
 # --- get -----------------------------------------------------------------
 
@@ -390,6 +436,122 @@ _jm_close_orphan_conflict() {
   return 0
 }
 
+# --- milestone-get ---------------------------------------------------------
+
+_jm_cmd_milestone_get() {
+  _jmmg_feature=""
+  _jmmg_name=""
+  _jmmg_pkey=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)     [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jmmg_feature="$2"; shift 2 ;;
+      --name)        [ "$#" -ge 2 ] || _jm_die_usage "--name requer valor"; _jmmg_name="$2"; shift 2 ;;
+      --project-key) [ "$#" -ge 2 ] || _jm_die_usage "--project-key requer valor"; _jmmg_pkey="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jmmg_feature" ] || _jm_die_usage "milestone-get requer --feature F"
+  _jm_is_safe_feature "$_jmmg_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jmmg_feature"
+  _jm_is_safe_field "$_jmmg_name" || _jm_die_usage "milestone-get requer --name N valido (nao-vazio, sem TAB/newline)"
+  _jm_is_safe_field "$_jmmg_pkey" || _jm_die_usage "milestone-get requer --project-key K valido (nao-vazio, sem TAB/newline)"
+
+  _jmmg_file=$(_jm_milestone_file "$_jmmg_feature")
+  [ -f "$_jmmg_file" ] || _jm_die "jira-milestones.tsv nao encontrado: $_jmmg_file" 1
+
+  if _jmmg_line=$(awk -F '\t' -v n="$_jmmg_name" -v pk="$_jmmg_pkey" \
+      'NR > 1 && $1 == n && $4 == pk { print; f = 1; exit } END { exit (f ? 0 : 1) }' "$_jmmg_file"); then
+    printf '%s\n' "$_jmmg_line"
+  else
+    _jm_die "marco nao encontrado em jira-milestones.tsv: (project_key=$_jmmg_pkey, name=$_jmmg_name)" 1
+  fi
+}
+
+# --- milestone-put -----------------------------------------------------------
+
+_jm_cmd_milestone_put() {
+  _jmmp_feature=""
+  _jmmp_name=""
+  _jmmp_kind=""
+  _jmmp_vid=""
+  _jmmp_pkey=""
+  _jmmp_state=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)     [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jmmp_feature="$2"; shift 2 ;;
+      --name)        [ "$#" -ge 2 ] || _jm_die_usage "--name requer valor"; _jmmp_name="$2"; shift 2 ;;
+      --kind)        [ "$#" -ge 2 ] || _jm_die_usage "--kind requer valor"; _jmmp_kind="$2"; shift 2 ;;
+      --version-id)  [ "$#" -ge 2 ] || _jm_die_usage "--version-id requer valor"; _jmmp_vid="$2"; shift 2 ;;
+      --project-key) [ "$#" -ge 2 ] || _jm_die_usage "--project-key requer valor"; _jmmp_pkey="$2"; shift 2 ;;
+      --state)       [ "$#" -ge 2 ] || _jm_die_usage "--state requer valor"; _jmmp_state="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jmmp_feature" ] || _jm_die_usage "milestone-put requer --feature F"
+  _jm_is_safe_feature "$_jmmp_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jmmp_feature"
+  _jm_is_safe_field "$_jmmp_name" || _jm_die_usage "milestone-put requer --name N valido (nao-vazio, sem TAB/newline)"
+  _jm_is_safe_field "$_jmmp_pkey" || _jm_die_usage "milestone-put requer --project-key K valido (nao-vazio, sem TAB/newline)"
+
+  case " $_JM_MILESTONE_KINDS " in
+    *" $_jmmp_kind "*) : ;;
+    *) _jm_die_usage "--kind invalido: '$_jmmp_kind' (validos: $_JM_MILESTONE_KINDS)" ;;
+  esac
+  case " $_JM_MILESTONE_STATES " in
+    *" $_jmmp_state "*) : ;;
+    *) _jm_die_usage "--state invalido: '$_jmmp_state' (validos: $_JM_MILESTONE_STATES)" ;;
+  esac
+
+  # data-model.md coluna jira_version_id: obrigatorio exceto para
+  # state=blocked (R12 negado ANTES de qualquer id existir — task 16.3.3).
+  if [ "$_jmmp_state" = "blocked" ]; then
+    if [ -n "$_jmmp_vid" ]; then
+      _jm_is_safe_field "$_jmmp_vid" \
+        || _jm_die_usage "--version-id invalido (sem TAB/newline): $_jmmp_vid"
+    fi
+  else
+    _jm_is_safe_field "$_jmmp_vid" \
+      || _jm_die_usage "milestone-put --state $_jmmp_state requer --version-id ID valido (nao-vazio, sem TAB/newline)"
+  fi
+
+  _jmmp_file=$(_jm_milestone_file "$_jmmp_feature")
+  _jmmp_dir=$(dirname -- "$_jmmp_file")
+  [ -d "$_jmmp_dir" ] || _jm_die "diretorio da feature nao encontrado: $_jmmp_dir" 1
+
+  _jmmp_tmp="$_jmmp_file.tmp.$$"
+  if [ -f "$_jmmp_file" ]; then
+    # Upsert por (project_key, name): a linha casada e sobrescrita
+    # DIRETO com os valores novos (bypassa o rebaixamento generico
+    # abaixo, mesmo que ja fosse current); qualquer OUTRA linha com
+    # state=current e rebaixada a superseded SOMENTE quando o write
+    # corrente e --state current (task 16.3.4 — blocked nunca mexe em
+    # outras linhas, o marco vigente do Epic nao muda so porque uma
+    # tentativa de criar um marco NOVO falhou).
+    awk -F '\t' -v OFS='\t' -v pk="$_jmmp_pkey" -v nm="$_jmmp_name" \
+      -v newkind="$_jmmp_kind" -v newvid="$_jmmp_vid" -v newstate="$_jmmp_state" '
+      NR == 1 { print; next }
+      {
+        if ($4 == pk && $1 == nm) {
+          matched = 1
+          print nm, newkind, newvid, pk, newstate
+          next
+        }
+        if (newstate == "current" && $5 == "current") { $5 = "superseded" }
+        print
+      }
+      END {
+        if (!matched) print nm, newkind, newvid, pk, newstate
+      }
+    ' "$_jmmp_file" > "$_jmmp_tmp"
+  else
+    {
+      printf '%s\n' "$_JM_MILESTONE_HEADER"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$_jmmp_name" "$_jmmp_kind" "$_jmmp_vid" "$_jmmp_pkey" "$_jmmp_state"
+    } > "$_jmmp_tmp"
+  fi
+  mv -- "$_jmmp_tmp" "$_jmmp_file"
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _jm_sub="${1:-}"
@@ -412,7 +574,13 @@ case "$_jm_sub" in
   relink)
     _jm_cmd_relink "$@"
     ;;
+  milestone-get)
+    _jm_cmd_milestone_get "$@"
+    ;;
+  milestone-put)
+    _jm_cmd_milestone_put "$@"
+    ;;
   *)
-    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink)"
+    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put)"
     ;;
 esac

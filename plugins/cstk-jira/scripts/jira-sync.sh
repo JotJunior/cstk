@@ -231,19 +231,29 @@ USO:
       `kind=round`; senao milestone_release de ProjectConfig ou o 1o
       heading `## [X.Y.Z]` do CHANGELOG.md (SE for o mais alto) ->
       `name=<versao>` `kind=release`; nada resolvido -> `status=unresolved`.
-      SEMPRE exit 0 (estado nao-resolvido nao e erro). `milestone ensure`
-      chega na FASE 16.3.
+      SEMPRE exit 0 (estado nao-resolvido nao e erro).
+
+  jira-sync.sh milestone ensure --feature F
+      r02 FASE 16.3 (FR-020/FR-021, research.md Decision R2-3/R2-4):
+      garante a Fix Version do marco resolvido. off/unresolved -> mesmo
+      passthrough de `milestone resolve`, sem rede. Resolvido: R13 +
+      casamento exato (reusa `id`) senao R12 (createVersion); `400` em R12
+      refaz R13 UMA vez e reusa se achar (corrida entre worktrees), senao
+      `status=deferred` (exit 1, nada gravado); `403`/`404` em R12 grava
+      `state=blocked` em jira-milestones.tsv (via jira-map.sh
+      milestone-put) e sai exit 7 (nenhuma issue nova ate reconfiguracao).
 
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
   0 sucesso   1 erro geral (inclui: resolve sem ConflictRecord pendente para
-                             o par informado)
+                             o par informado; milestone ensure deferred)
   2 uso incorreto   3 ProjectConfig ausente
   4 credencial ausente/incompleta/auth_failed   5 dependencia ausente
                                                  (convert; drain com eventos
                                                  queued exige jq/cliente
                                                  HTTP/sha256sum-shasum)
+  7 milestone ensure: permission_denied (403/404 em R12) -> state=blocked
 HELP
 }
 
@@ -349,6 +359,11 @@ _JS_DEFERRED_HEADER='event_id	available_at_epoch'
 # Chave da entity property do SyncMarker (data-model.md) — DESIGN do
 # plugin, nao dado externo.
 _JS_MARKER_PROPERTY_KEY="cstk-jira.sync"
+
+# Texto FIXO enviado como `description` de R12 (createVersion) — DESIGN do
+# plugin (rotulo, nao dado lido do Jira; contracts/jira-rest.md R12 exige
+# texto FIXO, nunca eco de texto remoto). r02 FASE 16 task 16.3.1.
+_JS_MILESTONE_DESCRIPTION="Marco gerenciado pelo plugin cstk-jira (cstk-jira-plugin) — nao editar manualmente."
 
 # _js_json_str JSON KEY -> valor de um campo string simples ("key":"value"),
 # 1a ocorrencia. Mesma tecnica de hooks/posttooluse-jira-sync.sh
@@ -939,10 +954,160 @@ _js_cmd_milestone_resolve() {
   return 0
 }
 
+# _js_milestone_r13_match IO_PATH PROJECT_KEY NAME — r02 FASE 16 task 16.3.1
+# (contracts/jira-rest.md R13): lista as Fix Versions do projeto (rota
+# NAO-paginada) e casa `name` por IGUALDADE EXATA local. O filtro de
+# `json-get` e SEMPRE fixo (`.[] | [.id, .name] | @tsv`) — NAME nunca entra
+# no FILTER do jq (mesma disciplina do resto do arquivo, nenhum json-get
+# interpola dado externo no filtro); o casamento exato acontece no awk via
+# `-v` (mesma tecnica de jira-map.sh). Imprime o `id` em stdout e retorna 0
+# se achou; retorna 1 (stdout vazio) se a lista nao tem esse nome. Falha de
+# rede/HTTP de R13 propaga via `_js_die` (sem classificacao especial para
+# --op R13 no contrato — passthrough do exit code de jira-io.sh).
+_js_milestone_r13_match() {
+  _jml_io="$1"
+  _jml_pkey="$2"
+  _jml_name="$3"
+  _jml_resp=$("$_jml_io" request GET "/rest/api/3/project/$_jml_pkey/versions" --op R13 2>/dev/null) \
+    || _js_die "falha ao listar Fix Versions do projeto $_jml_pkey (R13)" 1
+  _jml_tsv=$(printf '%s' "$_jml_resp" | "$_jml_io" json-get '.[] | [.id, .name] | @tsv')
+  _jml_id=$(printf '%s\n' "$_jml_tsv" | awk -F '\t' -v n="$_jml_name" '$2 == n { print $1; exit }')
+  [ -n "$_jml_id" ] || return 1
+  printf '%s' "$_jml_id"
+  return 0
+}
+
+# _js_cmd_milestone_ensure --feature F — r02 FASE 16 task 16.3
+# (research.md Decision R2-3/R2-4; contracts/plugin-scripts.md
+# `milestone ensure`): garante que a Fix Version do marco resolvido por
+# `milestone resolve` exista no Jira, com idempotencia via R13 antes de
+# criar via R12. Sem rede quando o marco NAO esta resolvido (`off`/
+# `unresolved`) — reusa o MESMO contrato de saida de `milestone resolve`
+# (`name=`/`status=`), permitindo o chamador (`convert`, FASE 16.4) invocar
+# `ensure` sem checar `resolve` antes.
+#
+# Fluxo em rede (so quando resolvido, name+kind):
+#   1. R13 + casamento exato -> achou: reusa `id`, grava state=current,
+#      `status=current`, exit 0.
+#   2. Nao achou -> R12 (createVersion, description FIXA do plugin):
+#        201 -> grava state=current, `status=current`, exit 0.
+#        400 (version_conflict_or_invalid) -> refaz R13 UMA vez (task
+#          16.3.2, nunca uma 2a R12 sem reler antes): achou agora (corrida
+#          entre worktrees, FR-023) -> reusa `id`, state=current, exit 0;
+#          continua sem achar -> `status=deferred`, NADA gravado no
+#          sidecar (proxima chamada tenta de novo), exit 1.
+#        403/404 (jira-io.sh classifica exit 7 permission_denied) -> grava
+#          state=blocked (SEM jira_version_id — nada foi criado, task
+#          16.3.3), `status=blocked`, exit 7. Quem decide suspender a
+#          criacao de issues novas e o CHAMADOR (`convert`, FASE 16.4) —
+#          `ensure` so reporta e persiste o estado.
+_js_cmd_milestone_ensure() {
+  _jsme_feature=$(_js_parse_feature_arg "$@")
+
+  _jsme_dir="$(_js_script_dir)"
+  _jsme_config="$_jsme_dir/jira-config.sh"
+  _jsme_io="$_jsme_dir/jira-io.sh"
+  _jsme_map="$_jsme_dir/jira-map.sh"
+
+  _jsme_resolved=$(_js_cmd_milestone_resolve --feature "$_jsme_feature")
+  _jsme_name=$(printf '%s\n' "$_jsme_resolved" | sed -n 's/^name=//p')
+  _jsme_kind=$(printf '%s\n' "$_jsme_resolved" | sed -n 's/^kind=//p')
+  _jsme_passthrough_status=$(printf '%s\n' "$_jsme_resolved" | sed -n 's/^status=//p')
+
+  if [ -z "$_jsme_name" ]; then
+    # off ou unresolved (resolve nunca emite name= vazio com kind=
+    # preenchido) — passthrough sem rede, mesmo contrato de saida de
+    # `milestone resolve`.
+    printf 'name=\n'
+    printf 'status=%s\n' "$_jsme_passthrough_status"
+    return 0
+  fi
+
+  "$_jsme_io" deps-check
+  "$_jsme_config" validate
+  "$_jsme_config" credential-check
+
+  _jsme_project_key=$("$_jsme_config" get project_key)
+  "$_jsme_io" validate-segment "$_jsme_project_key"
+
+  _jsme_project_resp=$("$_jsme_io" request GET "/rest/api/3/project/$_jsme_project_key" 2>/dev/null) \
+    || _js_die "falha ao resolver project.id via GET /rest/api/3/project/$_jsme_project_key" 1
+  _jsme_project_id=$(printf '%s' "$_jsme_project_resp" | "$_jsme_io" json-get '.id')
+  [ -n "$_jsme_project_id" ] || _js_die "resposta de GET project sem campo id" 1
+
+  if _jsme_id=$(_js_milestone_r13_match "$_jsme_io" "$_jsme_project_key" "$_jsme_name"); then
+    "$_jsme_map" milestone-put --feature "$_jsme_feature" --name "$_jsme_name" \
+      --kind "$_jsme_kind" --version-id "$_jsme_id" \
+      --project-key "$_jsme_project_key" --state current
+    printf 'name=%s\n' "$_jsme_name"
+    printf 'status=current\n'
+    return 0
+  fi
+
+  _jsme_body=$("$_jsme_io" json-build version --name "$_jsme_name" \
+    --project-id "$_jsme_project_id" --description "$_JS_MILESTONE_DESCRIPTION")
+  _jsme_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r12body.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jsme_body" > "$_jsme_body_file"
+
+  # Nota: 'if CMD; then ok; else _ec=$?; ...' (com 'else' explicito, sem
+  # negacao) — preserva o exit code genuino de jira-io.sh. Sem 'else', o
+  # exit status de um 'if' cuja condicao falha e SEMPRE 0 por definicao
+  # POSIX quando nenhum ramo executa ("If no compound-list is executed,
+  # the exit status shall be zero") — ler "$?" DEPOIS do 'fi' captura esse
+  # zero espurio, nunca o exit code real do comando que falhou (mesmo
+  # padrao/motivo do resto do arquivo, ver comentario em _js_cmd_convert).
+  if _jsme_resp=$("$_jsme_io" request POST /rest/api/3/version \
+      --body-file "$_jsme_body_file" --op R12); then
+    rm -f "$_jsme_body_file"
+    _jsme_new_id=$(printf '%s' "$_jsme_resp" | "$_jsme_io" json-get '.id')
+    [ -n "$_jsme_new_id" ] || _js_die "resposta de R12 sem campo id" 1
+    "$_jsme_map" milestone-put --feature "$_jsme_feature" --name "$_jsme_name" \
+      --kind "$_jsme_kind" --version-id "$_jsme_new_id" \
+      --project-key "$_jsme_project_key" --state current
+    printf 'name=%s\n' "$_jsme_name"
+    printf 'status=current\n'
+    return 0
+  else
+    _jsme_ec=$?
+    rm -f "$_jsme_body_file"
+  fi
+
+  if [ "$_jsme_ec" -eq 7 ]; then
+    "$_jsme_map" milestone-put --feature "$_jsme_feature" --name "$_jsme_name" \
+      --kind "$_jsme_kind" --version-id "" \
+      --project-key "$_jsme_project_key" --state blocked
+    printf 'name=%s\n' "$_jsme_name"
+    printf 'status=blocked\n'
+    printf '%s: sem permissao para criar a Fix Version "%s" (Administer Jira/Administer Projects) — marco gravado como blocked; defina milestone_mode=off ou ajuste a credencial (R2-4)\n' \
+      "$_JS_NAME" "$_jsme_name" >&2
+    exit 7
+  fi
+
+  if [ "$_jsme_ec" -eq 1 ]; then
+    # 400 em R12 (version_conflict_or_invalid) — refaz R13 UMA vez (task
+    # 16.3.2: nunca repete R12 sem reler R13 antes).
+    if _jsme_id2=$(_js_milestone_r13_match "$_jsme_io" "$_jsme_project_key" "$_jsme_name"); then
+      "$_jsme_map" milestone-put --feature "$_jsme_feature" --name "$_jsme_name" \
+        --kind "$_jsme_kind" --version-id "$_jsme_id2" \
+        --project-key "$_jsme_project_key" --state current
+      printf 'name=%s\n' "$_jsme_name"
+      printf 'status=current\n'
+      return 0
+    fi
+    printf 'name=%s\n' "$_jsme_name"
+    printf 'status=deferred\n'
+    printf '%s: R12 devolveu 400 para "%s" e o nome nao apareceu na releitura de R13 — marco fica deferred (nenhuma gravacao no sidecar), proxima chamada tenta de novo\n' \
+      "$_JS_NAME" "$_jsme_name" >&2
+    exit 1
+  fi
+
+  _js_die "falha ao criar Fix Version \"$_jsme_name\" (jira-io.sh exit $_jsme_ec)" "$_jsme_ec"
+}
+
 # _js_cmd_milestone MODE [ARGS...] — dispatcher interno de `milestone`.
-# MODE em {resolve} nesta onda (16.2); `ensure` chega na FASE 16.3
-# (research.md Decision R2-3/R2-4) — allowlist FECHADA, mesmo estilo de
-# `_ji_cmd_json_build`.
+# MODE em {resolve, ensure} (16.2/16.3) — allowlist FECHADA, mesmo estilo
+# de `_ji_cmd_json_build`.
 _js_cmd_milestone() {
   _jsm_mode="${1:-}"
   if [ "$#" -ge 1 ]; then
@@ -952,11 +1117,14 @@ _js_cmd_milestone() {
     resolve)
       _js_cmd_milestone_resolve "$@"
       ;;
+    ensure)
+      _js_cmd_milestone_ensure "$@"
+      ;;
     '')
-      _js_die_usage "milestone requer MODE (resolve)"
+      _js_die_usage "milestone requer MODE (resolve, ensure)"
       ;;
     *)
-      _js_die_usage "milestone: MODE desconhecido: $_jsm_mode (valido nesta onda: resolve)"
+      _js_die_usage "milestone: MODE desconhecido: $_jsm_mode (validos: resolve, ensure)"
       ;;
   esac
 }

@@ -477,4 +477,54 @@ EOF
   return 0
 }
 
+# scenario_mutation_16_3_7_milestone_put_current_downgrade — r02 FASE 16
+# task 16.3.7 (data-model.md Entity Milestone: "no maximo 1 current por
+# arquivo"; jira-map.sh milestone-put, task 16.3.4). Alvo diferente do
+# `_mut_copy_plugin` (mira jira-map.sh diretamente, chamado sem rede) —
+# mesmo metodo de controle-depois-mutante das demais.
+scenario_mutation_16_3_7_milestone_put_current_downgrade() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+
+  # -- controle: original rebaixa a current anterior -> exatamente 1 current --
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" milestone-put --feature demo \
+    --name demo-r02 --kind round --version-id 30001 --project-key DEMO \
+    --state current >/dev/null \
+    || { _fail "controle_put1" "1o milestone-put falhou no original"; return 1; }
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" milestone-put --feature demo \
+    --name demo-r03 --kind round --version-id 30002 --project-key DEMO \
+    --state current >/dev/null \
+    || { _fail "controle_put2" "2o milestone-put falhou no original"; return 1; }
+  _mf="$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv"
+  _ncur=$(awk -F '\t' 'NR>1 && $5=="current"' "$_mf" | wc -l | tr -d ' ')
+  [ "$_ncur" = "1" ] \
+    || { _fail "controle_single_current" "esperado 1 current no original, obtido $_ncur"; return 1; }
+
+  # -- mutante: neutraliza o rebaixamento (nunca desce current->superseded) --
+  _mp=$(_mut_copy_plugin)
+  _jm="$_mp/scripts/jira-map.sh"
+  grep -q 'if (newstate == "current" && \$5 == "current") { \$5 = "superseded" }' "$_jm" \
+    || { _fail "mutant_stale" "linha de rebaixamento nao encontrada — repo mudou"; return 1; }
+  sed 's/if (newstate == "current" \&\& \$5 == "current") { \$5 = "superseded" }/if (newstate == "current" \&\& \$5 == "__never__") { \$5 = "superseded" }/' \
+    "$_jm" > "$_jm.mut" && mv "$_jm.mut" "$_jm"
+  grep -q '\$5 == "__never__"' "$_jm" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao"; return 1; }
+  chmod +x "$_jm"
+
+  rm -rf "$TMPDIR_TEST/docs/specs/demo"
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  "$_jm" milestone-put --feature demo --name demo-r02 --kind round \
+    --version-id 30001 --project-key DEMO --state current >/dev/null \
+    || { _fail "mutant_put1" "1o milestone-put falhou no mutante"; return 1; }
+  "$_jm" milestone-put --feature demo --name demo-r03 --kind round \
+    --version-id 30002 --project-key DEMO --state current >/dev/null \
+    || { _fail "mutant_put2" "2o milestone-put falhou no mutante"; return 1; }
+  _ncur_mut=$(awk -F '\t' 'NR>1 && $5=="current"' "$_mf" | wc -l | tr -d ' ')
+  if [ "$_ncur_mut" = "1" ]; then
+    _fail "mutant_downgrade" "esperado 2 linhas current (regressao: rebaixamento nunca acontece), obtido $_ncur_mut"
+    return 1
+  fi
+  return 0
+}
+
 run_all_scenarios

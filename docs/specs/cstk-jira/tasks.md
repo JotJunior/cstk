@@ -2015,30 +2015,46 @@ Ref: research.md Decision R2-3/R2-4; contracts/plugin-scripts.md
 `milestone ensure`; contracts/jira-rest.md R12/R13; data-model.md Entity
 Milestone.
 
-- [ ] 16.3.1 `milestone ensure --feature F`: `milestone resolve` -> R13
+- [x] 16.3.1 `milestone ensure --feature F`: `milestone resolve` -> R13
       (`getProjectVersions`) + casamento EXATO local de `name` -> achou:
       reusa `id`; nao achou: R12 (`createVersion`) com `description` FIXA
-      do plugin (nunca texto do Jira)
-- [ ] 16.3.2 `400` em R12 => refaz R13 e reusa o `id` se o nome exato
+      do plugin (nunca texto do Jira) — implementado em `jira-sync.sh`
+      `_js_cmd_milestone_ensure` + `_js_milestone_r13_match` (casamento via
+      `awk -v`, NUNCA embutido no filtro jq de `json-get` — mesma
+      disciplina do resto do arquivo); off/unresolved fazem passthrough
+      SEM rede (mesmo contrato de saida de `milestone resolve`)
+- [x] 16.3.2 `400` em R12 => refaz R13 e reusa o `id` se o nome exato
       apareceu (corrida entre worktrees, FR-023); nunca repete R12 uma 2a
-      vez sem reler R13 primeiro
-- [ ] 16.3.3 `403`/`404` em R12 => grava `state=blocked` em
+      vez sem reler R13 primeiro — `_jsme_ec -eq 1` (version_conflict_or_invalid)
+      chama `_js_milestone_r13_match` UMA vez; sem match, `status=deferred`
+      exit 1, nada gravado no sidecar
+- [x] 16.3.3 `403`/`404` em R12 => grava `state=blocked` em
       `jira-milestones.tsv` (`jira-map.sh milestone-put`) e retorna exit 7
       SEM criar Epic/Task orfao sem marco (Clarification r02); diagnostico
       cita a permissao exigida (*Administer Jira*/*Administer Projects*) e
-      o override `milestone_mode=off`
-- [ ] 16.3.4 `jira-map.sh milestone-put`: upsert atomico por
+      o override `milestone_mode=off` — `_jsme_ec -eq 7` grava
+      `--version-id ""` (nada foi criado) + `--state blocked`, `exit 7`
+- [x] 16.3.4 `jira-map.sh milestone-put`: upsert atomico por
       `(project_key, milestone_name)`; ao gravar `current`, rebaixa a
       `current` anterior do MESMO arquivo para `superseded` no MESMO write
-      (invariante: no maximo 1 `current` por feature)
-- [ ] 16.3.5 Teste: 10 chamadas seguidas de `milestone ensure` com o mesmo
+      (invariante: no maximo 1 `current` por feature) — implementado em
+      `jira-map.sh` `_jm_cmd_milestone_put` (awk single-pass); `--state
+      blocked` NUNCA rebaixa outras linhas (marco vigente do Epic so muda
+      com sucesso); `milestone-get` companheiro tambem implementado
+- [x] 16.3.5 Teste: 10 chamadas seguidas de `milestone ensure` com o mesmo
       nome resolvido => 0 R12 apos a 1a (idempotencia, SC-002 estendido);
       `400` simulado em R12 => exatamente 1 releitura de R13, nunca 2 R12
-- [ ] 16.3.6 Teste: `403` simulado em R12 => `jira-milestones.tsv` grava
+      — `tests/cstk/test_jira-sync.sh` SY-76/SY-77 (+ SY-79 off/unresolved
+      sem rede); suite completa 83/83 verde
+- [x] 16.3.6 Teste: `403` simulado em R12 => `jira-milestones.tsv` grava
       `state=blocked`, exit 7, nenhuma chamada subsequente de criacao de
-      issue no mesmo `convert`
-- [ ] 16.3.7 Mutation test: reverter 16.3.4 para nunca rebaixar a `current`
-      anterior faz um teste de "2 linhas `current` simultaneas" falhar
+      issue no mesmo `convert` — `tests/cstk/test_jira-sync.sh` SY-78
+      (exatamente 3 chamadas: project+R13+R12, nenhuma retry)
+- [x] 16.3.7 Mutation test: reverter 16.3.4 para nunca rebaixar a `current`
+      anterior faz um teste de "2 linhas `current` simultaneas" falhar —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_16_3_7_milestone_put_current_downgrade`
+      (mira `jira-map.sh` diretamente); `tests/cstk/test_jira-map.sh`
+      JM-21..JM-26 cobrem `milestone-put`/`milestone-get` isoladamente
 
 ### 16.4 Integracao em `convert`/`drain` (R2-2) e sinalizacao em `status` `[A]`
 

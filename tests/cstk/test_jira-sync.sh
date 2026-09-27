@@ -274,6 +274,12 @@ _map_file() {
   printf '%s\n' "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
 }
 
+# _milestone_file — r02 FASE 16 task 16.3 (jira-milestones.tsv, data-model.md
+# Entity Milestone). Arquivo irmao de jira-map.tsv, mesmo diretorio.
+_milestone_file() {
+  printf '%s\n' "$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv"
+}
+
 # _write_map_row LOCAL_KEY KIND JIRA_ID JIRA_KEY STATE — grava
 # docs/specs/demo/jira-map.tsv com cabecalho + 1 linha (cria o arquivo se
 # ausente, ACRESCENTA se ja existir — usado pelos cenarios de drain 4.2.3-
@@ -397,6 +403,32 @@ _queue_post_issue_calls_count() {
   # feature cstk-jira FASE 10 tarefa 10.2/SY-39).
   _qpicc_n=$(grep -c 'POST .*api/3/issue$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _qpicc_n=0
   printf '%s' "$_qpicc_n"
+}
+
+# _queue_post_version_calls_count / _queue_get_versions_calls_count — r02
+# FASE 16 task 16.3.5/16.3.6 (milestone ensure, R12/R13). Mesmo idioma de
+# _queue_post_issue_calls_count acima (grep -c pode sair 1 em zero-matches).
+_queue_post_version_calls_count() {
+  [ -f "$TMPDIR_TEST/queue-curl-calls.log" ] || { printf '0'; return; }
+  _qpvcc_n=$(grep -c 'POST .*api/3/version$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _qpvcc_n=0
+  printf '%s' "$_qpvcc_n"
+}
+
+_queue_get_versions_calls_count() {
+  [ -f "$TMPDIR_TEST/queue-curl-calls.log" ] || { printf '0'; return; }
+  _qgvcc_n=$(grep -c 'GET .*api/3/project/.*/versions$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _qgvcc_n=0
+  printf '%s' "$_qgvcc_n"
+}
+
+# _write_round_demo_r01: mesmo fixture de scenario_milestone_resolve_round_
+# ativo_consistente — `milestone resolve --feature demo` passa a devolver
+# name=demo-r02/kind=round (usado pelos cenarios de `milestone ensure`, que
+# precisam de um marco RESOLVIDO para exercitar o caminho de rede).
+_write_round_demo_r01() {
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r01"}}
+EOF
 }
 
 # =========================== plan ==========================================
@@ -2830,6 +2862,12 @@ scenario_resolve_state_field_state_db_caminho_pontuado_via_stub() {
 #       CHANGELOG.md -> name=<versao>, kind=release
 # SY-73 sem round, sem milestone_release, CHANGELOG com `[Unreleased]` no
 #       topo -> status=unresolved (nunca inventa proxima versao)
+# SY-76 milestone ensure: idempotencia 10x (16.3.5) — so a 1a chamada faz
+#       R12; as demais reusam o id via R13
+# SY-77 milestone ensure: 400 em R12 refaz R13 UMA vez e reusa o id se
+#       achar (corrida entre worktrees, 16.3.2/16.3.5)
+# SY-78 milestone ensure: 403 em R12 grava state=blocked e sai exit 7, sem
+#       chamada subsequente (16.3.6)
 # SY-74 token de round fora do formato SEC-6 (^r[0-9]{2,}$) ->
 #       status=unresolved, nunca fallback silencioso para release
 # SY-75 milestone_release fora do formato SemVer -> status=unresolved
@@ -2947,6 +2985,110 @@ scenario_milestone_resolve_release_fora_do_semver_unresolved() {
   _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy75_exit" "falhou"; return 1; }
   printf '%s\n' "$_out" | grep -qx "status=unresolved" \
     || { _fail "sy75_status" "esperado status=unresolved (milestone_release fora de SemVer), obtido: $_out"; return 1; }
+}
+
+# ==== milestone ensure (r02 FASE 16 task 16.3, research.md Decision R2-3/R2-4) ====
+
+scenario_milestone_ensure_idempotente_10x_zero_r12_apos_primeira() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[]'
+  _queue_push 201 '{"id":"30001","name":"demo-r02"}'
+  _i=1
+  while [ "$_i" -le 9 ]; do
+    _queue_push 200 '{"id":"10000","key":"DEMO"}'
+    _queue_push 200 '[{"id":"30001","name":"demo-r02"}]'
+    _i=$((_i + 1))
+  done
+
+  _i=1
+  while [ "$_i" -le 10 ]; do
+    _out=$(PATH="$_bin:$PATH" "$SCRIPT" milestone ensure --feature demo) \
+      || { _fail "sy76_exit_$_i" "milestone ensure deveria sair exit 0 na chamada $_i"; return 1; }
+    printf '%s\n' "$_out" | grep -qx "status=current" \
+      || { _fail "sy76_status_$_i" "esperado status=current na chamada $_i, obtido: $_out"; return 1; }
+    _i=$((_i + 1))
+  done
+
+  [ "$(_queue_post_version_calls_count)" = "1" ] \
+    || { _fail "sy76_r12_once" "esperado exatamente 1 chamada R12, obtido $(_queue_post_version_calls_count)"; return 1; }
+  [ "$(_queue_get_versions_calls_count)" = "10" ] \
+    || { _fail "sy76_r13_ten" "esperado 10 chamadas R13, obtido $(_queue_get_versions_calls_count)"; return 1; }
+
+  _mf=$(_milestone_file)
+  _ncur=$(awk -F '\t' 'NR>1 && $5=="current"' "$_mf" | wc -l | tr -d ' ')
+  [ "$_ncur" = "1" ] || { _fail "sy76_single_current" "esperado 1 linha current, obtido $_ncur"; return 1; }
+  grep -q '^demo-r02	round	30001	DEMO	current$' "$_mf" \
+    || { _fail "sy76_row" "linha current ausente/incorreta em jira-milestones.tsv"; return 1; }
+}
+
+scenario_milestone_ensure_400_em_r12_refaz_r13_reusa_id() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[]'
+  _queue_push 400 '{"errors":{"name":"A version with this name already exists in this project."}}'
+  _queue_push 200 '[{"id":"30002","name":"demo-r02"}]'
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" milestone ensure --feature demo) \
+    || { _fail "sy77_exit" "milestone ensure deveria sair exit 0 (corrida resolvida via releitura de R13)"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=current" \
+    || { _fail "sy77_status" "esperado status=current, obtido: $_out"; return 1; }
+
+  [ "$(_queue_post_version_calls_count)" = "1" ] \
+    || { _fail "sy77_r12_once" "esperado exatamente 1 R12 (nunca repetido sem reler R13 antes), obtido $(_queue_post_version_calls_count)"; return 1; }
+  [ "$(_queue_get_versions_calls_count)" = "2" ] \
+    || { _fail "sy77_r13_twice" "esperado 2 chamadas R13 (inicial + releitura pos-400), obtido $(_queue_get_versions_calls_count)"; return 1; }
+
+  grep -q '^demo-r02	round	30002	DEMO	current$' "$(_milestone_file)" \
+    || { _fail "sy77_row" "linha current com id reaproveitado da releitura ausente/incorreta"; return 1; }
+}
+
+scenario_milestone_ensure_403_grava_blocked_exit7() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[]'
+  _queue_push 403 '{"errorMessages":["Forbidden"]}'
+
+  PATH="$_bin:$PATH" assert_exit 7 "$SCRIPT" milestone ensure --feature demo || return 1
+  assert_stderr_contains "Administer" || return 1
+
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy78_no_further_calls" "esperado exatamente 3 chamadas (project+R13+R12), obtido $(_queue_calls_count)"; return 1; }
+
+  grep -q '^demo-r02	round		DEMO	blocked$' "$(_milestone_file)" \
+    || { _fail "sy78_row" "linha blocked (sem jira_version_id) ausente/incorreta"; return 1; }
+}
+
+scenario_milestone_ensure_off_e_unresolved_sem_rede() {
+  _write_full_config
+  _append_config_line "milestone_mode=off"
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg-inexistente"
+  _bin="$(_init_queue_stub)"
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" milestone ensure --feature demo) \
+    || { _fail "sy79_off_exit" "milestone ensure deveria sair exit 0 (off)"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=off" \
+    || { _fail "sy79_off_status" "esperado status=off, obtido: $_out"; return 1; }
+  [ "$(_queue_calls_count)" = "0" ] \
+    || { _fail "sy79_off_no_network" "milestone_mode=off nao deveria fazer chamadas de rede"; return 1; }
 }
 
 run_all_scenarios

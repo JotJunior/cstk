@@ -34,6 +34,21 @@
 #         resolution=relinked em runtime/conflicts.tsv (FR-012)
 #   JM-20 relink sem runtime/conflicts.tsv -> sucesso normal (best-effort,
 #         nada a fechar)
+#   JM-21 milestone-put: primeira insercao (state=current) -> header +
+#         linha gravados (r02 FASE 16 task 16.3.4, data-model.md Entity
+#         Milestone)
+#   JM-22 milestone-put: 2a chamada com nome DIFERENTE e state=current
+#         rebaixa a current anterior para superseded no MESMO write —
+#         no maximo 1 current no arquivo (16.3.4/16.3.7)
+#   JM-23 milestone-put: --state blocked SEM --version-id -> exit 0,
+#         linha gravada com jira_version_id vazio (nada foi criado no R12)
+#   JM-24 milestone-put: --state current SEM --version-id -> exit 2 (uso
+#         incorreto), nada escrito
+#   JM-25 milestone-put: --state blocked NUNCA rebaixa a current existente
+#         de OUTRO nome (marco vigente do Epic nao muda so por falha de
+#         criacao de um marco novo)
+#   JM-26 milestone-get: (project_key, name) existente -> linha TSV;
+#         ausente -> exit 1
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -343,6 +358,81 @@ scenario_idempotencia_10x_put_mesma_chave_zero_linhas_novas() {
   fi
   grep -q '^1\.1	task	10001	DEMO-1	active$' "$(_map_file)" \
     || { _fail "idempotent_put_data_intact" "dados originais foram alterados"; return 1; }
+}
+
+_milestone_file() {
+  printf '%s\n' "$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv"
+}
+
+scenario_milestone_put_primeira_insercao_current() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --version-id 30001 --project-key DEMO --state current || return 1
+  _mf=$(_milestone_file)
+  [ -f "$_mf" ] || { _fail "milestone_put_creates_file" "arquivo nao foi criado"; return 1; }
+  head -n1 "$_mf" | grep -q '^milestone_name	milestone_kind	jira_version_id	project_key	state$' \
+    || { _fail "milestone_put_header" "cabecalho ausente/incorreto"; return 1; }
+  grep -q '^demo-r02	round	30001	DEMO	current$' "$_mf" \
+    || { _fail "milestone_put_row" "linha current ausente/incorreta"; return 1; }
+}
+
+scenario_milestone_put_novo_current_rebaixa_anterior_a_superseded() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --version-id 30001 --project-key DEMO --state current >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-put --feature demo --name demo-r03 \
+    --kind round --version-id 30002 --project-key DEMO --state current || return 1
+  _mf=$(_milestone_file)
+  grep -q '^demo-r02	round	30001	DEMO	superseded$' "$_mf" \
+    || { _fail "milestone_put_downgrade" "current anterior nao foi rebaixado a superseded"; return 1; }
+  grep -q '^demo-r03	round	30002	DEMO	current$' "$_mf" \
+    || { _fail "milestone_put_new_current" "novo current ausente/incorreto"; return 1; }
+  _ncur=$(awk -F'\t' 'NR>1 && $5=="current"' "$_mf" | wc -l | tr -d ' ')
+  [ "$_ncur" = "1" ] || { _fail "milestone_put_single_current" "esperado exatamente 1 linha current, obtido $_ncur"; return 1; }
+}
+
+scenario_milestone_put_blocked_sem_version_id_ok() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --project-key DEMO --state blocked || return 1
+  grep -q '^demo-r02	round		DEMO	blocked$' "$(_milestone_file)" \
+    || { _fail "milestone_put_blocked_row" "linha blocked com jira_version_id vazio ausente/incorreta"; return 1; }
+}
+
+scenario_milestone_put_current_sem_version_id_exit2() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --project-key DEMO --state current || return 1
+  [ -f "$(_milestone_file)" ] && { _fail "milestone_put_current_no_version_no_write" "arquivo foi criado apesar de --version-id ausente"; return 1; }
+  return 0
+}
+
+scenario_milestone_put_blocked_nunca_rebaixa_current_de_outro_nome() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --version-id 30001 --project-key DEMO --state current >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-put --feature demo --name demo-r03 \
+    --kind round --project-key DEMO --state blocked || return 1
+  _mf=$(_milestone_file)
+  grep -q '^demo-r02	round	30001	DEMO	current$' "$_mf" \
+    || { _fail "milestone_put_blocked_preserves_current" "current de outro nome foi alterado por um write blocked"; return 1; }
+  grep -q '^demo-r03	round		DEMO	blocked$' "$_mf" \
+    || { _fail "milestone_put_blocked_row2" "linha blocked ausente/incorreta"; return 1; }
+}
+
+scenario_milestone_get_existente_e_ausente() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --version-id 30001 --project-key DEMO --state current >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-get --feature demo --name demo-r02 --project-key DEMO || return 1
+  assert_stdout_contains "demo-r02	round	30001	DEMO	current" || return 1
+  assert_exit 1 "$SCRIPT" milestone-get --feature demo --name demo-r99 --project-key DEMO || return 1
 }
 
 run_all_scenarios
