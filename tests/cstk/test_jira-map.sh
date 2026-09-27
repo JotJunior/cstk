@@ -457,6 +457,44 @@ scenario_milestone_get_existente_e_ausente() {
   assert_exit 1 "$SCRIPT" milestone-get --feature demo --name demo-r99 --project-key DEMO || return 1
 }
 
+# ==== milestone-clear-blocked (r02 FASE 22 tarefa 22.1.2, achado 22.1) ====
+
+scenario_milestone_clear_blocked_remove_linha_e_conta() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --project-key DEMO --state blocked >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-clear-blocked --feature demo || return 1
+  assert_stdout_contains "1" || return 1
+  grep -q 'blocked' "$(_milestone_file)" \
+    && { _fail "milestone_clear_blocked_removed" "linha blocked deveria ter sido removida: $(cat "$(_milestone_file)")"; return 1; }
+  return 0
+}
+
+scenario_milestone_clear_blocked_preserva_current() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" milestone-put --feature demo --name demo-r02 \
+    --kind round --version-id 30001 --project-key DEMO --state current >/dev/null || return 1
+  "$SCRIPT" milestone-put --feature demo --name demo-r03 \
+    --kind round --project-key DEMO --state blocked >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-clear-blocked --feature demo || return 1
+  assert_stdout_contains "1" || return 1
+  _mf=$(_milestone_file)
+  grep -q '^demo-r02	round	30001	DEMO	current$' "$_mf" \
+    || { _fail "milestone_clear_blocked_keeps_current" "linha current de outro nome foi alterada"; return 1; }
+  grep -q 'demo-r03' "$_mf" \
+    && { _fail "milestone_clear_blocked_removed_r03" "linha blocked deveria ter sido removida"; return 1; }
+  return 0
+}
+
+scenario_milestone_clear_blocked_idempotente_sem_blocked() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" milestone-clear-blocked --feature demo || return 1
+  assert_stdout_contains "0" || return 1
+}
+
 # ==== link-get / link-put (r02 FASE 18 tarefa 18.3.2) ====
 
 _link_file() {

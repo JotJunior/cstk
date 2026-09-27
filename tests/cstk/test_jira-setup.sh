@@ -301,6 +301,46 @@ EOF
   return 0
 }
 
+# JS-20/21 (r02 FASE 22 tarefa 22.1.2/22.1.3, achado 22.1): write-config
+# bem-sucedido tambem limpa marcos state=blocked de jira-milestones.tsv
+# (research.md Decision R2-4 "write-config limpa o bloqueio") — a proxima
+# `jira-sync.sh milestone ensure` para aquela chave volta a tentar R13/R12
+# (nao casa mais a guarda de 22.1.1, ja coberta em test_jira-sync.sh SY-92).
+scenario_write_config_sucesso_desbloqueia_marcos() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "./docs/specs/demo"
+  cat > "./docs/specs/demo/jira-milestones.tsv" <<'EOF'
+milestone_name	milestone_kind	jira_version_id	project_key	state
+demo-r02	round		CSTK	blocked
+EOF
+  assert_exit 0 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK board_id=42 \
+    issue_type_epic=10000 issue_type_task=10002 issue_type_subtask=10003 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail="In Review" sync_autonomous=on || return 1
+  assert_stdout_contains "milestone-unblock: 1 marco(s) desbloqueado(s)" || return 1
+  grep -q 'blocked' "./docs/specs/demo/jira-milestones.tsv" \
+    && { _fail "write_config_unblocks_milestone" "linha blocked de jira-milestones.tsv nao foi removida"; return 1; }
+  return 0
+}
+
+scenario_write_config_falho_nao_desbloqueia_marcos() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "./docs/specs/demo"
+  cat > "./docs/specs/demo/jira-milestones.tsv" <<'EOF'
+milestone_name	milestone_kind	jira_version_id	project_key	state
+demo-r02	round		CSTK	blocked
+EOF
+  assert_exit 1 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \
+    config_version=1 site_host=example.atlassian.net project_key=CSTK \
+    issue_type_epic=1 issue_type_task=2 issue_type_subtask=3 \
+    status_pending="To Do" status_in_progress="In Progress" \
+    status_pass=Done status_fail=Failed sync_autonomous=on || return 1
+  grep -q 'blocked' "./docs/specs/demo/jira-milestones.tsv" \
+    || { _fail "write_config_failed_no_unblock" "linha blocked foi removida apesar de write-config ter falhado"; return 1; }
+  return 0
+}
+
 # ==== resolve-link-type (r02 FASE 18 tarefa 18.2.1/18.2.3) ====
 
 scenario_resolve_link_type_unico_candidato_exit0() {

@@ -95,7 +95,10 @@
 #         gravar com sucesso, devolve (best-effort) eventos `auth_failed`
 #         do outbox a `queued` via `jira-sync.sh requeue-auth-failed`
 #         (FR-016 / data-model.md OutboxEvent auth_failed->queued, tasks.md
-#         12.6.1).
+#         12.6.1); e (best-effort, r02 FASE 22 tarefa 22.1.2) limpa toda
+#         linha `state=blocked` de `jira-milestones.tsv` de TODAS as
+#         features via `jira-sync.sh milestone-unblock` (achado 22.1,
+#         research.md Decision R2-4).
 #
 #   (validate-project-key KEY vive em `jira-io.sh`, nao aqui —
 #   contracts/plugin-scripts.md lista a validacao de KEY junto de
@@ -544,6 +547,22 @@ _js_cmd_write_config() {
     else
       printf '%s: aviso — requeue-auth-failed falhou apos gravar config (nao bloqueia a reconfiguracao): %s\n' \
         "$_JS_NAME" "$_jswc_requeue_out" >&2
+    fi
+
+    # r02 FASE 22 tarefa 22.1.2 (achado 22.1, research.md Decision R2-4
+    # "`jira-setup.sh write-config` limpa o bloqueio"): a transicao
+    # `blocked --> current` do data-model.md so acontecia depois de uma
+    # nova RESOLUCAO de marco bem-sucedida, mas a guarda de 22.1.1 nunca
+    # deixava essa nova tentativa acontecer (`state=blocked` persistia
+    # para sempre no sidecar). Limpa (best-effort, mesmo idioma de
+    # requeue-auth-failed acima) toda linha `state=blocked` de
+    # `jira-milestones.tsv` de TODAS as features apos reconfiguracao bem-
+    # sucedida — a proxima `milestone ensure` volta a tentar R13/R12.
+    if _jswc_unblock_out=$("$_JS_JIRA_SYNC_SCRIPT" milestone-unblock 2>&1); then
+      printf '%s\n' "$_jswc_unblock_out"
+    else
+      printf '%s: aviso — milestone-unblock falhou apos gravar config (nao bloqueia a reconfiguracao): %s\n' \
+        "$_JS_NAME" "$_jswc_unblock_out" >&2
     fi
   fi
 

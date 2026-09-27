@@ -896,6 +896,46 @@ EOF
   return 0
 }
 
+# ===================== milestone-unblock (r02 FASE 22 tarefa 22.1.2) ========
+
+scenario_milestone_unblock_sem_feature_todas_zero() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" milestone-unblock || return 1
+  assert_stdout_contains "milestone-unblock: 0 marco(s) desbloqueado(s)" || return 1
+}
+
+scenario_milestone_unblock_sem_feature_varre_todas() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo" "$TMPDIR_TEST/docs/specs/outra"
+  "$REPO_ROOT/plugins/cstk-jira/scripts/jira-map.sh" milestone-put --feature demo --name demo-r02 \
+    --kind round --project-key DEMO --state blocked >/dev/null || return 1
+  "$REPO_ROOT/plugins/cstk-jira/scripts/jira-map.sh" milestone-put --feature outra --name outra-r02 \
+    --kind round --project-key OUTRA --state blocked >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-unblock || return 1
+  assert_stdout_contains "milestone-unblock: 2 marco(s) desbloqueado(s)" || return 1
+  grep -q 'blocked' "$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv" \
+    && { _fail "milestone_unblock_demo_left" "linha blocked de demo nao foi removida"; return 1; }
+  grep -q 'blocked' "$TMPDIR_TEST/docs/specs/outra/jira-milestones.tsv" \
+    && { _fail "milestone_unblock_outra_left" "linha blocked de outra nao foi removida"; return 1; }
+  return 0
+}
+
+scenario_milestone_unblock_com_feature_filtra() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo" "$TMPDIR_TEST/docs/specs/outra"
+  "$REPO_ROOT/plugins/cstk-jira/scripts/jira-map.sh" milestone-put --feature demo --name demo-r02 \
+    --kind round --project-key DEMO --state blocked >/dev/null || return 1
+  "$REPO_ROOT/plugins/cstk-jira/scripts/jira-map.sh" milestone-put --feature outra --name outra-r02 \
+    --kind round --project-key OUTRA --state blocked >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" milestone-unblock --feature demo || return 1
+  assert_stdout_contains "milestone-unblock: 1 marco(s) desbloqueado(s)" || return 1
+  grep -q 'blocked' "$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv" \
+    && { _fail "milestone_unblock_filter_demo_left" "linha blocked de demo (alvo do filtro) nao foi removida"; return 1; }
+  grep -q 'blocked' "$TMPDIR_TEST/docs/specs/outra/jira-milestones.tsv" \
+    || { _fail "milestone_unblock_filter_outra_touched" "linha blocked de outra (fora do filtro) foi removida indevidamente"; return 1; }
+  return 0
+}
+
 # =========================== drain: 4.2.3-4.2.5 (deteccao de conflito/transicao real) ====
 
 # SY-18 drain: sem conflito (sha256(titulo) e status atuais batem com o
@@ -3113,6 +3153,36 @@ scenario_milestone_ensure_403_grava_blocked_exit7() {
     || { _fail "sy78_row" "linha blocked (sem jira_version_id) ausente/incorreta"; return 1; }
 }
 
+# SY-92 (r02 FASE 22 tarefa 22.1.1/22.1.3, achado 22.1): 2a chamada de
+# `ensure` apos o marco JA gravado state=blocked (mesma sequencia de sy78)
+# NAO repete R13/R12 — guard local puramente sobre jira-milestones.tsv, sem
+# nenhuma requisicao nova (nem sequer o GET de project.id). Mutation: remover
+# o guard (22.1.1) faz esta asercao falhar (a 2a chamada voltaria a bater a
+# fila da 1a e sairia do stub por fila esgotada, exit 22, nao exit 7).
+scenario_milestone_ensure_blocked_repetido_zero_chamadas() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[]'
+  _queue_push 403 '{"errorMessages":["Forbidden"]}'
+
+  PATH="$_bin:$PATH" assert_exit 7 "$SCRIPT" milestone ensure --feature demo || return 1
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy92_first_calls" "esperado 3 chamadas na 1a tentativa (project+R13+R12), obtido $(_queue_calls_count)"; return 1; }
+
+  PATH="$_bin:$PATH" assert_exit 7 "$SCRIPT" milestone ensure --feature demo || return 1
+  assert_stdout_contains "status=blocked" || return 1
+  assert_stderr_contains "blocked" || return 1
+
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy92_no_new_calls" "esperado ZERO chamadas novas na 2a tentativa (total continua 3), obtido $(_queue_calls_count)"; return 1; }
+}
+
 scenario_milestone_ensure_off_e_unresolved_sem_rede() {
   _write_full_config
   _append_config_line "milestone_mode=off"
@@ -3640,6 +3710,109 @@ EOF
   _final_label2=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-10.json")
   [ "$_final_label2" = "phase-5" ] \
     || { _fail "sy_labeldrift_marker_final" "esperado written_phase_label=phase-5 no R6 PUT final, obtido: $_final_label2"; return 1; }
+  return 0
+}
+
+# r02 FASE 22 tarefa 22.2.1/22.2.2 (achado 22.2, ciclo 2): resolve --choice
+# overwrite de um ConflictRecord label_drift onde a issue NAO tem NENHUM
+# label phase-* (o humano removeu phase-<N> sem substituir por outro) MUST
+# reaplicar phase-<N> da FASE LOCAL ATUAL (FASE 5,
+# _write_tasks_fase5_1task_1sub_pass) via update.labels SO `add` — nunca
+# ficar com baseline vazia (isso deixaria overwrite com o MESMO efeito de
+# keep_jira, o proprio achado 22.2). O R3 do rebaseline aqui NUNCA e
+# reaproveitado para o label (WRITTEN="" faz `_js_reconcile_phase_label`
+# pular seu proprio R3/R15 e ir direto ao R2 PUT de `add`). Mutation
+# (voltar a re-derivar do estado real da issue, como keep_jira) MUST falhar
+# esta asercao (nenhuma chamada R2 ocorreria, written_phase_label ficaria
+# vazio).
+scenario_resolve_overwrite_label_drift_sem_phase_reaplica_fase_local() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # R3 do rebaseline: issue SEM nenhum label phase-* (so um label humano).
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"},"labels":["prioridade-alta"]}}'
+  # R6 GET (marker atual, sempre lido ANTES do PUT — task 21.1.1); o
+  # written_phase_label antigo (phase-3) e irrelevante aqui: REASON=
+  # label_drift + choice=overwrite forca WRITTEN="" incondicionalmente.
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  # R2 (update.labels, so add — via _js_reconcile_phase_label com WRITTEN="").
+  _queue_push 204 ''
+  # R6 PUT do marker rebaselinado.
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+
+  grep -q 'demo	1\.1	DEMO-2	label_drift	overwrite$' "$(_conflicts_file)" \
+    || { _fail "sy93_resolution" "resolution nao virou overwrite: $(cat "$(_conflicts_file)")"; return 1; }
+
+  [ "$(_queue_calls_count)" = "4" ] \
+    || { _fail "sy93_calls" "esperado 4 chamadas (R3 + R6get marker + R2 label add + R6 marker), obtido $(_queue_calls_count)"; return 1; }
+
+  _lbl_ops=$("$IO_SCRIPT" json-get '.update.labels | tostring' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_lbl_ops" = '[{"add":"phase-5"}]' ] \
+    || { _fail "sy93_label_add_only" "esperado SO add phase-5 (sem remove, label humano intocado), obtido: $_lbl_ops"; return 1; }
+
+  _final_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-4.json")
+  [ "$_final_label" = "phase-5" ] \
+    || { _fail "sy93_marker_label" "esperado written_phase_label=phase-5 no marker rebaselinado, obtido: $_final_label"; return 1; }
+
+  # drain seguinte: item ja com written_phase_label=phase-5 e phase_num
+  # alvo=5 -> reconciliacao no-op idempotente (0 R15/R2/R6put novos); status
+  # ja "Done" (local_state=pass) -> nem R6-PUT de status.
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:01:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-5\"}}"
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "8" ] \
+    || { _fail "sy93_drain_idempotent" "drain seguinte deveria ser idempotente (2 epic + 2 task: so R3/R6get, sem R15/R2/R6put), obtido $(_queue_calls_count)"; return 1; }
+  return 0
+}
+
+# task 21.1.1 (achado 21.1, ciclo 1 desta FASE — regressao): resolve
+# --choice keep_jira do MESMO cenario (issue sem nenhum phase-*) continua
+# com baseline VAZIA (re-derivacao do estado real, nunca reaplicacao) —
+# so `overwrite` (acima) ganhou o comportamento novo de 22.2.1.
+scenario_resolve_keep_jira_label_drift_sem_phase_baseline_vazia() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"},"labels":["prioridade-alta"]}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy94_calls" "keep_jira NUNCA chama R2 (so R3 + R6get marker + R6 marker), obtido $(_queue_calls_count)"; return 1; }
+  _final_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_final_label" = "AUSENTE" ] \
+    || { _fail "sy94_baseline_vazia" "keep_jira deveria manter baseline vazia (nenhum phase-* na issue), obtido: $_final_label"; return 1; }
   return 0
 }
 

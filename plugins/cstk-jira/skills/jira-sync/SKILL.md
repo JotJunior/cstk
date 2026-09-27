@@ -254,31 +254,50 @@ pendente de `(feature, local_key)`, seja o `reason` `manual_edit`/
 `_js_reconcile_epic_milestone`/`_js_reconcile_phase_label` durante o evento
 `reconcile` do drain). O rebaseline do SyncMarker (`_js_rebaseline_marker`,
 usado por `keep_jira` E `overwrite`) trata as duas chaves de baseline
-conforme o `reason` do conflito fechado (task 21.1, plan.md SEC-10):
+conforme o `reason` do conflito fechado (task 21.1, plan.md SEC-10) — e,
+desde r02 FASE 22 tarefa 22.2.1 (achado 22.2), tambem conforme a `--choice`
+para `label_drift` especificamente:
 
-- `manual_edit`/`marker_missing`: `written_fix_version_id`/
+- `manual_edit`/`marker_missing` (qualquer `--choice`): `written_fix_version_id`/
   `written_phase_label` sao PRESERVADAS tal-e-qual do marker atual (lido via
   R6 GET antes do PUT) — resolver um conflito de titulo/status de UM item
   nunca desliga a reconciliacao de marco do Epic nem de label de FASE de
   outro item.
-- `milestone_drift` (so pode ocorrer no Epic, `local_key=feature`): a
-  baseline e RE-DERIVADA do estado REAL do Epic (`fields.fixVersions`),
-  restrita ao id de versao que `jira-map.sh milestone-id-known` reconhece
-  (`current`/`superseded` em `jira-milestones.tsv` daquela feature).
-  `keep_jira` portanto passa a "confirmar o marco atual da issue como novo
-  baseline" de fato — se NENHUM fixVersion do Epic for reconhecido pelo
-  sidecar, a baseline fica vazia (nada a proteger ate a proxima
-  reconciliacao), nunca um id humano adotado as cegas.
-- `label_drift` (Task/Sub-task): mesma disciplina, restrita a um label
-  casando `^phase-[0-9]+$` dentre os labels ATUAIS da issue
-  (`fields.labels`).
-- `overwrite`: alem do rebaseline acima (mesma logica por `reason`),
+- `milestone_drift` (so pode ocorrer no Epic, `local_key=feature`), tanto
+  `keep_jira` quanto `overwrite`: a baseline e RE-DERIVADA do estado REAL do
+  Epic (`fields.fixVersions`), restrita ao id de versao que `jira-map.sh
+  milestone-id-known` reconhece (`current`/`superseded` em
+  `jira-milestones.tsv` daquela feature). `keep_jira` portanto passa a
+  "confirmar o marco atual da issue como novo baseline" de fato — se NENHUM
+  fixVersion do Epic for reconhecido pelo sidecar, a baseline fica vazia
+  (nada a proteger ate a proxima reconciliacao), nunca um id humano adotado
+  as cegas. `overwrite` NAO precisa de tratamento diferente aqui (verificado
+  na tarefa 22.2.1): a reconciliacao de marco do Epic roda incondicionalmente
+  em TODO `drain` (nunca guardada por "so se o marker ja tinha um valor"),
+  entao uma baseline vazia AUTO-CURA no proximo ciclo.
+- `label_drift` (Task/Sub-task) com `--choice keep_jira`: mesma disciplina de
+  `milestone_drift` — RE-DERIVADA de um label ATUAL da issue casando
+  `^phase-[0-9]+$` (`fields.labels`); sem nenhum label reconhecido, baseline
+  fica vazia.
+- `label_drift` com `--choice overwrite`: **NAO re-deriva** do estado atual
+  da issue (achado 22.2 — o cenario mais comum e o humano ter REMOVIDO o
+  `phase-<N>` sem por outro, o que deixaria a baseline vazia para SEMPRE,
+  ja que a reconciliacao de label do drain so dispara para item que JA
+  carrega `written_phase_label` nao-vazio). Em vez disso, REAPLICA
+  `phase-<N>` da FASE LOCAL ATUAL do `local_key` (mesma coluna `phase` de
+  `jira-tasks.sh items`) via `update.labels` **so `add`** (nunca
+  `fields.labels`, nunca remove um label humano, SEC-10) e grava esse valor
+  como `written_phase_label` novo. Sem FASE numerica resolvivel (ex.: Epic),
+  a baseline fica vazia, igual a `keep_jira`.
+- Em qualquer `--choice`, alem do rebaseline acima, `overwrite` tambem
   reenfileira um evento com o `desired_state` do ULTIMO evento outbox
   `conflict` do par ou, na ausencia dele (o caso normal para
   `milestone_drift`/`label_drift`, que nascem de reconciliacao, nunca de um
   evento outbox `conflict`), do `local_state` ATUAL (`pending`/
-  `in_progress`/`pass`/`fail`) via `jira-tasks.sh items` — um conceito de
-  TRANSICAO DE STATUS, independente de marco/label.
+  `in_progress`/`pass`/`fail`) via `jira-tasks.sh items` — essa parte
+  continua sendo um conceito de TRANSICAO DE STATUS; o que mudou em 22.2.1
+  foi SOMENTE o tratamento da baseline de `label_drift`, que agora tambem
+  reage a `--choice` (deixou de ser "independente de marco/label").
 - A proxima chamada de `jira-sync.sh drain` (evento `reconcile`) continua
   reaplicando/checando marco e label a partir da baseline agora correta —
   se a causa raiz nao mudou (ex.: nenhum fixVersion do Epic consta no

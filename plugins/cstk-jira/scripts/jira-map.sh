@@ -81,6 +81,16 @@
 #         NUNCA mexe em outras linhas (o marco anterior aplicado ao Epic
 #         continua vigente ate uma nova resolucao ter sucesso).
 #
+#   jira-map.sh milestone-clear-blocked --feature F
+#       — r02 FASE 22 tarefa 22.1.2 (achado 22.1, research.md Decision R2-4
+#         "`write-config` limpa o bloqueio"): remove (nao rebaixa) TODA linha
+#         `state=blocked` de `docs/specs/F/jira-milestones.tsv` — a proxima
+#         `jira-sync.sh milestone ensure` para aquela (project_key, name)
+#         deixa de casar a guarda de 22.1.1 e tenta R13/R12 de novo. Imprime
+#         em stdout a QUANTIDADE de linhas removidas (numero puro). Idempotente
+#         e best-effort: arquivo ausente ou sem linha `blocked` imprime `0` e
+#         sai exit 0 (nunca erro — nao ha "nada a limpar" invalido).
+#
 #   jira-map.sh link-get --feature F --from A --to B
 #       — r02 FASE 18 tarefa 18.3.2 (data-model.md Entity IssueLink,
 #         `jira-links.tsv`): imprime a linha TSV MAIS RECENTE (ultima
@@ -182,6 +192,13 @@ USO:
       Upsert atomico por (project_key, milestone_name); --version-id
       obrigatorio exceto para --state blocked. Gravar current rebaixa
       qualquer outra current do arquivo para superseded no mesmo write.
+
+  jira-map.sh milestone-clear-blocked --feature F
+      r02 FASE 22 tarefa 22.1.2: remove toda linha state=blocked de
+      jira-milestones.tsv da feature F; imprime a quantidade removida
+      (numero puro). Idempotente: sem linha blocked (ou arquivo ausente),
+      imprime 0 e sai exit 0. A proxima `milestone ensure` para aquela
+      chave volta a tentar R13/R12.
 
   jira-map.sh link-get --feature F --from A --to B
       Imprime a linha TSV mais recente de jira-links.tsv para (from=A,
@@ -623,6 +640,49 @@ _jm_cmd_milestone_put() {
   mv -- "$_jmmp_tmp" "$_jmmp_file"
 }
 
+# --- milestone-clear-blocked -------------------------------------------------
+
+# _jm_cmd_milestone_clear_blocked --feature F — r02 FASE 22 tarefa 22.1.2
+# (achado 22.1, research.md Decision R2-4 "`write-config` limpa o
+# bloqueio"): remove toda linha `state=blocked` de
+# `docs/specs/F/jira-milestones.tsv`. Diferente de `milestone-put`, esta
+# operacao APAGA a linha (nunca a rebaixa a outro `state`) — a proxima
+# `jira-sync.sh milestone ensure` para aquela chave (project_key, name) para
+# de casar a guarda de 22.1.1 e volta a tentar R13/R12 (mesma semantica de
+# "nada gravado no sidecar" ja usada pelo ramo `deferred`, task 16.3.2).
+# Imprime em stdout a quantidade de linhas removidas (numero puro, sem
+# rotulo — chamador soma/agrega). Idempotente e best-effort: arquivo
+# ausente ou sem nenhuma linha `blocked` imprime `0` e sai exit 0.
+_jm_cmd_milestone_clear_blocked() {
+  _jmcb_feature=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature) [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jmcb_feature="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jmcb_feature" ] || _jm_die_usage "milestone-clear-blocked requer --feature F"
+  _jm_is_safe_feature "$_jmcb_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jmcb_feature"
+
+  _jmcb_file=$(_jm_milestone_file "$_jmcb_feature")
+  if [ ! -f "$_jmcb_file" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  _jmcb_before=$(awk -F '\t' 'NR > 1 && $5 == "blocked" { n++ } END { print n + 0 }' "$_jmcb_file")
+  if [ "$_jmcb_before" -eq 0 ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  _jmcb_tmp="$_jmcb_file.tmp.$$"
+  awk -F '\t' 'NR == 1 || $5 != "blocked"' "$_jmcb_file" > "$_jmcb_tmp"
+  mv -- "$_jmcb_tmp" "$_jmcb_file"
+  printf '%s\n' "$_jmcb_before"
+}
+
 # --- milestone-id-known -----------------------------------------------------
 
 # _jm_cmd_milestone_id_known --feature F --project-key K --version-id ID —
@@ -886,6 +946,9 @@ case "$_jm_sub" in
   milestone-put)
     _jm_cmd_milestone_put "$@"
     ;;
+  milestone-clear-blocked)
+    _jm_cmd_milestone_clear_blocked "$@"
+    ;;
   milestone-id-known)
     _jm_cmd_milestone_id_known "$@"
     ;;
@@ -899,6 +962,6 @@ case "$_jm_sub" in
     _jm_cmd_anchor "$@"
     ;;
   *)
-    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put, milestone-id-known, link-get, link-put, anchor)"
+    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put, milestone-clear-blocked, milestone-id-known, link-get, link-put, anchor)"
     ;;
 esac

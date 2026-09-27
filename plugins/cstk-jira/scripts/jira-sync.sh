@@ -220,6 +220,16 @@ USO:
       para TODAS as features (credencial e global ao projeto). Idempotente;
       sem eventos auth_failed, imprime contagem 0 e sai exit 0.
 
+  jira-sync.sh milestone-unblock [--feature F]
+      r02 FASE 22 tarefa 22.1.2 (achado 22.1, research.md Decision R2-4):
+      limpa (via `jira-map.sh milestone-clear-blocked`) toda linha
+      `state=blocked` de `jira-milestones.tsv` apos reconfiguracao bem-
+      sucedida da credencial (chamado por `jira-setup.sh write-config`).
+      Sem --feature, varre TODAS as features sob `docs/specs/*/` (mesma
+      disciplina de `requeue-auth-failed` — a credencial e global ao
+      projeto, nao por feature). Imprime `milestone-unblock: N marco(s)
+      desbloqueado(s)`. Idempotente; sem marcos blocked, N=0 e exit 0.
+
   jira-sync.sh resolve-state-field --dir D --field F
       Le o campo F (top-level ou caminho pontuado, ex:
       "execution.canonical_project") de D/state.json (grep/sed puro, pela
@@ -253,6 +263,10 @@ USO:
       `status=deferred` (exit 1, nada gravado); `403`/`404` em R12 grava
       `state=blocked` em jira-milestones.tsv (via jira-map.sh
       milestone-put) e sai exit 7 (nenhuma issue nova ate reconfiguracao).
+      r02 FASE 22 tarefa 22.1.1: `state=blocked` ja gravado para a mesma
+      (project_key, name) => passthrough `status=blocked` exit 7 SEM
+      rede (nem R13 nem R12) em toda chamada seguinte (`convert`, `drain`
+      reconcile) ate `write-config`/`milestone-unblock` limpar o bloqueio.
 
   jira-sync.sh links --feature F
       r02 FASE 18.4 (FR-025, research.md Decision R2-6; contracts/jira-rest.md
@@ -696,8 +710,8 @@ _js_last_conflict_desired_state() {
   ' "$_JS_OUTBOX_FILE"
 }
 
-# _js_rebaseline_marker IO FEATURE LOCAL_KEY JIRA_KEY [REASON] — feature
-# cstk-jira FASE 12 tarefa 12.1.1 (FR-011 / task 4.3.2 / task 4.3.4
+# _js_rebaseline_marker IO FEATURE LOCAL_KEY JIRA_KEY [REASON] [CHOICE] —
+# feature cstk-jira FASE 12 tarefa 12.1.1 (FR-011 / task 4.3.2 / task 4.3.4
 # `resolve`): le o titulo+status+descricao ATUAIS da issue (R3, mesma
 # leitura que `drain`/`convert` ja fazem) e regrava o SyncMarker (R6 PUT)
 # com ESSES valores — nunca inventa um estado, so espelha o que a issue tem
@@ -733,6 +747,27 @@ _js_last_conflict_desired_state() {
 # (SEC-8/SEC-10). Nenhum id/label reconhecido -> baseline fica vazia (sem
 # marco/label a proteger ate a proxima reconciliacao normal), nunca um
 # palpite.
+# r02 FASE 22 tarefa 22.2.1 (achado 22.2, data-model.md "overwrite
+# reaplica"): CHOICE distingue o tratamento de REASON=label_drift.
+# `keep_jira` (ou CHOICE omitido) mantem a RE-DERIVACAO acima inalterada
+# (21.1). `overwrite` NAO re-deriva de um label que o humano REMOVEU (isso
+# deixaria a baseline vazia para sempre, ja que a reconciliacao de label do
+# drain so dispara para item com `written_phase_label` JA nao-vazio — linha
+# ~2759 — tornando `overwrite` equivalente a `keep_jira`, o proprio achado
+# 22.2): reaplica `phase-<N>` da FASE LOCAL ATUAL do local_key (mesma coluna
+# `phase` de `jira-tasks.sh items` usada por `_js_process_reconcile_event`)
+# via `_js_reconcile_phase_label` com WRITTEN="" — forca um `update.labels`
+# so de `add` (nunca `fields.labels`, nunca remove label humano, SEC-10) —
+# e grava o resultado como `written_phase_label` novo. Sem FASE numerica
+# resolvivel (Epic, ou coluna vazia): baseline fica vazia, igual a
+# `keep_jira`.
+# `overwrite` de REASON=milestone_drift NAO precisou do mesmo tratamento
+# (verificado nesta tarefa, decisao registrada): a reconciliacao de marco do
+# Epic (`_js_reconcile_epic_milestone`, chamada em TODO `drain` para
+# `kind=epic`, sem guard de "so se ja tinha valor") roda incondicionalmente
+# a cada reconcile — uma baseline vazia ainda AUTO-CURA no proximo ciclo,
+# diferente do label (guardado por `written_phase_label` nao-vazio). Mantido
+# como estava: re-derivacao generica abaixo, igual a `keep_jira`.
 # Imprime o status atual (stdout) em sucesso — reuso pelo chamador sem 2a
 # leitura R3. Falha (R3, R6 GET com erro genuino, ou R6 PUT) -> diagnostico
 # em stderr, marker intocado, retorna 1 — chamador NUNCA deve fechar o
@@ -744,6 +779,7 @@ _js_rebaseline_marker() {
   _jrm_lkey="$3"
   _jrm_jkey="$4"
   _jrm_reason="${5:-}"
+  _jrm_choice="${6:-}"
 
   if _jrm_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey?fields=summary,status,description,fixVersions,labels" --op R3 2>/dev/null); then
     :
@@ -822,27 +858,56 @@ _js_rebaseline_marker() {
       fi
       ;;
     label_drift)
-      _jrm_written_phase_label=""
-      _jrm_cur_labels=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.labels[]?')
-      _jrm_ifs_bak=$IFS
-      IFS='
-'
-      for _jrm_lbl in $_jrm_cur_labels; do
-        case "$_jrm_lbl" in
-          phase-*)
-            _jrm_suffix=${_jrm_lbl#phase-}
-            case "$_jrm_suffix" in
-              ''|*[!0-9]*) : ;;
-              *)
-                _jrm_written_phase_label="$_jrm_lbl"
-                IFS=$_jrm_ifs_bak
-                break
-                ;;
-            esac
-            ;;
+      if [ "$_jrm_choice" = "overwrite" ]; then
+        # 22.2.1: `overwrite` NUNCA re-deriva de um label que o humano
+        # removeu (isso deixaria a baseline vazia para sempre — o proprio
+        # achado 22.2). Reaplica `phase-<N>` da FASE LOCAL ATUAL do
+        # local_key (mesma coluna `phase` de `jira-tasks.sh items` que
+        # `_js_process_reconcile_event` usa) via `_js_reconcile_phase_label`
+        # com WRITTEN="" — forca um `update.labels` so de `add` (SEC-10,
+        # nunca remove label humano).
+        _jrm_tasks_script="$(_js_script_dir)/jira-tasks.sh"
+        _jrm_phase=$("$_jrm_tasks_script" items --feature "$_jrm_feature" 2>/dev/null \
+          | awk -F '\t' -v k="$_jrm_lkey" '$1 == k { print $3; exit }')
+        _jrm_phase_num=$(printf '%s' "$_jrm_phase" | awk '{print $2}')
+        case "$_jrm_phase_num" in
+          ''|*[!0-9]*) _jrm_phase_num="" ;;
         esac
-      done
-      IFS=$_jrm_ifs_bak
+        _jrm_written_phase_label=""
+        if [ -n "$_jrm_phase_num" ]; then
+          if _jrm_written_phase_label=$(_js_reconcile_phase_label "$_jrm_feature" "$_jrm_lkey" "$_jrm_jkey" "" "phase-$_jrm_phase_num"); then
+            :
+          else
+            printf '%s: falha ao reaplicar label phase-%s em %s (overwrite de label_drift, R2 PUT) — rebaseline abortado, tente novamente\n' \
+              "$_JS_NAME" "$_jrm_phase_num" "$_jrm_jkey" >&2
+            return 1
+          fi
+        fi
+        # Epic (sem FASE numerica) ou coluna `phase` irreconhecivel: nenhum
+        # label a proteger — baseline vazia, mesmo resultado de `keep_jira`.
+      else
+        _jrm_written_phase_label=""
+        _jrm_cur_labels=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.labels[]?')
+        _jrm_ifs_bak=$IFS
+        IFS='
+'
+        for _jrm_lbl in $_jrm_cur_labels; do
+          case "$_jrm_lbl" in
+            phase-*)
+              _jrm_suffix=${_jrm_lbl#phase-}
+              case "$_jrm_suffix" in
+                ''|*[!0-9]*) : ;;
+                *)
+                  _jrm_written_phase_label="$_jrm_lbl"
+                  IFS=$_jrm_ifs_bak
+                  break
+                  ;;
+              esac
+              ;;
+          esac
+        done
+        IFS=$_jrm_ifs_bak
+      fi
       ;;
   esac
 
@@ -1126,7 +1191,14 @@ _js_milestone_r13_match() {
 # (`name=`/`status=`), permitindo o chamador (`convert`, FASE 16.4) invocar
 # `ensure` sem checar `resolve` antes.
 #
-# Fluxo em rede (so quando resolvido, name+kind):
+# r02 FASE 22 tarefa 22.1.1 (achado 22.1): ANTES de qualquer requisicao,
+# checa `jira-map.sh milestone-get` para a mesma chave (project_key, name)
+# — `state=blocked` ja gravado por uma tentativa anterior => passthrough
+# `status=blocked` exit 7 SEM rede (nem R13 nem R12), com diagnostico em
+# stderr; so some do sidecar via `write-config`/`milestone-unblock`
+# (22.1.2).
+#
+# Fluxo em rede (so quando resolvido, name+kind, e sem bloqueio previo):
 #   1. R13 + casamento exato -> achou: reusa `id`, grava state=current,
 #      `status=current`, exit 0.
 #   2. Nao achou -> R12 (createVersion, description FIXA do plugin):
@@ -1169,6 +1241,28 @@ _js_cmd_milestone_ensure() {
 
   _jsme_project_key=$("$_jsme_config" get project_key)
   "$_jsme_io" validate-segment "$_jsme_project_key"
+
+  # r02 FASE 22 tarefa 22.1.1 (achado 22.1, FR-020/research.md R2-4): marco
+  # ja gravado como state=blocked para a MESMA chave (project_key, name)
+  # nunca repete R13/R12 sozinho — sem isto, `convert` (toda execucao) e o
+  # drain via `_js_reconcile_epic_milestone` (2>/dev/null, silencioso)
+  # repetiam o createVersion negado a cada onda, exatamente o "repetir
+  # silenciosamente" que FR-020 proibe. So `jira-setup.sh write-config`
+  # (via `jira-sync.sh milestone-unblock`, tarefa 22.1.2) limpa o bloqueio —
+  # a linha some do sidecar e esta guarda deixa de casar, retomando R13/R12
+  # normalmente na proxima chamada. ZERO requisicoes quando casa (nem esta
+  # GET de project.id abaixo, nem R13, nem R12).
+  if _jsme_blocked_line=$("$_jsme_map" milestone-get --feature "$_jsme_feature" \
+      --name "$_jsme_name" --project-key "$_jsme_project_key" 2>/dev/null); then
+    _jsme_blocked_state=$(printf '%s' "$_jsme_blocked_line" | cut -f5)
+    if [ "$_jsme_blocked_state" = "blocked" ]; then
+      printf 'name=%s\n' "$_jsme_name"
+      printf 'status=blocked\n'
+      printf '%s: marco "%s" continua blocked (bloqueio de permissao anterior) — ZERO requisicoes (nem R13 nem R12); reconfigure a credencial e rode "jira-setup.sh write-config" para limpar o bloqueio (R2-4)\n' \
+        "$_JS_NAME" "$_jsme_name" >&2
+      exit 7
+    fi
+  fi
 
   _jsme_project_resp=$("$_jsme_io" request GET "/rest/api/3/project/$_jsme_project_key" 2>/dev/null) \
     || _js_die "falha ao resolver project.id via GET /rest/api/3/project/$_jsme_project_key" 1
@@ -3545,7 +3639,7 @@ _js_cmd_resolve() {
         || _js_die "nao foi possivel determinar desired_state (nem evento outbox 'conflict' pendente, nem local_state atual via jira-tasks.sh items) para feature=$_jsr_feature local_key=$_jsr_key" 1
     fi
 
-    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" >/dev/null \
+    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" overwrite >/dev/null \
       || _js_die "falha ao rebaselinear o SyncMarker antes do overwrite — conflito NAO fechado, tente novamente" 1
 
     _jsr_new_eid=$(_js_cmd_enqueue --feature "$_jsr_feature" --local-key "$_jsr_key" \
@@ -3553,7 +3647,7 @@ _js_cmd_resolve() {
   fi
 
   if [ "$_jsr_choice" = "keep_jira" ]; then
-    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" >/dev/null \
+    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" keep_jira >/dev/null \
       || _js_die "falha ao rebaselinear o SyncMarker — conflito NAO fechado, tente novamente" 1
   fi
 
@@ -3638,6 +3732,55 @@ _js_cmd_requeue_auth_failed() {
   printf 'requeue-auth-failed: %s evento(s) auth_failed reenfileirado(s) para queued\n' "$_jsraf_count"
 }
 
+# _js_cmd_milestone_unblock [--feature F] — r02 FASE 22 tarefa 22.1.2
+# (achado 22.1, research.md Decision R2-4 "`write-config` limpa o
+# bloqueio"): delega a `jira-map.sh milestone-clear-blocked` (sidecar
+# de UMA feature por chamada) — sem --feature, varre TODAS as features
+# sob `docs/specs/*/jira-milestones.tsv` (mesmo estilo glob de
+# `_js_orphan_rows`; mesma razao de `requeue-auth-failed`: a credencial
+# do ProjectConfig e GLOBAL ao projeto, nao por feature). Best-effort e
+# idempotente: nenhuma feature com marco blocked -> imprime contagem 0,
+# exit 0 — nunca falha por "nada para fazer" (chamado por
+# `jira-setup.sh write-config` apos reconfiguracao bem-sucedida).
+_js_cmd_milestone_unblock() {
+  _jsmu_feature=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _js_die_usage "milestone-unblock: --feature requer valor"
+        _jsmu_feature="$2"
+        shift 2
+        ;;
+      *)
+        _js_die_usage "milestone-unblock: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  if [ -n "$_jsmu_feature" ] && ! _js_is_safe_feature "$_jsmu_feature"; then
+    _js_die_usage "milestone-unblock: --feature invalido: $_jsmu_feature"
+  fi
+
+  _jsmu_map="$(_js_script_dir)/jira-map.sh"
+  _jsmu_total=0
+
+  if [ -n "$_jsmu_feature" ]; then
+    _jsmu_n=$("$_jsmu_map" milestone-clear-blocked --feature "$_jsmu_feature" 2>/dev/null) || _jsmu_n=0
+    case "$_jsmu_n" in ''|*[!0-9]*) _jsmu_n=0 ;; esac
+    _jsmu_total=$_jsmu_n
+  else
+    for _jsmu_mf in ./docs/specs/*/jira-milestones.tsv; do
+      [ -f "$_jsmu_mf" ] || continue
+      _jsmu_feat=$(basename "$(dirname -- "$_jsmu_mf")")
+      _jsmu_n=$("$_jsmu_map" milestone-clear-blocked --feature "$_jsmu_feat" 2>/dev/null) || _jsmu_n=0
+      case "$_jsmu_n" in ''|*[!0-9]*) _jsmu_n=0 ;; esac
+      _jsmu_total=$((_jsmu_total + _jsmu_n))
+    done
+  fi
+
+  printf 'milestone-unblock: %s marco(s) desbloqueado(s)\n' "$_jsmu_total"
+}
+
 # _js_cmd_resolve_state_field --dir DIR --field FIELD — task 13.1.1
 # (Constitution II carve-out 1.1.0): subcomando fino sobre
 # `_js_resolve_state_field`, para que QUALQUER call-site do plugin que
@@ -3699,6 +3842,9 @@ case "$_js_sub" in
   requeue-auth-failed)
     _js_cmd_requeue_auth_failed "$@"
     ;;
+  milestone-unblock)
+    _js_cmd_milestone_unblock "$@"
+    ;;
   resolve-state-field)
     _js_cmd_resolve_state_field "$@"
     ;;
@@ -3709,6 +3855,6 @@ case "$_js_sub" in
     _js_cmd_links "$@"
     ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, resolve-state-field, milestone, links)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, milestone-unblock, resolve-state-field, milestone, links)"
     ;;
 esac
