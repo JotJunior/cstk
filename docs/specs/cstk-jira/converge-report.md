@@ -322,3 +322,52 @@ Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`, t
 
 Gate MUST: `extract-must --coverage` => 17 ocorrencias, 5 linhas reconhecidas, 5 principios (I, II, III, IV, VI), 0 so por heading, `cobertura de MUST: ok`. Principio II honrado: em `jira-sync.sh`, `sqlite3` so aparece em usage e comentarios (~239, ~424, ~432, ~3988). Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T21:37:17Z; actionable=4; tasks-digest=de6339141e6b -->
+
+## Round r02 — Ciclo 8 (onda-033) — clean
+
+Conferencia da FASE 27 no CODIGO e nos testes:
+
+| achado c7 | veredito | evidencia |
+|-----------|----------|-----------|
+| 27.1 | fechado | `test_jira-mutation.sh` ~1844-1916 `scenario_mutation_21_1_2_rebaseline_marker_carryforward`. Guarda `mutant_stale` ~1876-1879 (as 2 leituras `_jrm_written_fixver=$(printf`/`_jrm_written_phase_label=$(printf`). Mutacao via python3 com `assert old in content` ~1880-1893, que troca as 2 linhas juntas. Checagem de aplicacao ~1894-1898. Controle no original ~1861-1871: 3 chamadas, R6 PUT preserva `10099`/`phase-3`. Mutante ~1906-1914: as 2 chaves MUST ficar `AUSENTE`. O padrao casa `jira-sync.sh:829-830` |
+| 27.2 | fechado | ~1932-2023 `scenario_mutation_21_2_2_links_r17_404_sem_cascata`. Guarda ~2002-2003, mutacao sed ~2004-2005, checagem ~2006-2007. Controle ~1984-1997: `linking=enabled`, `links_active=2`, `links_unrepresentable=1`, 3 chamadas, nenhuma linha `linking_disabled`. Mutante ~2013-2021: MUST NOT `links_active=2` e MUST NOT 3 chamadas. O padrao casa `jira-sync.sh:1607` |
+| 27.3 | fechado | ~2033-2075 `scenario_mutation_22_1_3_milestone_ensure_blocked_guard`. Guarda ~2062-2063, mutacao `if false; then` ~2064-2065, checagem ~2066-2067. Controle ~2049-2057: exit 7 nas 2 chamadas, total de chamadas continua 3. Mutante ~2070-2073: total MUST NOT continuar 3. O padrao casa `jira-sync.sh:1270` |
+| 27.4 | fechado | ~2087-2152 `scenario_mutation_22_2_2_overwrite_label_drift_reaplica_fase_local`. Guarda ~2130-2131, mutacao ~2132-2133, checagem ~2134-2135. Controle ~2114-2124: 4 chamadas, R2 `[{"add":"phase-5"}]`, marker `phase-5`. Mutante ~2143-2150: 3 chamadas, `written_phase_label` `AUSENTE`. O padrao casa `jira-sync.sh:861` |
+
+Helper `_make_curl_stub_seq` (~142-196): usa diretorio (`bin-seq`) e mapa (`io-curl-map-seq`) proprios. Consome em FIFO a 1a linha do mapa que casa a URL e a remove em seguida. Quando a URL aparece uma unica vez, o efeito e o mesmo de `_make_curl_stub`. `_make_curl_stub` (~99-140) nao mudou: `git diff 8cb8553 0f5b83f` na suite tem so 2 hunks, ambos de insercao pura (`@@ -139,6 +139,62 @@` e `@@ -1773,4 +1829,326 @@`). Nenhuma outra suite usa o helper. `git diff c16995c HEAD -- plugins/` vem vazio, e `git diff e88ce0c HEAD -- plugins/` tambem: o codigo do plugin e o mesmo desde a onda-028.
+
+Suite `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C sh tests/cstk/test_jira-mutation.sh`: exit 0, 29/29, zero `not ok`, `ok 13`-`ok 16` sao os 4 cenarios novos. Os 25 cenarios anteriores seguem `ok`, entao nenhum teste existente mudou de comportamento. Desde `aaf077e`, `test_jira-mutation.sh` e o unico arquivo alterado em `tests/` e `plugins/`, e por isso as demais suites nao foram re-rodadas. As contagens do ciclo 7 continuam validas.
+
+Varredura de fechamento das FASES 15-27: extracao por bloco de tarefa (inclui as linhas de continuacao) de toda tarefa com mutation/mutante. 36 tarefas, todas `[x]`. Cada uma tem cenario definido (`^scenario_mutation_<id>()`), ou e a propria tarefa que cria o cenario:
+
+- 24 cenarios em `test_jira-mutation.sh`: 16.1.5, 16.2.5, 16.3.7, 16.4.7, 17.1.4, 17.3.6, 18.1.4, 18.2.4, 18.3.5, 18.4.7, 19.1.3/19.1.8/19.1.9 (-> 19_1_9), 19.2.4, 21.1.2, 21.2.2, 22.1.3, 22.2.2, 23.1.3/24.1.4 (-> 24_1_4), 24.1.3 (-> 24_1_1 + 24_1_2), 24.2.2 (-> 24_2_1), 24.3.3 (-> 24_3_1), 24.4.2 (-> 24_4_1), 24.5.2 (-> 24_5_1), 25.1.2/26.1.1 (-> 25_1_1).
+- 2 em `test_jira-config.sh`: 20.1.5, 21.4.2.
+- 1 em `test_jira-setup.sh`: 21.5.3.
+- 25.2.1 e 27.1.1-27.4.1 sao as tarefas que criam os cenarios.
+- 20.4.3 so cita cenarios no texto e nao exige mutacao.
+
+**Zero ausencias.**
+
+Revisao final de FR-020..FR-025. O codigo de `plugins/cstk-jira/` nao mudou desde a onda-028, entao os vereditos de codigo do ciclo 6/7 seguem validos, agora com os guards presentes:
+
+- FR-020: fechado. O guard 27.3 existe.
+- FR-021 e FR-023: sem gap.
+- FR-022: fechado. Os guards 27.1 e 27.4 existem.
+- FR-024: sem gap (19.1.9, 19.2.4).
+- FR-025: fechado. O guard 27.2 existe.
+- Residuais LOW aceitos, nenhum codigo tocado: **dec-081**, **dec-088**, **dec-095 (a/b/c)**, **dec-099**, **dec-105**. Seguem LOW.
+- Nota LOW nova, sem gap: em 27.2, `mutant_run` exige exit 0 do mutante. Se o mutante mudar de exit, o cenario falha ruidosamente, nunca em silencio. Conservador, nenhuma acao.
+
+Gate MUST: `extract-must` => I, II, III, IV, VI (exit 0). `--coverage`:
+
+```
+fontes declaradas: docs/constitution.md
+ocorrencias da palavra MUST no arquivo (contagem independente): 17
+linhas de regra MUST reconhecidas pelo parser: 5
+principios emitidos: 5
+principios emitidos so por rotulo de heading (sem regra MUST lida): 0
+cobertura de MUST: ok
+```
+
+Achados acima de LOW: 0. missing 0 | partial 0 | contradicts 0 | unrequested 0. Nenhuma fase apendada: feature convergida no round r02.
+<!-- converge-status: outcome=clean; provenance=gate; at=2026-09-27T22:18:15Z; actionable=0; tasks-digest=2d0fcfd15088 -->
