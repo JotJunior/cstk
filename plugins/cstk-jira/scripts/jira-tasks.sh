@@ -27,6 +27,16 @@
 #           ou da chave (exit != 0 de jira-config.sh) e tratada como "nao
 #           configurado" — cai na regra de agregacao por tasks.
 #
+#   jira-tasks.sh phase-edges --feature F
+#       — r02 FASE 18 tarefa 18.3.1 (data-model.md Entity IssueLink;
+#         research.md Decision R2-6; contracts/plugin-scripts.md
+#         `jira-tasks.sh phase-edges`): imprime uma linha `A<TAB>B` (numeros
+#         puros, sem o prefixo "FASE") por aresta `FA --> FB` da secao
+#         "## Matriz de Dependencias" de tasks.md — mesmo parser mermaid de
+#         `phase-deps`, mas devolvendo TODAS as arestas de uma vez (nao
+#         filtrado por uma FASE-alvo). Sem secao Matriz ou sem arestas:
+#         stdout vazio, exit 0 (nunca erro).
+#
 # Nota sobre tasks.md 2.2.5 ("Titulo do Epic prefixado por fase
 # `[FASE N] N.M <titulo>`"): o padrao `[FASE N] N.M <titulo>` so faz
 # sentido para uma TASK (tem N.M — o Epic nao tem), o que bate com o
@@ -71,6 +81,11 @@ USO:
       `phase` de `items` (ex.: "FASE 6 - Skills Interativas"). Sem numero de
       fase reconhecivel, sem secao Matriz, ou sem aresta apontando para essa
       fase: stdout vazio, exit 0 (dependencia "quando existir").
+
+  jira-tasks.sh phase-edges --feature F
+      Imprime uma linha A<TAB>B (numeros de FASE) por aresta FA --> FB da
+      "## Matriz de Dependencias" (mesmo parser de phase-deps). Sem secao/
+      arestas: stdout vazio, exit 0.
 
 Le <cwd>/docs/specs/F/tasks.md (obrigatorio) e <cwd>/docs/specs/F/spec.md
 (opcional, titulo do Epic).
@@ -399,6 +414,55 @@ _jt_cmd_phase_deps() {
   ' "$_jtpd_tasks_file"
 }
 
+# _jt_cmd_phase_edges --feature F — r02 FASE 18 tarefa 18.3.1 (data-model.md
+# Entity IssueLink; research.md Decision R2-6): imprime uma linha `A<TAB>B`
+# (numeros PUROS, sem "FASE") por aresta `FA --> FB` da secao "## Matriz de
+# Dependencias" — mesmo parser mermaid de `_jt_cmd_phase_deps`, mas sem
+# filtrar por FASE-alvo (todas as arestas de uma vez). Sem secao/arestas:
+# stdout vazio, exit 0.
+_jt_cmd_phase_edges() {
+  _jtpe_feature=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)
+        [ "$#" -ge 2 ] || _jt_die_usage "--feature requer valor"
+        _jtpe_feature="$2"
+        shift 2
+        ;;
+      *)
+        _jt_die_usage "argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$_jtpe_feature" ] || _jt_die_usage "phase-edges requer --feature F"
+  _jt_is_safe_feature "$_jtpe_feature" \
+    || _jt_die_usage "--feature invalido (charset [A-Za-z0-9_-]): '$_jtpe_feature'"
+
+  _jtpe_tasks_file="./docs/specs/$_jtpe_feature/tasks.md"
+  [ -f "$_jtpe_tasks_file" ] || _jt_die "tasks.md nao encontrado: $_jtpe_tasks_file" 1
+
+  awk '
+    BEGIN { in_matrix = 0; in_flow = 0 }
+    /^## Matriz de Dependencias/ { in_matrix = 1; next }
+    in_matrix && /^## / { in_matrix = 0 }
+    in_matrix && $0 ~ /^```mermaid/ { in_flow = 1; next }
+    in_matrix && in_flow && $0 ~ /^```/ { in_flow = 0; next }
+    in_flow && match($0, /^[ \t]*F[0-9]+[ \t]*-->[ \t]*F[0-9]+/) {
+      seg = substr($0, RSTART, RLENGTH)
+      arrow = index(seg, "-->")
+      from = substr(seg, 1, arrow - 1)
+      to = substr(seg, arrow + 3)
+      gsub(/[ \t]/, "", from)
+      gsub(/[ \t]/, "", to)
+      sub(/^F/, "", from)
+      sub(/^F/, "", to)
+      print from "\t" to
+    }
+  ' "$_jtpe_tasks_file"
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _jt_sub="${1:-}"
@@ -415,7 +479,10 @@ case "$_jt_sub" in
   phase-deps)
     _jt_cmd_phase_deps "$@"
     ;;
+  phase-edges)
+    _jt_cmd_phase_edges "$@"
+    ;;
   *)
-    _jt_die_usage "subcomando desconhecido: $_jt_sub (validos: items, phase-deps)"
+    _jt_die_usage "subcomando desconhecido: $_jt_sub (validos: items, phase-deps, phase-edges)"
     ;;
 esac

@@ -2242,12 +2242,20 @@ research.md Decision R2-6; spec.md FR-025 Clarification.
       candidatos — implementado como membership pura (mesmo idioma de
       `check-status-mapping`/R5: a network/R16 fica na skill, o script
       so valida)
-- [ ] 18.1.2 Skill `jira-setup` (passo novo): lista os tipos de R16
+- [x] 18.1.2 Skill `jira-setup` (passo novo): lista os tipos de R16
       rotulados como conteudo externo (`[UNTRUSTED-JIRA]`, SEC-2 extensao
       + SEC-13); operador confirma um `link_type_id`, gravado em
-      ProjectConfig; vazio => regra de candidato unico automatico (18.2)
-      — PENDENTE (so a prosa da skill; `check-link-type` ja pronto e
-      testado acima)
+      ProjectConfig; vazio => regra de candidato unico automatico (18.2) —
+      implementado como nova ETAPA 7 "Tipo de link de dependencia" em
+      `plugins/cstk-jira/skills/jira-setup/SKILL.md` (renumerada
+      "Gravacao atomica" para ETAPA 8; fluxo de execucao no topo do
+      arquivo atualizado de 7 para 8 passos): descoberta via `jira-io.sh
+      request GET /rest/api/3/issueLinkType` + `json-get`, apresentacao
+      rotulada `[UNTRUSTED-JIRA]` (id/name/inward/outward NUNCA tratados
+      como instrucao), confirmacao validada por `jira-setup.sh
+      check-link-type` (18.1.1, SEC-13), pular grava `link_type_id` vazio
+      e delega a 18.2/18.4; `write-config` (ETAPA 8) documentado com
+      `link_type_id=...` OPCIONAL.
 - [x] 18.1.3 Teste: `check-link-type` com `ID` fora da lista de candidatos
       => exit 1; `ID` presente => exit 0; nenhuma tool/skill usa
       `name`/`inward`/`outward` da resposta para decidir automaticamente
@@ -2265,49 +2273,121 @@ research.md Decision R2-6; spec.md FR-025 Clarification.
 Ref: research.md Decision R2-6; spec.md FR-025 Clarification (comparacao
 semantica inward/outward).
 
-- [ ] 18.2.1 `link_type_id` vazio em ProjectConfig: comparar
+- [x] 18.2.1 `link_type_id` vazio em ProjectConfig: comparar
       (case-insensitive) as frases `inward`/`outward` de CADA tipo
       devolvido por R16 contra o vocabulario "bloqueia"/"e bloqueado por"
       (raiz fixa `block`, nunca texto arbitrario); exatamente 1 candidato
       => usa; 0 ou >1 candidatos ambiguos => `unrepresentable` (nunca
-      escolha arbitraria)
-- [ ] 18.2.2 SEC-13: a escolha automatica SO considera `id`s de R16
+      escolha arbitraria) — implementado em `jira-setup.sh
+      resolve-link-type` (novo subcomando PURO, sem rede): le stdin
+      `ID<TAB>INWARD<TAB>OUTWARD` por candidato, exige raiz `block` em
+      inward E outward (case-insensitive, `tolower`); 1 candidato imprime
+      o ID (exit 0); 0 => `unrepresentable reason=no_link_type`; 2+ =>
+      `unrepresentable reason=ambiguous_link_type` (nunca escolhe o
+      primeiro).
+- [x] 18.2.2 SEC-13: a escolha automatica SO considera `id`s de R16
       chamado NA MESMA execucao (nunca cache de execucao anterior) e
       NUNCA substitui um `link_type_id` ja confirmado manualmente pelo
-      operador
-- [ ] 18.2.3 Teste: instancia com 1 tipo cujo `outward` casa "blocks" =>
+      operador — satisfeito por desenho: `resolve-link-type` e PURO (le
+      so o stdin desta invocacao, nenhum cache/arquivo proprio); e
+      chamado exclusivamente quando `link_type_id` esta vazio em
+      ProjectConfig (a skill/motor de sync so invoca esta regra na
+      AUSENCIA de confirmacao manual — documentado na ETAPA 7 de
+      `SKILL.md`, 18.1.2).
+- [x] 18.2.3 Teste: instancia com 1 tipo cujo `outward` casa "blocks" =>
       escolhido automaticamente; instancia com 2 tipos candidatos
       ambiguos => `unrepresentable reason=ambiguous_link_type`; instancia
       sem nenhum tipo compativel => `unrepresentable reason=no_link_type`
-- [ ] 18.2.4 Mutation test: reverter 18.2.1 para escolher o PRIMEIRO
+      — `tests/cstk/test_jira-setup.sh`
+      `scenario_resolve_link_type_unico_candidato_exit0`/
+      `scenario_resolve_link_type_zero_candidatos_no_link_type`/
+      `scenario_resolve_link_type_ambiguo_nao_escolhe_primeiro`/
+      `scenario_resolve_link_type_case_insensitive`/
+      `scenario_resolve_link_type_exige_inward_e_outward`/
+      `scenario_resolve_link_type_argumento_posicional_exit2`/
+      `scenario_resolve_link_type_stdin_vazio_no_link_type` —
+      `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C sh tests/run.sh jira-setup`:
+      22/22 PASS. `shellcheck -s sh` limpo em `jira-setup.sh`.
+- [x] 18.2.4 Mutation test: reverter 18.2.1 para escolher o PRIMEIRO
       candidato em caso de ambiguidade (em vez de `unrepresentable`) faz o
-      teste de 18.2.3 falhar
+      teste de 18.2.3 falhar —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_18_2_4_resolve_link_type_ambiguity_picks_first`
+      (14/14 verdes em `sh tests/run.sh jira-mutation`).
 
 ### 18.3 `jira-tasks.sh phase-edges` e `jira-map.sh link-get`/`link-put` (sidecar) `[A]`
 
 Ref: contracts/plugin-scripts.md `jira-tasks.sh phase-edges`/
 `jira-map.sh` r02; data-model.md Entity IssueLink (`jira-links.tsv`).
 
-- [ ] 18.3.1 `jira-tasks.sh phase-edges --feature F`: uma linha `A<TAB>B`
+- [x] 18.3.1 `jira-tasks.sh phase-edges --feature F`: uma linha `A<TAB>B`
       por aresta `FASE A --> FASE B` da `## Matriz de Dependencias` de
       `tasks.md` (mesmo parser de `phase-deps`); sem secao/arestas =>
-      stdout vazio, exit 0
-- [ ] 18.3.2 `jira-map.sh link-put --feature F --from A --to B
+      stdout vazio, exit 0 — implementado em `_jt_cmd_phase_edges`
+      (`jira-tasks.sh`), mesmo parser mermaid de `phase-deps` mas
+      devolvendo TODAS as arestas de uma vez (numeros puros, sem prefixo
+      "FASE").
+- [x] 18.3.2 `jira-map.sh link-put --feature F --from A --to B
       --blocker-key K --blocked-key K --type-id ID --state S [--reason
       R]`: upsert atomico pela chave natural `(from_phase, to_phase,
       blocker_key, blocked_key)`; NUNCA remove linha (transicoes para
-      `stale`, jamais apagar — FR-012)
-- [ ] 18.3.3 Ancora de uma FASE = Task de menor `local_key` da fase com
+      `stale`, jamais apagar — FR-012) — implementado em `_jm_cmd_link_put`
+      + `_jm_cmd_link_get` (`jira-map.sh`, sidecar `jira-links.tsv`,
+      cabecalho `from_phase	to_phase	blocker_key	blocked_key	link_type_id	state	reason`),
+      mesmo idioma de upsert de `milestone-put`; `--state unrepresentable`
+      aceita `--blocker-key`/`--blocked-key`/`--type-id` vazios mas exige
+      `--reason` (enum `no_anchor`/`no_link_type`/`ambiguous_link_type`/
+      `linking_disabled`/`limit`/`anchor_changed`); `link-get` devolve a
+      linha MAIS RECENTE (ultima gravada) para `(from,to)`.
+- [x] 18.3.3 Ancora de uma FASE = Task de menor `local_key` da fase com
       linha `active` no `jira-map.tsv` (research R2-6); FASE sem ancora
-      mapeada => `unrepresentable reason=no_anchor`
-- [ ] 18.3.4 Teste: `phase-edges` sobre a Matriz de Dependencias real de
+      mapeada => `unrepresentable reason=no_anchor` — implementado em
+      `jira-map.sh anchor --feature F --phase N` (novo subcomando):
+      cruza `jira-tasks.sh items` (kind=task, 2a palavra da coluna phase)
+      com as linhas `active` do proprio `jira-map.tsv`, comparacao
+      NUMERICA do componente `M` de `N.M` (nunca lexicografica — evita
+      `6.10` < `6.2` por ordenacao de string); imprime
+      `local_key<TAB>jira_key`; arquivo `jira-map.tsv` ausente e tratado
+      como "nenhuma active" (nao fatal — mesmo diagnostico `no_anchor`).
+- [x] 18.3.4 Teste: `phase-edges` sobre a Matriz de Dependencias real de
       `tasks.md` (FASE 0-14) devolve as arestas documentadas na secao
       (ex.: `0<TAB>3`); `link-put` seguido de `link-get` recupera os
       mesmos valores; 2a chamada de `link-put` com o MESMO `state=active`
-      nao duplica linha
-- [ ] 18.3.5 Mutation test: reverter 18.3.2 para permitir remocao de
+      nao duplica linha — confirmado empiricamente rodando
+      `plugins/cstk-jira/scripts/jira-tasks.sh phase-edges --feature
+      cstk-jira` contra este proprio `tasks.md`: 1a linha da saida real e
+      `0	3` (bate com o exemplo). Cobertura de teste:
+      `tests/cstk/test_jira-tasks.sh`
+      `scenario_phase_edges_multiplas_arestas`/
+      `scenario_phase_edges_sem_secao_matriz`/
+      `scenario_phase_edges_secao_sem_arestas`/
+      `scenario_phase_edges_tasks_ausente_exit1`/
+      `scenario_phase_edges_sem_feature_exit2`/
+      `scenario_phase_edges_feature_charset_invalido_exit2` (29/29 em
+      `sh tests/run.sh jira-tasks`); `tests/cstk/test_jira-map.sh`
+      `scenario_link_put_primeira_insercao_active`/
+      `scenario_link_get_existente_e_ausente`/
+      `scenario_link_get_arquivo_ausente_exit1`/
+      `scenario_link_put_mesma_chave_active_nao_duplica`/
+      `scenario_link_put_stale_atualiza_nunca_remove`/
+      `scenario_link_put_unrepresentable_campos_vazios_exige_reason`/
+      `scenario_link_put_active_sem_reason_grava_vazio`/
+      `scenario_link_put_state_invalido_exit2`/
+      `scenario_link_put_reason_invalido_exit2`/
+      `scenario_link_put_active_sem_blocker_key_exit2`/
+      `scenario_anchor_menor_local_key_active`/
+      `scenario_anchor_prefere_menor_quando_ambas_active`/
+      `scenario_anchor_fase_sem_task_exit1`/
+      `scenario_anchor_fase_sem_mapeamento_active_exit1`/
+      `scenario_anchor_phase_nao_numerico_exit2` (41/41 em
+      `sh tests/run.sh jira-map`). `shellcheck -s sh` limpo em
+      `jira-tasks.sh`/`jira-map.sh`. `contracts/plugin-scripts.md`
+      atualizado (`phase-edges`/`link-get`/`link-put`/`anchor`
+      documentados).
+- [x] 18.3.5 Mutation test: reverter 18.3.2 para permitir remocao de
       linha faz um teste "linha `stale` nunca desaparece do arquivo"
-      falhar
+      falhar —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_18_3_5_link_put_stale_never_disappears`
+      (14/14 verdes em `sh tests/run.sh jira-mutation`).
 
 ### 18.4 `jira-sync.sh links` — reconciliacao e criacao (R17) `[A]`
 

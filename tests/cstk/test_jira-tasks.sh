@@ -298,6 +298,17 @@ EOF
 #   JT-21 phase-deps: tasks.md ausente -> exit 1 (mesma disciplina de items)
 #   JT-22 phase-deps: --phase vazio -> exit 2 (uso incorreto, mesma
 #         disciplina de --feature/--phase obrigatorios nos demais subcomandos)
+#
+# =========================== phase-edges (r02 FASE 18 tarefa 18.3.1) =======
+#
+#   JT-23 phase-edges: Matriz com N arestas -> imprime N linhas A<TAB>B
+#         (numeros PUROS, sem prefixo FASE), na ordem do arquivo
+#   JT-24 phase-edges: sem secao Matriz -> stdout vazio, exit 0
+#   JT-25 phase-edges: secao Matriz sem nenhuma aresta (so nodes) -> stdout
+#         vazio, exit 0
+#   JT-26 phase-edges: tasks.md ausente -> exit 1
+#   JT-27 phase-edges: --feature ausente -> exit 2
+#   JT-28 phase-edges: --feature charset invalido -> exit 2
 
 scenario_phase_deps_com_aresta_de_entrada() {
   cd "$TMPDIR_TEST" || return 1
@@ -440,6 +451,98 @@ EOF
   _num=$(printf '%s' "$_phase_col" | awk '{print $2}')
   [ "$_num" = "12" ] \
     || { _fail "items_phase_number_extraivel" "esperado 2a palavra=12, obtido '$_num' (coluna phase='$_phase_col')"; return 1; }
+}
+
+# ==== phase-edges (r02 FASE 18 tarefa 18.3.1) ====
+
+scenario_phase_edges_multiplas_arestas() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 0 - Zero `[C]`
+
+### 0.1 Tarefa `[C]`
+
+- [ ] 0.1.1 sub
+
+## FASE 3 - Tres `[A]`
+
+### 3.1 Tarefa `[A]`
+
+- [ ] 3.1.1 sub
+
+## FASE 8 - Oito `[A]`
+
+### 8.1 Tarefa `[A]`
+
+- [ ] 8.1.1 sub
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F0[FASE 0 - Zero]
+    F3[FASE 3 - Tres]
+    F8[FASE 8 - Oito]
+
+    F0 --> F3
+    F3 --> F8
+```
+EOF
+  assert_exit 0 "$SCRIPT" phase-edges --feature demo || return 1
+  assert_stdout_match '^0	3$' || return 1
+  assert_stdout_match '^3	8$' || return 1
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '.')
+  [ "$_n" = "2" ] || { _fail "jt23_edge_count" "esperado 2 linhas, obtido $_n"; return 1; }
+}
+
+scenario_phase_edges_sem_secao_matriz() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fase Um `[A]`
+
+### 1.1 Tarefa `[M]`
+
+- [x] 1.1.1 sub um
+EOF
+  assert_exit 0 "$SCRIPT" phase-edges --feature demo || return 1
+  [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "jt24_sem_matriz" "esperado stdout vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_phase_edges_secao_sem_arestas() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_tasks_md <<'EOF'
+## FASE 1 - Fase Um `[A]`
+
+### 1.1 Tarefa `[M]`
+
+- [x] 1.1.1 sub um
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Fase Um]
+```
+EOF
+  assert_exit 0 "$SCRIPT" phase-edges --feature demo || return 1
+  [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "jt25_sem_arestas" "esperado stdout vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_phase_edges_tasks_ausente_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 "$SCRIPT" phase-edges --feature naoexiste || return 1
+}
+
+scenario_phase_edges_sem_feature_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" phase-edges || return 1
+}
+
+scenario_phase_edges_feature_charset_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" phase-edges --feature "../etc" || return 1
 }
 
 run_all_scenarios

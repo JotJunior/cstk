@@ -40,6 +40,24 @@
 #         com a lista de candidatos no diagnostico; nunca aceita um id
 #         digitado de memoria.
 #
+#   jira-setup.sh resolve-link-type
+#       — r02 FASE 18 tarefa 18.2.1/18.2.2 (research.md Decision R2-6;
+#         spec.md FR-025 Clarification): usado quando `link_type_id` esta
+#         VAZIO em ProjectConfig (operador nao confirmou nenhum na ETAPA 7
+#         do setup). Le de stdin, uma linha TAB-separada por tipo REALMENTE
+#         devolvido por R16 NESTA MESMA execucao (SEC-13, mesmo idioma de
+#         check-link-type): `ID<TAB>INWARD<TAB>OUTWARD`. Compara
+#         (case-insensitive) `INWARD` e `OUTWARD` contra a raiz fixa
+#         "block" (nunca vocabulario arbitrario); candidato = linha cujas
+#         DUAS frases contem a raiz. Exatamente 1 candidato -> imprime o
+#         `ID` em stdout, exit 0. 0 candidatos -> exit 1, diagnostico
+#         "unrepresentable reason=no_link_type". 2+ candidatos (ambiguidade)
+#         -> exit 1, diagnostico "unrepresentable reason=ambiguous_link_type"
+#         (NUNCA escolhe arbitrariamente o primeiro). Puro/deterministico —
+#         nenhuma chamada de rede aqui (a leitura de R16 fica na skill/no
+#         motor de sync, mesma divisao de responsabilidade de
+#         check-link-type).
+#
 #   jira-setup.sh write-config KEY=VALUE [KEY=VALUE...]
 #       — Grava `ProjectConfig` (mesmo arquivo/formato de `jira-config.sh`,
 #         `${CSTK_JIRA_CONFIG:-./.claude/cstk-jira/config}`) de forma
@@ -83,6 +101,12 @@ USO:
       Valida que ID (link_type_id confirmado pelo operador) esta entre os
       CANDIDATE_ID... devolvidos por GET /rest/api/3/issueLinkType (R16)
       nesta execucao. ID fora da lista => exit 1 com os candidatos.
+
+  jira-setup.sh resolve-link-type
+      Le de stdin linhas ID<TAB>INWARD<TAB>OUTWARD (tipos de R16 desta
+      execucao). Exatamente 1 linha com inward E outward contendo "block"
+      (case-insensitive) => imprime o ID, exit 0. 0 ou 2+ candidatos =>
+      exit 1 com "unrepresentable reason=no_link_type|ambiguous_link_type".
 
   jira-setup.sh write-config KEY=VALUE [KEY=VALUE...]
       Grava ProjectConfig atomicamente (temp file + jira-config.sh validate
@@ -174,6 +198,50 @@ _js_cmd_check_link_type() {
   return 0
 }
 
+# _js_cmd_resolve_link_type — r02 FASE 18 tarefa 18.2.1/18.2.2. Le de
+# stdin: ID<TAB>INWARD<TAB>OUTWARD por linha (candidatos de R16 nesta
+# execucao, SEC-13). Nunca aceita argumentos posicionais (a lista so pode
+# vir de stdin — evita truncamento de shell/awk em frases com espaco).
+_js_cmd_resolve_link_type() {
+  [ "$#" -eq 0 ] || _js_die_usage \
+    "resolve-link-type nao aceita argumentos (leia via stdin: ID<TAB>INWARD<TAB>OUTWARD por linha)"
+
+  _jsrlt_out=$(awk -F '\t' '
+    BEGIN { n = 0; nmatch = 0 }
+    NF >= 3 && $1 != "" {
+      n++
+      inward = tolower($2)
+      outward = tolower($3)
+      if (index(inward, "block") > 0 && index(outward, "block") > 0) {
+        nmatch++
+        matched[nmatch] = $1
+      }
+    }
+    END {
+      print n
+      print nmatch
+      for (i = 1; i <= nmatch; i++) print matched[i]
+    }
+  ')
+
+  _jsrlt_n=$(printf '%s\n' "$_jsrlt_out" | sed -n '1p')
+  _jsrlt_nmatch=$(printf '%s\n' "$_jsrlt_out" | sed -n '2p')
+
+  case "$_jsrlt_nmatch" in
+    1)
+      printf '%s\n' "$_jsrlt_out" | sed -n '3p'
+      return 0
+      ;;
+    0)
+      _js_die "unrepresentable reason=no_link_type: nenhum dos $_jsrlt_n tipo(s) de R16 tem inward E outward contendo 'block' (case-insensitive) — link_type_id automatico indisponivel"
+      ;;
+    *)
+      _jsrlt_matched_list=$(printf '%s\n' "$_jsrlt_out" | sed -n '3,$p' | tr '\n' ',' | sed 's/,$//')
+      _js_die "unrepresentable reason=ambiguous_link_type: $_jsrlt_nmatch candidatos casam 'block' em inward e outward ($_jsrlt_matched_list) — escolha arbitraria proibida, confirme link_type_id manualmente no setup"
+      ;;
+  esac
+}
+
 _js_cmd_write_config() {
   [ "$#" -ge 1 ] || _js_die_usage "write-config requer ao menos um KEY=VALUE"
 
@@ -241,10 +309,13 @@ case "$_js_sub" in
   check-link-type)
     _js_cmd_check_link_type "$@"
     ;;
+  resolve-link-type)
+    _js_cmd_resolve_link_type "$@"
+    ;;
   write-config)
     _js_cmd_write_config "$@"
     ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: check-status-mapping, check-link-type, write-config)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: check-status-mapping, check-link-type, resolve-link-type, write-config)"
     ;;
 esac

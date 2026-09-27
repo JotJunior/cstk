@@ -715,4 +715,91 @@ scenario_mutation_18_1_4_check_link_type_membership() {
   return 0
 }
 
+# scenario_mutation_18_2_4_resolve_link_type_ambiguity_picks_first — r02
+# FASE 18 tarefa 18.2.4: mira a guarda de `jira-setup.sh resolve-link-type`
+# que recusa (unrepresentable reason=ambiguous_link_type) quando 2+
+# candidatos casam a raiz "block" em inward E outward (18.2.1). Reverter
+# essa guarda para "escolher o primeiro candidato em caso de ambiguidade"
+# faz o teste negativo de 18.2.3
+# (scenario_resolve_link_type_ambiguo_nao_escolhe_primeiro,
+# tests/cstk/test_jira-setup.sh) falhar — a escolha automatica passaria a
+# decidir arbitrariamente em vez de recusar.
+scenario_mutation_18_2_4_resolve_link_type_ambiguity_picks_first() {
+  # -- controle: original recusa ambiguidade (exit 1, unrepresentable) --
+  _ctrl_out=$(printf '10000\tis blocked by\tblocks\n10005\tBlockage\tblocking\n' | \
+    "$ORIG_PLUGIN_DIR/scripts/jira-setup.sh" resolve-link-type 2>&1)
+  _ctrl_rc=$?
+  [ "$_ctrl_rc" = "1" ] || { _fail "control_exit" "esperado exit 1 no original, obtido $_ctrl_rc"; return 1; }
+  case "$_ctrl_out" in
+    *"unrepresentable reason=ambiguous_link_type"*) : ;;
+    *) _fail "control_msg" "original nao reportou ambiguidade: $_ctrl_out"; return 1 ;;
+  esac
+
+  # -- mutante: reverte 18.2.1 para escolher o PRIMEIRO candidato em caso
+  # de ambiguidade (em vez de unrepresentable) --
+  _mp=$(_mut_copy_plugin)
+  _su="$_mp/scripts/jira-setup.sh"
+  grep -qF 'reason=ambiguous_link_type:' "$_su" \
+    || { _fail "mutant_stale" "diagnostico de ambiguidade nao encontrado — repo mudou"; return 1; }
+  sed "s#.*reason=ambiguous_link_type:.*#      printf %s \"\${_jsrlt_matched_list%%,*}\"#" \
+    "$_su" > "$_su.mut" && mv "$_su.mut" "$_su"
+  grep -qF 'reason=ambiguous_link_type:' "$_su" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de ambiguidade"; return 1; }
+  chmod +x "$_su"
+
+  capture sh -c "printf '10000\tis blocked by\tblocks\n10005\tBlockage\tblocking\n' | \"$_su\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" != "1" ] \
+    || { _fail "mutant_exit" "esperado exit != 1 (regressao: ambiguidade escolhe o primeiro candidato em vez de unrepresentable), obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "10000" ] \
+    || { _fail "mutant_picks_first" "esperado stdout='10000' (primeiro candidato escolhido arbitrariamente), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# scenario_mutation_18_3_5_link_put_stale_never_disappears — r02 FASE 18
+# tarefa 18.3.5: mira o upsert atomico de `jira-map.sh link-put` (18.3.2)
+# que NUNCA remove uma linha ja gravada (transicoes para `stale` apenas
+# atualizam a linha in-place, FR-012). Reverter a guarda para permitir que
+# a linha casada "desapareca" do arquivo (deixa de ser reescrita) faz um
+# teste "linha stale nunca desaparece do arquivo" falhar.
+scenario_mutation_18_3_5_link_put_stale_never_disappears() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  _lf="$TMPDIR_TEST/docs/specs/demo/jira-links.tsv"
+
+  # -- controle: original preserva a linha ao transicionar para stale --
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state active >/dev/null || return 1
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state stale \
+    --reason anchor_changed >/dev/null || return 1
+  grep -q '^1	2	DEMO-1	DEMO-2	10000	stale	anchor_changed$' "$_lf" \
+    || { _fail "control_row_present" "linha stale ausente no original — controle invalido"; return 1; }
+  rm -f "$_lf"
+
+  # -- mutante: reverte 18.3.2 para nao reescrever (efetivamente remover)
+  # a linha casada pela chave natural --
+  _mp=$(_mut_copy_plugin)
+  _jm="$_mp/scripts/jira-map.sh"
+  grep -qF '          print a, b, bk, bd, tid, st, rs' "$_jm" \
+    || { _fail "mutant_stale" "linha de upsert do link-put nao encontrada — repo mudou"; return 1; }
+  sed 's/^          print a, b, bk, bd, tid, st, rs$/          # mutated-removed/' \
+    "$_jm" > "$_jm.mut" && mv "$_jm.mut" "$_jm"
+  grep -qF '          print a, b, bk, bd, tid, st, rs' "$_jm" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de link-put"; return 1; }
+  chmod +x "$_jm"
+
+  "$_jm" link-put --feature demo --from 1 --to 2 --blocker-key DEMO-1 \
+    --blocked-key DEMO-2 --type-id 10000 --state active >/dev/null || return 1
+  capture "$_jm" link-put --feature demo --from 1 --to 2 --blocker-key DEMO-1 \
+    --blocked-key DEMO-2 --type-id 10000 --state stale --reason anchor_changed
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_put_exit" "link-put mutante deveria continuar exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+
+  if grep -q '^1	2	DEMO-1	DEMO-2	10000	stale	anchor_changed$' "$_lf"; then
+    _fail "mutant_row_still_present" "esperado a linha DESAPARECER com a mutacao (regressao nao detectada)"
+    return 1
+  fi
+  return 0
+}
+
 run_all_scenarios

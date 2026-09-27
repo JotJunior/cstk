@@ -35,6 +35,21 @@
 #   JS-12 write-config que FALHA (config invalido) NAO reenfileira nada —
 #         o outbox permanece intocado (reenfileirar so faz sentido apos
 #         reconfiguracao bem-sucedida)
+#   JS-13 resolve-link-type: exatamente 1 tipo com inward E outward
+#         contendo "block" (case-insensitive) -> imprime o ID, exit 0
+#         (r02 FASE 18 tarefa 18.2.1/18.2.3)
+#   JS-14 resolve-link-type: 0 candidatos -> exit 1, diagnostico
+#         "unrepresentable reason=no_link_type" (18.2.1/18.2.3)
+#   JS-15 resolve-link-type: 2+ candidatos ambiguos -> exit 1, diagnostico
+#         "unrepresentable reason=ambiguous_link_type", NUNCA escolhe o
+#         primeiro (18.2.1/18.2.3)
+#   JS-16 resolve-link-type: comparacao e case-insensitive (inward/outward
+#         em maiusculas tambem casam a raiz "block")
+#   JS-17 resolve-link-type: candidato so com "block" no inward (outward
+#         sem a raiz) NAO conta — exige as DUAS frases (research.md
+#         Decision R2-6)
+#   JS-18 resolve-link-type: nao aceita argumentos posicionais -> exit 2
+#   JS-19 resolve-link-type: stdin vazio -> exit 1 reason=no_link_type
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -211,6 +226,55 @@ EOF
   awk -F '\t' '$1=="e1"' "./.claude/cstk-jira/runtime/outbox.tsv" | grep -q '	auth_failed$' \
     || { _fail "write_config_failed_no_requeue" "evento e1 foi reenfileirado apesar de write-config ter falhado"; return 1; }
   return 0
+}
+
+# ==== resolve-link-type (r02 FASE 18 tarefa 18.2.1/18.2.3) ====
+
+scenario_resolve_link_type_unico_candidato_exit0() {
+  capture sh -c "printf '10000\tis blocked by\tblocks\n10001\tis cloned by\tclones\n' | \"$SCRIPT\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js13_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "10000" ] \
+    || { _fail "js13_stdout" "esperado '10000', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_resolve_link_type_zero_candidatos_no_link_type() {
+  capture sh -c "printf '10001\tis cloned by\tclones\n10002\tis duplicated by\tduplicates\n' | \"$SCRIPT\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" = "1" ] || { _fail "js14_exit" "esperado exit 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "unrepresentable reason=no_link_type" || return 1
+}
+
+scenario_resolve_link_type_ambiguo_nao_escolhe_primeiro() {
+  capture sh -c "printf '10000\tis blocked by\tblocks\n10005\tBlockage\tblocking\n' | \"$SCRIPT\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" = "1" ] || { _fail "js15_exit" "esperado exit 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "unrepresentable reason=ambiguous_link_type" || return 1
+  case "$_CAPTURED_STDOUT" in
+    10000|10005) _fail "js15_no_arbitrary" "resolve-link-type imprimiu um ID mesmo com ambiguidade: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_resolve_link_type_case_insensitive() {
+  capture sh -c "printf '10000\tIS BLOCKED BY\tBLOCKS\n' | \"$SCRIPT\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js16_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "10000" ] \
+    || { _fail "js16_stdout" "esperado '10000', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_resolve_link_type_exige_inward_e_outward() {
+  # inward casa "block", outward NAO -> nao conta como candidato (AND, nao OR)
+  capture sh -c "printf '10000\tis blocked by\trelates to\n' | \"$SCRIPT\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" = "1" ] || { _fail "js17_exit" "esperado exit 1 (outward sem raiz block nao deveria casar), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "unrepresentable reason=no_link_type" || return 1
+}
+
+scenario_resolve_link_type_argumento_posicional_exit2() {
+  assert_exit 2 "$SCRIPT" resolve-link-type 10000 || return 1
+}
+
+scenario_resolve_link_type_stdin_vazio_no_link_type() {
+  capture sh -c "printf '' | \"$SCRIPT\" resolve-link-type"
+  [ "$_CAPTURED_EXIT" = "1" ] || { _fail "js19_exit" "esperado exit 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "unrepresentable reason=no_link_type" || return 1
 }
 
 run_all_scenarios

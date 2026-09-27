@@ -81,6 +81,37 @@
 #         NUNCA mexe em outras linhas (o marco anterior aplicado ao Epic
 #         continua vigente ate uma nova resolucao ter sucesso).
 #
+#   jira-map.sh link-get --feature F --from A --to B
+#       — r02 FASE 18 tarefa 18.3.2 (data-model.md Entity IssueLink,
+#         `jira-links.tsv`): imprime a linha TSV MAIS RECENTE (ultima
+#         gravada, ordem de arquivo) cuja `(from_phase, to_phase)` case A/B
+#         (A/B sao numeros de FASE puros, saida de `jira-tasks.sh
+#         phase-edges`). Exit 1 se o arquivo ou a aresta nao existirem.
+#
+#   jira-map.sh link-put --feature F --from A --to B --blocker-key K \
+#                         --blocked-key K --type-id ID --state S [--reason R]
+#       — r02 FASE 18 tarefa 18.3.2: upsert atomico pela chave natural
+#         `(from_phase, to_phase, blocker_key, blocked_key)` — casando os 4
+#         campos exatamente atualiza a MESMA linha (type_id/state/reason);
+#         qualquer campo diferente (ex.: ancora mudou) cria linha NOVA.
+#         NUNCA remove linha (FR-012 — reorganizacao de ancora grava
+#         `--state stale` na linha antiga, nunca apaga). `--state
+#         unrepresentable` aceita `--blocker-key`/`--blocked-key`/
+#         `--type-id` vazios (data-model.md: "vazio se unrepresentable") mas
+#         EXIGE `--reason` (enum `no_anchor`/`no_link_type`/
+#         `ambiguous_link_type`/`linking_disabled`/`limit`/`anchor_changed`);
+#         `--state active`/`stale` exige os 3 campos nao-vazios.
+#
+#   jira-map.sh anchor --feature F --phase N
+#       — r02 FASE 18 tarefa 18.3.3 (research.md Decision R2-6): ancora de
+#         uma FASE = a Task (nunca Sub-task) de MENOR `local_key` (`N.M`,
+#         comparacao NUMERICA do componente M) da FASE N com linha `active`
+#         em `jira-map.tsv` — le `jira-tasks.sh items` (fonte de kind/phase)
+#         + este proprio `jira-map.tsv` (fonte de active/jira_key). Imprime
+#         `local_key<TAB>jira_key`. FASE sem nenhuma task `active` mapeada
+#         (nao convertida ainda, ou so Sub-tasks mapeadas): exit 1,
+#         diagnostico "unrepresentable reason=no_anchor".
+#
 # Convencoes (Principio II / contracts/plugin-scripts.md):
 #   `#!/bin/sh`, `set -eu`, sem bash-isms; dados em stdout, diagnostico em
 #   stderr. Exit codes: 0 sucesso; 1 erro geral (mapeamento/chave ausente,
@@ -148,6 +179,21 @@ USO:
       Upsert atomico por (project_key, milestone_name); --version-id
       obrigatorio exceto para --state blocked. Gravar current rebaixa
       qualquer outra current do arquivo para superseded no mesmo write.
+
+  jira-map.sh link-get --feature F --from A --to B
+      Imprime a linha TSV mais recente de jira-links.tsv para (from=A,
+      to=B); exit 1 se ausente.
+
+  jira-map.sh link-put --feature F --from A --to B --blocker-key K \
+                        --blocked-key K --type-id ID --state S [--reason R]
+      Upsert atomico por (from_phase, to_phase, blocker_key, blocked_key);
+      nunca remove linha (stale em vez de apagar). --state unrepresentable
+      exige --reason; aceita blocker/blocked/type-id vazios.
+
+  jira-map.sh anchor --feature F --phase N
+      Imprime local_key<TAB>jira_key da Task de menor local_key da FASE N
+      com linha active; exit 1 "unrepresentable reason=no_anchor" se
+      nenhuma task mapeada.
 
   jira-map.sh milestone-id-known --feature F --project-key K --version-id ID
       r02 FASE 16 task 16.4.3 (plan.md SEC-10): exit 0 se ID aparece em
@@ -218,6 +264,19 @@ _JM_MILESTONE_STATES="current superseded blocked"
 # feature (mesmo diretorio de jira-map.tsv, arquivo irmao).
 _jm_milestone_file() {
   printf '%s\n' "./docs/specs/$1/jira-milestones.tsv"
+}
+
+# jira-links.tsv (data-model.md Entity IssueLink, r02 FASE 18) — arquivo/
+# schema DISTINTO dos anteriores (chave natural (from_phase, to_phase,
+# blocker_key, blocked_key)).
+_JM_LINK_HEADER='from_phase	to_phase	blocker_key	blocked_key	link_type_id	state	reason'
+_JM_LINK_STATES="active stale unrepresentable"
+_JM_LINK_REASONS="no_anchor no_link_type ambiguous_link_type linking_disabled limit anchor_changed"
+
+# _jm_link_file FEATURE -> imprime o path do jira-links.tsv da feature
+# (mesmo diretorio de jira-map.tsv, arquivo irmao).
+_jm_link_file() {
+  printf '%s\n' "./docs/specs/$1/jira-links.tsv"
 }
 
 # --- get -----------------------------------------------------------------
@@ -596,6 +655,206 @@ _jm_cmd_milestone_id_known() {
     "$_jmik_file"
 }
 
+# --- link-get ------------------------------------------------------------
+
+_jm_cmd_link_get() {
+  _jlg_feature=""
+  _jlg_from=""
+  _jlg_to=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature) [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jlg_feature="$2"; shift 2 ;;
+      --from)    [ "$#" -ge 2 ] || _jm_die_usage "--from requer valor"; _jlg_from="$2"; shift 2 ;;
+      --to)      [ "$#" -ge 2 ] || _jm_die_usage "--to requer valor"; _jlg_to="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jlg_feature" ] || _jm_die_usage "link-get requer --feature F"
+  _jm_is_safe_feature "$_jlg_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jlg_feature"
+  _jm_is_safe_field "$_jlg_from" || _jm_die_usage "link-get requer --from A valido (nao-vazio, sem TAB/newline)"
+  _jm_is_safe_field "$_jlg_to" || _jm_die_usage "link-get requer --to B valido (nao-vazio, sem TAB/newline)"
+
+  _jlg_file=$(_jm_link_file "$_jlg_feature")
+  [ -f "$_jlg_file" ] || _jm_die "jira-links.tsv nao encontrado: $_jlg_file" 1
+
+  if _jlg_line=$(awk -F '\t' -v a="$_jlg_from" -v b="$_jlg_to" '
+      NR > 1 && $1 == a && $2 == b { line = $0; f = 1 }
+      END { if (f) print line; exit (f ? 0 : 1) }
+    ' "$_jlg_file"); then
+    printf '%s\n' "$_jlg_line"
+  else
+    _jm_die "aresta nao encontrada em jira-links.tsv: (from=$_jlg_from, to=$_jlg_to)" 1
+  fi
+}
+
+# --- link-put ------------------------------------------------------------
+
+_jm_cmd_link_put() {
+  _jlp_feature=""
+  _jlp_from=""
+  _jlp_to=""
+  _jlp_blocker=""
+  _jlp_blocked=""
+  _jlp_type=""
+  _jlp_state=""
+  _jlp_reason=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)     [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jlp_feature="$2"; shift 2 ;;
+      --from)        [ "$#" -ge 2 ] || _jm_die_usage "--from requer valor"; _jlp_from="$2"; shift 2 ;;
+      --to)          [ "$#" -ge 2 ] || _jm_die_usage "--to requer valor"; _jlp_to="$2"; shift 2 ;;
+      --blocker-key) [ "$#" -ge 2 ] || _jm_die_usage "--blocker-key requer valor"; _jlp_blocker="$2"; shift 2 ;;
+      --blocked-key) [ "$#" -ge 2 ] || _jm_die_usage "--blocked-key requer valor"; _jlp_blocked="$2"; shift 2 ;;
+      --type-id)     [ "$#" -ge 2 ] || _jm_die_usage "--type-id requer valor"; _jlp_type="$2"; shift 2 ;;
+      --state)       [ "$#" -ge 2 ] || _jm_die_usage "--state requer valor"; _jlp_state="$2"; shift 2 ;;
+      --reason)      [ "$#" -ge 2 ] || _jm_die_usage "--reason requer valor"; _jlp_reason="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jlp_feature" ] || _jm_die_usage "link-put requer --feature F"
+  _jm_is_safe_feature "$_jlp_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jlp_feature"
+  _jm_is_safe_field "$_jlp_from" || _jm_die_usage "link-put requer --from A valido (nao-vazio, sem TAB/newline)"
+  _jm_is_safe_field "$_jlp_to" || _jm_die_usage "link-put requer --to B valido (nao-vazio, sem TAB/newline)"
+
+  case " $_JM_LINK_STATES " in
+    *" $_jlp_state "*) : ;;
+    *) _jm_die_usage "--state invalido: '$_jlp_state' (validos: $_JM_LINK_STATES)" ;;
+  esac
+
+  if [ "$_jlp_state" = "unrepresentable" ]; then
+    [ -n "$_jlp_reason" ] || _jm_die_usage "link-put --state unrepresentable requer --reason R"
+    [ -z "$_jlp_blocker" ] || _jm_is_safe_field "$_jlp_blocker" \
+      || _jm_die_usage "--blocker-key invalido (sem TAB/newline): $_jlp_blocker"
+    [ -z "$_jlp_blocked" ] || _jm_is_safe_field "$_jlp_blocked" \
+      || _jm_die_usage "--blocked-key invalido (sem TAB/newline): $_jlp_blocked"
+    [ -z "$_jlp_type" ] || _jm_is_safe_field "$_jlp_type" \
+      || _jm_die_usage "--type-id invalido (sem TAB/newline): $_jlp_type"
+  else
+    _jm_is_safe_field "$_jlp_blocker" \
+      || _jm_die_usage "link-put --state $_jlp_state requer --blocker-key K valido (nao-vazio, sem TAB/newline)"
+    _jm_is_safe_field "$_jlp_blocked" \
+      || _jm_die_usage "link-put --state $_jlp_state requer --blocked-key K valido (nao-vazio, sem TAB/newline)"
+    _jm_is_safe_field "$_jlp_type" \
+      || _jm_die_usage "link-put --state $_jlp_state requer --type-id ID valido (nao-vazio, sem TAB/newline)"
+  fi
+
+  if [ -n "$_jlp_reason" ]; then
+    case " $_JM_LINK_REASONS " in
+      *" $_jlp_reason "*) : ;;
+      *) _jm_die_usage "--reason invalido: '$_jlp_reason' (validos: $_JM_LINK_REASONS)" ;;
+    esac
+  fi
+
+  _jlp_file=$(_jm_link_file "$_jlp_feature")
+  _jlp_dir=$(dirname -- "$_jlp_file")
+  [ -d "$_jlp_dir" ] || _jm_die "diretorio da feature nao encontrado: $_jlp_dir" 1
+
+  _jlp_tmp="$_jlp_file.tmp.$$"
+  if [ -f "$_jlp_file" ]; then
+    # Upsert pela chave natural (from_phase, to_phase, blocker_key,
+    # blocked_key): linha casada e sobrescrita DIRETO com os valores
+    # novos (type_id/state/reason); qualquer OUTRA linha e preservada
+    # intacta (FR-012 — nunca remove, so a propria linha-alvo e
+    # atualizada in-place, nunca apagada).
+    awk -F '\t' -v OFS='\t' -v a="$_jlp_from" -v b="$_jlp_to" \
+        -v bk="$_jlp_blocker" -v bd="$_jlp_blocked" \
+        -v tid="$_jlp_type" -v st="$_jlp_state" -v rs="$_jlp_reason" '
+      NR == 1 { print; next }
+      {
+        if ($1 == a && $2 == b && $3 == bk && $4 == bd) {
+          matched = 1
+          print a, b, bk, bd, tid, st, rs
+          next
+        }
+        print
+      }
+      END {
+        if (!matched) print a, b, bk, bd, tid, st, rs
+      }
+    ' "$_jlp_file" > "$_jlp_tmp"
+  else
+    {
+      printf '%s\n' "$_JM_LINK_HEADER"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$_jlp_from" "$_jlp_to" "$_jlp_blocker" "$_jlp_blocked" "$_jlp_type" "$_jlp_state" "$_jlp_reason"
+    } > "$_jlp_tmp"
+  fi
+  mv -- "$_jlp_tmp" "$_jlp_file"
+}
+
+# --- anchor ----------------------------------------------------------------
+
+# _jm_cmd_anchor --feature F --phase N — r02 FASE 18 tarefa 18.3.3
+# (research.md Decision R2-6): ancora de uma FASE = a Task (NUNCA Sub-task)
+# de MENOR local_key (comparacao NUMERICA do componente N.M) da FASE N com
+# linha active em jira-map.tsv. Le jira-tasks.sh items (fonte de kind/phase,
+# script irmao) + o proprio jira-map.tsv (fonte de active/jira_key).
+_jm_cmd_anchor() {
+  _jma_feature=""
+  _jma_phase=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature) [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jma_feature="$2"; shift 2 ;;
+      --phase)   [ "$#" -ge 2 ] || _jm_die_usage "--phase requer valor"; _jma_phase="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jma_feature" ] || _jm_die_usage "anchor requer --feature F"
+  _jm_is_safe_feature "$_jma_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jma_feature"
+  [ -n "$_jma_phase" ] || _jm_die_usage "anchor requer --phase N (numero de FASE)"
+  case "$_jma_phase" in
+    ''|*[!0-9]*) _jm_die_usage "--phase deve ser numerico: '$_jma_phase'" ;;
+  esac
+
+  # jira-map.tsv ausente (feature ainda sem NENHUM item convertido) NAO e
+  # erro fatal aqui — equivale a "nenhuma task active" (o awk abaixo trata
+  # arquivo ausente como fonte vazia via getline); o resultado converge
+  # para o mesmo diagnostico unrepresentable reason=no_anchor.
+  _jma_map=$(_jm_map_file "$_jma_feature")
+
+  _jma_tasks_script="$(_jm_script_dir)/jira-tasks.sh"
+  [ -x "$_jma_tasks_script" ] || _jm_die "jira-tasks.sh nao encontrado/executavel: $_jma_tasks_script" 1
+
+  _jma_items=$("$_jma_tasks_script" items --feature "$_jma_feature") \
+    || _jm_die "jira-tasks.sh items falhou para a feature: $_jma_feature" 1
+
+  _jma_phase_keys=$(printf '%s\n' "$_jma_items" | awk -F '\t' -v n="$_jma_phase" '
+    $2 == "task" {
+      split($3, w, " ")
+      if (w[2] == n) print $1
+    }
+  ')
+  [ -n "$_jma_phase_keys" ] \
+    || _jm_die "unrepresentable reason=no_anchor: nenhuma task encontrada na FASE $_jma_phase" 1
+
+  _jma_anchor=$(printf '%s\n' "$_jma_phase_keys" | awk -F '\t' -v mapfile="$_jma_map" '
+    BEGIN {
+      while ((getline line < mapfile) > 0) {
+        n = split(line, f, "\t")
+        if (n >= 5 && f[5] == "active") active[f[1]] = f[4]
+      }
+      close(mapfile)
+      best = ""
+      bestm = 999999999
+    }
+    {
+      key = $1
+      if (!(key in active)) next
+      split(key, p, ".")
+      m = p[2] + 0
+      if (m < bestm) { bestm = m; best = key }
+    }
+    END { if (best != "") print best "\t" active[best] }
+  ')
+  [ -n "$_jma_anchor" ] \
+    || _jm_die "unrepresentable reason=no_anchor: nenhuma task ACTIVE mapeada na FASE $_jma_phase" 1
+
+  printf '%s\n' "$_jma_anchor"
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _jm_sub="${1:-}"
@@ -627,7 +886,16 @@ case "$_jm_sub" in
   milestone-id-known)
     _jm_cmd_milestone_id_known "$@"
     ;;
+  link-get)
+    _jm_cmd_link_get "$@"
+    ;;
+  link-put)
+    _jm_cmd_link_put "$@"
+    ;;
+  anchor)
+    _jm_cmd_anchor "$@"
+    ;;
   *)
-    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put, milestone-id-known)"
+    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put, milestone-id-known, link-get, link-put, anchor)"
     ;;
 esac

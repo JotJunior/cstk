@@ -198,8 +198,9 @@ Classificacao de status (acrescimo a tabela do r01; demais linhas inalteradas):
 |------------|-----------|
 | `milestone-get --feature F [--state current]` | le `jira-milestones.tsv` |
 | `milestone-put --feature F --name N --kind round\|release --version-id ID --project-key K --state current\|superseded\|blocked` | upsert atomico por `(project_key, milestone_name)`; ao gravar `current`, rebaixa a `current` anterior para `superseded` no MESMO write (invariante: no maximo 1 `current`) |
-| `link-get --feature F --from A --to B` | le `jira-links.tsv` |
-| `link-put --feature F --from A --to B --blocker-key K --blocked-key K --type-id ID --state S [--reason R]` | upsert atomico pela chave natural; nunca remove linha (`stale` em vez de apagar) |
+| `link-get --feature F --from A --to B` | le a linha MAIS RECENTE de `jira-links.tsv` para `(from_phase, to_phase)` |
+| `link-put --feature F --from A --to B --blocker-key K --blocked-key K --type-id ID --state S [--reason R]` | upsert atomico pela chave natural `(from_phase, to_phase, blocker_key, blocked_key)`; nunca remove linha (`stale` em vez de apagar); `--state unrepresentable` aceita `--blocker-key`/`--blocked-key`/`--type-id` vazios mas exige `--reason` |
+| `anchor --feature F --phase N` | NOVO (r02 FASE 18 tarefa 18.3.3): imprime `local_key<TAB>jira_key` da Task de menor `local_key` (comparacao numerica) da FASE N com linha `active`; exit 1 `unrepresentable reason=no_anchor` se nenhuma |
 
 ### `jira-sync.sh`
 
@@ -219,6 +220,7 @@ Classificacao de status (acrescimo a tabela do r01; demais linhas inalteradas):
 |------------|-----------|
 | `check-field-support FIELD_ID [FIELD_ID...]` | NOVO, POSIX puro: recebe (stdin) a lista de `fieldId` de um tipo (extraida pela skill de R8 via `jira-io.sh json-get`) e imprime `FIELD_ID=on\|off` — alimenta `labels_enabled`/`fix_versions_on_subtask` |
 | `check-link-type ID CANDIDATE_ID...` | NOVO: aceita `ID` so se estiver entre os ids REALMENTE devolvidos por R16 (nunca digitado de memoria); exit 1 com a lista se nao estiver |
+| `resolve-link-type` | NOVO (r02 FASE 18 tarefa 18.2.1/18.2.2): le de stdin `ID<TAB>INWARD<TAB>OUTWARD` por candidato de R16 desta execucao (SEC-13); exatamente 1 com inward E outward contendo "block" (case-insensitive) => imprime o ID; 0 ou 2+ => exit 1 `unrepresentable reason=no_link_type\|ambiguous_link_type` (nunca escolhe arbitrariamente) |
 | `create-project --name N --key K --template T (--confirm-key K \| --consent-block block-NNN)` | NOVO (FR-024): (1) `validate-project-key`; (2) `getProject` com K — `200` => exit 1 "projeto ja existe, reuse" (nunca cria); (3) consentimento: `--confirm-key` so e aceito FORA de execucao 00c ativa e MUST repetir K exatamente; com execucao 00c ativa so `--consent-block` e aceito, conferido via `bloqueios.sh list --status respondido` do `agente-00c-runtime` (delegado, como `state-rw.sh` no r01 13.1.1) — bloqueio inexistente/nao respondido => exit 2 SEM requisicao; (4) `leadAccountId` de `GET /rest/api/3/myself`; (5) R18. `403` => exit 7 + texto de criacao manual. Sucesso => `write-config project_key=K` (o resto do setup segue: tipos, status, board) |
 
 Exit codes: nenhum novo (`7` ja cobria "nao permitido/nao possivel, nao

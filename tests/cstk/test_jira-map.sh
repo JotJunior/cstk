@@ -49,6 +49,28 @@
 #         criacao de um marco novo)
 #   JM-26 milestone-get: (project_key, name) existente -> linha TSV;
 #         ausente -> exit 1
+#
+# ============ link-get/link-put/anchor (r02 FASE 18 tarefa 18.3.2/18.3.3) ===
+#
+#   JM-27 link-put: 1a insercao (state=active) -> header + linha gravados
+#   JM-28 link-get: aresta existente -> linha TSV; ausente -> exit 1
+#   JM-29 link-put: 2a chamada com a MESMA chave natural e state=active NAO
+#         duplica linha (upsert in-place) — 18.3.4
+#   JM-30 link-put: mesma chave, state=stale -> linha ATUALIZADA (nunca
+#         removida) — FR-012
+#   JM-31 link-put: --state unrepresentable aceita blocker/blocked/type-id
+#         vazios, mas EXIGE --reason
+#   JM-32 link-put: --state active sem --reason grava reason vazio
+#   JM-33 link-put: --state invalido -> exit 2
+#   JM-34 link-put: --reason invalido (fora do enum) -> exit 2
+#   JM-35 link-put: --state active SEM --blocker-key -> exit 2 (uso
+#         incorreto — campos obrigatorios para active/stale)
+#   JM-36 link-get: jira-links.tsv ausente -> exit 1
+#   JM-37 anchor: Task de menor local_key ACTIVE da FASE -> local_key+jira_key
+#   JM-38 anchor: FASE sem nenhuma task -> exit 1 reason=no_anchor
+#   JM-39 anchor: FASE com task mas SEM linha active mapeada -> exit 1
+#         reason=no_anchor
+#   JM-40 anchor: --phase nao-numerico -> exit 2
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -433,6 +455,177 @@ scenario_milestone_get_existente_e_ausente() {
   assert_exit 0 "$SCRIPT" milestone-get --feature demo --name demo-r02 --project-key DEMO || return 1
   assert_stdout_contains "demo-r02	round	30001	DEMO	current" || return 1
   assert_exit 1 "$SCRIPT" milestone-get --feature demo --name demo-r99 --project-key DEMO || return 1
+}
+
+# ==== link-get / link-put (r02 FASE 18 tarefa 18.3.2) ====
+
+_link_file() {
+  printf '%s\n' "$TMPDIR_TEST/docs/specs/demo/jira-links.tsv"
+}
+
+scenario_link_put_primeira_insercao_active() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state active || return 1
+  _lf=$(_link_file)
+  [ -f "$_lf" ] || { _fail "link_put_creates_file" "arquivo nao foi criado"; return 1; }
+  head -n1 "$_lf" | grep -q '^from_phase	to_phase	blocker_key	blocked_key	link_type_id	state	reason$' \
+    || { _fail "link_put_header" "cabecalho ausente/incorreto"; return 1; }
+  grep -q '^1	2	DEMO-1	DEMO-2	10000	active	$' "$_lf" \
+    || { _fail "link_put_row" "linha active ausente/incorreta"; return 1; }
+}
+
+scenario_link_get_existente_e_ausente() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" link-put --feature demo --from 1 --to 2 --blocker-key DEMO-1 \
+    --blocked-key DEMO-2 --type-id 10000 --state active >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" link-get --feature demo --from 1 --to 2 || return 1
+  assert_stdout_contains "1	2	DEMO-1	DEMO-2	10000	active" || return 1
+  assert_exit 1 "$SCRIPT" link-get --feature demo --from 9 --to 9 || return 1
+}
+
+scenario_link_get_arquivo_ausente_exit1() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 "$SCRIPT" link-get --feature demo --from 1 --to 2 || return 1
+}
+
+scenario_link_put_mesma_chave_active_nao_duplica() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" link-put --feature demo --from 1 --to 2 --blocker-key DEMO-1 \
+    --blocked-key DEMO-2 --type-id 10000 --state active >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state active || return 1
+  _n=$(awk -F '\t' 'NR>1 && $1=="1" && $2=="2"' "$(_link_file)" | wc -l | tr -d ' ')
+  [ "$_n" = "1" ] || { _fail "link_put_no_dup" "esperado 1 linha para (1,2), obtido $_n"; return 1; }
+}
+
+scenario_link_put_stale_atualiza_nunca_remove() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" link-put --feature demo --from 1 --to 2 --blocker-key DEMO-1 \
+    --blocked-key DEMO-2 --type-id 10000 --state active >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state stale \
+    --reason anchor_changed || return 1
+  _lf=$(_link_file)
+  grep -q '^1	2	DEMO-1	DEMO-2	10000	stale	anchor_changed$' "$_lf" \
+    || { _fail "link_put_stale_row" "linha stale ausente/incorreta"; return 1; }
+  _n=$(awk -F '\t' 'NR>1 && $1=="1" && $2=="2"' "$_lf" | wc -l | tr -d ' ')
+  [ "$_n" = "1" ] || { _fail "link_put_stale_never_removed_but_no_dup" "esperado 1 linha, obtido $_n"; return 1; }
+}
+
+scenario_link_put_unrepresentable_campos_vazios_exige_reason() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" link-put --feature demo --from 3 --to 4 \
+    --blocker-key "" --blocked-key "" --type-id "" --state unrepresentable \
+    --reason no_anchor || return 1
+  awk -F '\t' 'NR>1 && $1=="3" && $2=="4" && $3=="" && $4=="" && $5=="" && $6=="unrepresentable" && $7=="no_anchor" { f=1 } END { exit(f?0:1) }' \
+    "$(_link_file)" \
+    || { _fail "link_put_unrepresentable_row" "linha unrepresentable ausente/incorreta"; return 1; }
+
+  assert_exit 2 "$SCRIPT" link-put --feature demo --from 5 --to 6 \
+    --blocker-key "" --blocked-key "" --type-id "" --state unrepresentable || return 1
+}
+
+scenario_link_put_active_sem_reason_grava_vazio() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 0 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state active || return 1
+  grep -q '^1	2	DEMO-1	DEMO-2	10000	active	$' "$(_link_file)" \
+    || { _fail "link_put_active_empty_reason" "reason deveria ficar vazio"; return 1; }
+}
+
+scenario_link_put_state_invalido_exit2() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-1 --blocked-key DEMO-2 --type-id 10000 --state bogus || return 1
+}
+
+scenario_link_put_reason_invalido_exit2() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key "" --blocked-key "" --type-id "" --state unrepresentable \
+    --reason bogus_reason || return 1
+}
+
+scenario_link_put_active_sem_blocker_key_exit2() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" link-put --feature demo --from 1 --to 2 \
+    --blocker-key "" --blocked-key DEMO-2 --type-id 10000 --state active || return 1
+}
+
+# ==== anchor (r02 FASE 18 tarefa 18.3.3) ====
+
+_write_tasks_md_fase2() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Um `[A]`
+
+### 1.1 Primeira `[A]`
+
+- [x] 1.1.1 sub
+
+### 1.2 Segunda `[A]`
+
+- [x] 1.2.1 sub
+
+## FASE 2 - Dois `[A]`
+
+### 2.1 Terceira `[A]`
+
+- [x] 2.1.1 sub
+EOF
+}
+
+scenario_anchor_menor_local_key_active() {
+  _write_tasks_md_fase2
+  cd "$TMPDIR_TEST" || return 1
+  # so 1.2 esta active (1.1 permanece nao mapeada) -> ancora deve ser 1.2,
+  # nao a "menor" absoluta e sim a menor DENTRE AS ACTIVE.
+  "$SCRIPT" put --feature demo --local-key 1.2 --kind task \
+    --jira-id 20 --jira-key DEMO-20 >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" anchor --feature demo --phase 1 || return 1
+  assert_stdout_contains "1.2	DEMO-20" || return 1
+}
+
+scenario_anchor_prefere_menor_quando_ambas_active() {
+  _write_tasks_md_fase2
+  cd "$TMPDIR_TEST" || return 1
+  "$SCRIPT" put --feature demo --local-key 1.2 --kind task \
+    --jira-id 20 --jira-key DEMO-20 >/dev/null || return 1
+  "$SCRIPT" put --feature demo --local-key 1.1 --kind task \
+    --jira-id 10 --jira-key DEMO-10 >/dev/null || return 1
+  assert_exit 0 "$SCRIPT" anchor --feature demo --phase 1 || return 1
+  assert_stdout_contains "1.1	DEMO-10" || return 1
+}
+
+scenario_anchor_fase_sem_task_exit1() {
+  _write_tasks_md_fase2
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 "$SCRIPT" anchor --feature demo --phase 9 || return 1
+  assert_stderr_contains "unrepresentable reason=no_anchor" || return 1
+}
+
+scenario_anchor_fase_sem_mapeamento_active_exit1() {
+  _write_tasks_md_fase2
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 1 "$SCRIPT" anchor --feature demo --phase 2 || return 1
+  assert_stderr_contains "unrepresentable reason=no_anchor" || return 1
+}
+
+scenario_anchor_phase_nao_numerico_exit2() {
+  _write_tasks_md_fase2
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" anchor --feature demo --phase "FASE 1" || return 1
 }
 
 run_all_scenarios
