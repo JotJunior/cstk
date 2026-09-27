@@ -19,6 +19,19 @@
 #   JC-10 credential-check: permissao mais aberta que 0600 -> exit 4, NUNCA
 #         imprime o conteudo do arquivo
 #   JC-11 credential-check: permissao exata 0600 -> exit 0
+#   JC-12 resolve-path: config local presente -> imprime path ABSOLUTO do
+#         cwd, exit 0 (r02 FASE 20 tarefa 20.1.1)
+#   JC-13 resolve-path: sem config local, worktree principal com config ->
+#         imprime o path ABSOLUTO da principal (git-common-dir); NENHUMA
+#         escrita ocorre la (task 20.1.4)
+#   JC-14 resolve-path: sem config nos dois lugares -> exit 3
+#   JC-15 resolve-path: sem git no PATH e sem config local -> exit 3, SEM
+#         tentar o fallback (fora de repo git o resultado e o mesmo)
+#   JC-16 get/validate tambem resolvem via worktree principal (nao duplicam
+#         a regra de resolve-path — task 20.1.2/plugin-scripts.md)
+#   JC-17 mutation: reverter resolve-path para GRAVAR no path resolvido da
+#         principal (em vez de tratar como somente-leitura) faz o teste de
+#         "nenhuma escrita na principal" falhar (task 20.1.5)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -45,6 +58,42 @@ status_pass=Done
 status_fail=Failed
 sync_autonomous=on
 EOF
+}
+
+# _jc_setup_worktree: cria um repo git minimo em $TMPDIR_TEST/main (commit
+# inicial SEM ProjectConfig, para que o config nao seja rastreado/herdado
+# pelo checkout do worktree) e um worktree linkado em $TMPDIR_TEST/wt.
+# Identidade LOCAL do repo (mesmo racional de test_parallel-launch.sh::
+# _pl_git_repo — CI nao tem ~/.gitconfig). Retorna (via variaveis globais
+# do chamador) nada; o chamador usa $TMPDIR_TEST/main e $TMPDIR_TEST/wt.
+_jc_setup_worktree() {
+  mkdir -p "$TMPDIR_TEST/main"
+  (
+    cd "$TMPDIR_TEST/main" || exit 1
+    git init -q .
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
+    printf 'x\n' > README.md
+    git add README.md
+    git commit -q -m init
+    git worktree add -q -b jc-test-branch "$TMPDIR_TEST/wt" HEAD
+  )
+}
+
+# _jc_path_without_git: PATH com APENAS um diretorio de shims contendo
+# symlinks para os comandos que o SUT/harness precisam — `git`
+# deliberadamente de fora (mesmo racional de test_parallel-launch.sh::
+# _pl_path_without_tmux; feedback_test_path_stub_cannot_hide_usrbin: so um
+# allowlist explicito garante ausencia — prefixar PATH nao esconde um
+# binario que tambem exista em /usr/bin via outro segmento).
+_jc_path_without_git() {
+  _shim="$TMPDIR_TEST/nogit-bin"
+  mkdir -p "$_shim"
+  for _c in sh env sed awk grep mkdir rm cat mktemp chmod ln find sort head tail tr wc cut dirname basename mv; do
+    _p=$(command -v "$_c" 2>/dev/null) || continue
+    [ -e "$_shim/$_c" ] || ln -s "$_p" "$_shim/$_c" 2>/dev/null || :
+  done
+  printf '%s' "$_shim"
 }
 
 scenario_get_config_ausente_exit3() {
@@ -145,6 +194,120 @@ scenario_credential_check_permissao_0600_exit0() {
     > "$_home/.config/cstk-jira/credentials"
   chmod 600 "$_home/.config/cstk-jira/credentials"
   assert_exit 0 env HOME="$_home" "$SCRIPT" credential-check || return 1
+}
+
+# ==== resolve-path (r02 FASE 20 tarefa 20.1) ====
+
+scenario_resolve_path_config_local_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  assert_exit 0 "$SCRIPT" resolve-path || return 1
+  assert_stdout_contains ".claude/cstk-jira/config" || return 1
+  # SEMPRE absoluto (20.1.2 depende disso — chamadores resolvem de um
+  # subshell com cwd diferente do processo pai).
+  case "$_CAPTURED_STDOUT" in
+    /*) : ;;
+    *) _fail "resolve_path_absoluto" "esperado path absoluto, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+scenario_resolve_path_worktree_principal_fallback_sem_escrita() {
+  _jc_setup_worktree
+  mkdir -p "$TMPDIR_TEST/main/.claude/cstk-jira"
+  printf 'config_version=1\nsite_host=principal.atlassian.net\n' \
+    > "$TMPDIR_TEST/main/.claude/cstk-jira/config"
+  _before=$(cat "$TMPDIR_TEST/main/.claude/cstk-jira/config")
+
+  cd "$TMPDIR_TEST/wt" || return 1
+  assert_exit 0 "$SCRIPT" resolve-path || return 1
+  assert_stdout_contains "$TMPDIR_TEST/main/.claude/cstk-jira/config" || return 1
+
+  # get delega a MESMA resolucao (nao duplica a regra — JC-16)
+  assert_exit 0 "$SCRIPT" get site_host || return 1
+  assert_stdout_contains "principal.atlassian.net" || return 1
+
+  # nenhuma escrita ocorreu na principal nem localmente no worktree
+  _after=$(cat "$TMPDIR_TEST/main/.claude/cstk-jira/config")
+  [ "$_before" = "$_after" ] \
+    || { _fail "resolve_path_readonly" "config da worktree principal foi mutado"; return 1; }
+  [ -e "$TMPDIR_TEST/wt/.claude" ] \
+    && { _fail "resolve_path_no_local_write" "resolve-path/get criaram .claude no worktree sem config local"; return 1; }
+  return 0
+}
+
+scenario_resolve_path_validate_via_worktree_principal() {
+  _jc_setup_worktree
+  mkdir -p "$TMPDIR_TEST/main/.claude/cstk-jira"
+  cat > "$TMPDIR_TEST/main/.claude/cstk-jira/config" <<'EOF'
+config_version=1
+site_host=example.atlassian.net
+project_key=CSTK
+board_id=42
+issue_type_epic=10000
+issue_type_task=10001
+issue_type_subtask=10002
+status_pending=To Do
+status_in_progress=In Progress
+status_pass=Done
+status_fail=Failed
+sync_autonomous=on
+EOF
+  cd "$TMPDIR_TEST/wt" || return 1
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_resolve_path_ausente_nos_dois_exit3() {
+  _jc_setup_worktree
+  cd "$TMPDIR_TEST/wt" || return 1
+  assert_exit 3 "$SCRIPT" resolve-path || return 1
+}
+
+scenario_resolve_path_sem_git_no_path_exit3() {
+  _jc_setup_worktree
+  mkdir -p "$TMPDIR_TEST/main/.claude/cstk-jira"
+  printf 'config_version=1\nsite_host=principal.atlassian.net\n' \
+    > "$TMPDIR_TEST/main/.claude/cstk-jira/config"
+  cd "$TMPDIR_TEST/wt" || return 1
+  _fake=$(_jc_path_without_git)
+  # sanity: git realmente inalcancavel sob este PATH (nao um falso-negativo
+  # por prefixar em vez de allowlist — feedback_test_path_stub_cannot_hide_usrbin)
+  env PATH="$_fake" sh -c 'command -v git' >/dev/null 2>&1 \
+    && { _fail "shim_stale" "git ainda alcancavel sob o PATH reduzido"; return 1; }
+  assert_exit 3 env PATH="$_fake" "$SCRIPT" resolve-path || return 1
+}
+
+# ==== 20.1.5: mutation — reverter resolve-path para GRAVAR na principal ====
+
+scenario_mutation_20_1_5_resolve_path_grava_na_principal() {
+  _jc_setup_worktree
+  mkdir -p "$TMPDIR_TEST/main/.claude/cstk-jira"
+  printf 'config_version=1\nsite_host=principal.atlassian.net\n' \
+    > "$TMPDIR_TEST/main/.claude/cstk-jira/config"
+  _before=$(cat "$TMPDIR_TEST/main/.claude/cstk-jira/config")
+
+  # controle: original nao muta o config da principal.
+  (cd "$TMPDIR_TEST/wt" && "$SCRIPT" resolve-path) >/dev/null 2>&1
+  _after_control=$(cat "$TMPDIR_TEST/main/.claude/cstk-jira/config")
+  [ "$_before" = "$_after_control" ] \
+    || { _fail "controle_readonly" "original ja mutava o config da principal"; return 1; }
+
+  # mutante: apos confirmar a existencia do config da principal, GRAVA nele
+  # em vez de so ler (regressao que 20.1.5 exige detectar).
+  _mut="$TMPDIR_TEST/jira-config.sh.mut"
+  cp "$SCRIPT" "$_mut"
+  grep -qF '[ -f "$_jcrc_principal_config" ] || return 1' "$_mut" \
+    || { _fail "mutant_stale" "anchor de resolve-path nao encontrado (script mudou?)"; return 1; }
+  sed 's@\[ -f "\$_jcrc_principal_config" \] || return 1@[ -f "$_jcrc_principal_config" ] || return 1; printf "MUTANT-WRITE\\n" >> "$_jcrc_principal_config"@' \
+    "$_mut" > "$_mut.tmp" && mv "$_mut.tmp" "$_mut"
+  grep -qF 'MUTANT-WRITE' "$_mut" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao em resolve-path"; return 1; }
+  chmod +x "$_mut"
+
+  (cd "$TMPDIR_TEST/wt" && "$_mut" resolve-path) >/dev/null 2>&1
+  _after_mutant=$(cat "$TMPDIR_TEST/main/.claude/cstk-jira/config")
+  [ "$_before" != "$_after_mutant" ] \
+    || { _fail "mutant_no_effect" "esperado regressao: mutante deveria ter gravado na principal, mas nao gravou"; return 1; }
+  return 0
 }
 
 run_all_scenarios

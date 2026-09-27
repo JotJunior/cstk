@@ -2,24 +2,51 @@
 # jira-config.sh — leitura/validacao de ProjectConfig e checagem de
 # Credential do plugin cstk-jira (feature cstk-jira, FASE 2 tarefa 2.1).
 #
-# Ref: docs/specs/cstk-jira/data-model.md Entity ProjectConfig, Entity
-#      Credential; docs/specs/cstk-jira/contracts/plugin-scripts.md
-#      `jira-config.sh`; docs/specs/cstk-jira/contracts/hooks.md (path do
-#      config relativo ao cwd).
+# Ref: docs/specs/cstk-jira/data-model.md Entity ProjectConfig "Resolucao do
+#      arquivo (FR-023)", Entity Credential; docs/specs/cstk-jira/contracts/
+#      plugin-scripts.md `jira-config.sh`; docs/specs/cstk-jira/contracts/
+#      hooks.md (path do config relativo ao cwd); r02 FASE 20 tarefa 20.1.
 #
 # Subcomandos:
 #   jira-config.sh get KEY
-#       — Le `<cwd>/.claude/cstk-jira/config` (key=value, `#`/linha em
-#         branco ignorados); imprime o valor de KEY em stdout. Exit 3 se o
-#         arquivo nao existir (FR-017 — plugin inativo, chamador trata como
-#         no-op); exit 1 se KEY nao existir no arquivo.
+#       — Le o ProjectConfig no caminho EFETIVO (ver `resolve-path` abaixo;
+#         key=value, `#`/linha em branco ignorados); imprime o valor de KEY
+#         em stdout. Exit 3 se nenhum dos dois arquivos existir (FR-017 —
+#         plugin inativo, chamador trata como no-op); exit 1 se KEY nao
+#         existir no arquivo resolvido.
 #
 #   jira-config.sh validate
-#       — Confere presenca de todos os campos obrigatorios de ProjectConfig,
-#         `site_host` como hostname puro (sem esquema/path/porta/userinfo) e
-#         `status_fail != status_pass`. Exit 3 se o arquivo nao existir;
-#         exit 1 com diagnostico em stderr no primeiro problema encontrado;
-#         exit 0 (sem stdout) se tudo valido.
+#       — Confere presenca de todos os campos obrigatorios de ProjectConfig
+#         no caminho EFETIVO (`resolve-path`), `site_host` como hostname puro
+#         (sem esquema/path/porta/userinfo) e `status_fail != status_pass`.
+#         Exit 3 se nenhum arquivo existir; exit 1 com diagnostico em stderr
+#         no primeiro problema encontrado; exit 0 (sem stdout) se tudo
+#         valido.
+#
+#   jira-config.sh resolve-path
+#       — r02 FASE 20 tarefa 20.1.1 (data-model.md ProjectConfig "Resolucao
+#         do arquivo (FR-023)"; research.md Decision R2-8): imprime em
+#         stdout o caminho ABSOLUTO EFETIVO do ProjectConfig — `<cwd>/
+#         .claude/cstk-jira/config` quando existe; ausente => `<worktree
+#         principal>/.claude/cstk-jira/config` via `git rev-parse
+#         --path-format=absolute --git-common-dir` (SOMENTE LEITURA, este
+#         script NUNCA grava no caminho da principal); ausente nos dois =>
+#         exit 3 (plugin inativo, FR-017). SEMPRE absoluto (mesmo quando o
+#         caminho local resolve) — chamadores tipicamente resolvem o config
+#         de dentro de um subshell `cd "$cwd" && ... resolve-path` e usam o
+#         resultado DEPOIS, ja de volta no cwd original do processo; um
+#         path relativo apontaria para o lugar errado ali. Sem `git` no
+#         PATH, ou fora de um repositorio git, o fallback e simplesmente
+#         pulado (SEM erro dedicado por isso) — o resultado final continua
+#         exit 3 se o cwd tambem nao tiver config. O fallback so roda quando
+#         `CSTK_JIRA_CONFIG`
+#         NAO foi explicitamente definido pelo chamador (override de teste
+#         aponta para um caminho especifico — nunca implica "va procurar em
+#         outro lugar"). `get`/`validate` usam a MESMA resolucao (nunca
+#         duplicam a regra) — e assim que `jira-sync.sh`/`jira-io.sh`/
+#         `jira-setup.sh` (que so chamam `jira-config.sh get`/`validate`,
+#         nunca leem o arquivo diretamente) ganham o fallback de graca, sem
+#         precisar de mudanca propria.
 #
 #   jira-config.sh credential-check
 #       — Confere existencia e permissao exata 0600 do arquivo de
@@ -41,9 +68,11 @@ set -eu
 
 _JC_NAME="jira-config"
 
-# CONFIG_FILE e relativo ao cwd (mesma convencao de contracts/hooks.md
-# "<cwd>/.claude/cstk-jira/config") — script NUNCA aceita project-dir por
-# argumento. Override apenas para uso interno de testes.
+# CONFIG_FILE e relativo ao cwd por padrao (mesma convencao de
+# contracts/hooks.md "<cwd>/.claude/cstk-jira/config") — script NUNCA aceita
+# project-dir por argumento. `CSTK_JIRA_CONFIG` (override apenas para uso
+# interno de testes) aponta para um caminho EXATO — quando definida, NUNCA
+# ativa o fallback de `_jc_resolve_config_path` (r02 FASE 20 tarefa 20.1.1).
 _JC_CONFIG_FILE="${CSTK_JIRA_CONFIG:-./.claude/cstk-jira/config}"
 
 # Caminho da credencial: unico arquivo global por maquina (data-model.md
@@ -58,11 +87,13 @@ _jc_usage() {
 jira-config.sh — leitura/validacao de ProjectConfig + checagem de Credential
 
 USO:
-  jira-config.sh get KEY             Le uma chave do config (stdout); exit 3 se ausente
+  jira-config.sh get KEY             Le uma chave do config efetivo (stdout); exit 3 se ausente
   jira-config.sh validate            Valida campos obrigatorios + regras (data-model.md)
+  jira-config.sh resolve-path        Imprime o caminho efetivo do ProjectConfig (cwd, senao worktree principal)
   jira-config.sh credential-check    Confere existencia + permissao 0600 da credencial
 
-Config: <cwd>/.claude/cstk-jira/config (key=value, '#' comenta linha inteira)
+Config: <cwd>/.claude/cstk-jira/config; ausente => <worktree principal>/.claude/cstk-jira/config
+        (via 'git rev-parse --git-common-dir', somente leitura); ausente nos dois => plugin inativo.
 Credencial: ${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials (0600)
 
 EXIT CODES:
@@ -71,13 +102,49 @@ EXIT CODES:
 HELP
 }
 
-# _jc_read_raw KEY -> imprime o valor de KEY em $_JC_CONFIG_FILE, ou nada se
+# _jc_resolve_config_path -> imprime em stdout o caminho EFETIVO do
+# ProjectConfig e retorna 0; retorna 1 (sem imprimir nada) se nenhum dos
+# dois arquivos existir. r02 FASE 20 tarefa 20.1.1 (data-model.md
+# ProjectConfig "Resolucao do arquivo (FR-023)"; research.md Decision R2-8).
+#
+# Ordem: (1) $_JC_CONFIG_FILE (cwd por padrao, ou o path exato de
+# CSTK_JIRA_CONFIG quando definida); (2) SO quando CSTK_JIRA_CONFIG NAO foi
+# definida pelo chamador, tenta a worktree principal via
+# `git rev-parse --path-format=absolute --git-common-dir` (SOMENTE LEITURA
+# — esta funcao nunca cria nem grava nesse caminho, so confere existencia).
+# Sem `git` no PATH, ou fora de um repositorio git, ou dentro do proprio
+# checkout principal (onde `--git-common-dir` aponta para o `.git` local, ja
+# coberto pelo passo 1) — o fallback e pulado silenciosamente, sem
+# diagnostico proprio (o exit 3 final de `get`/`validate`/`resolve-path` ja
+# cobre "plugin inativo").
+_jc_resolve_config_path() {
+  if [ -f "$_JC_CONFIG_FILE" ]; then
+    printf '%s\n' "$_JC_CONFIG_FILE"
+    return 0
+  fi
+
+  [ -z "${CSTK_JIRA_CONFIG:-}" ] || return 1
+
+  command -v git >/dev/null 2>&1 || return 1
+
+  _jcrc_common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  [ -n "$_jcrc_common_dir" ] || return 1
+  _jcrc_principal_root=$(dirname -- "$_jcrc_common_dir")
+  _jcrc_principal_config="$_jcrc_principal_root/.claude/cstk-jira/config"
+
+  [ -f "$_jcrc_principal_config" ] || return 1
+  printf '%s\n' "$_jcrc_principal_config"
+  return 0
+}
+
+# _jc_read_raw KEY FILE -> imprime o valor de KEY em FILE, ou nada se
 # ausente. Retorno: 0 sempre (ausencia de KEY nao e erro desta funcao — o
 # chamador decide o exit code). Parse linha a linha, split no PRIMEIRO '=';
 # '#'/branco ignorados (mesmo contrato de state-backend.sh P2, adaptado:
 # aqui chave desconhecida nao invalida o arquivo inteiro, so nao casa).
 _jc_read_raw() {
   _jcrr_key="$1"
+  _jcrr_file="$2"
   _jcrr_found="no"
   while IFS= read -r _jcrr_line || [ -n "$_jcrr_line" ]; do
     case "$_jcrr_line" in
@@ -96,15 +163,38 @@ _jc_read_raw() {
         : # linha sem '=' — ignorada (nao invalida o arquivo, diferente de P2)
         ;;
     esac
-  done < "$_JC_CONFIG_FILE"
+  done < "$_jcrr_file"
   [ "$_jcrr_found" = "yes" ]
+}
+
+_jc_cmd_resolve_path() {
+  if ! _jcrp_effective=$(_jc_resolve_config_path); then
+    _jc_die "config ausente: nem $_JC_CONFIG_FILE nem a worktree principal (plugin inativo)" 3
+  fi
+  # SEMPRE absoluto: a worktree principal ja vem absoluta (via
+  # --path-format=absolute), mas o caminho local (`_JC_CONFIG_FILE`) e
+  # relativo por padrao ("./.claude/cstk-jira/config") — resolve-path e
+  # feito para ser consumido por OUTRO processo/cwd (ex.: hooks que
+  # resolvem o config num subshell `cd "$cwd" && jira-config.sh
+  # resolve-path` e depois usam o resultado FORA daquele subshell, ja de
+  # volta no cwd original do processo). Um path relativo vazaria esse
+  # detalhe e apontaria para o lugar errado (bug real medido r02 FASE 20
+  # tarefa 20.1.2: `grep` no `sync_autonomous` lia um arquivo inexistente
+  # relativo ao cwd do hook, nao ao cwd resolvido).
+  case "$_jcrp_effective" in
+    /*) printf '%s\n' "$_jcrp_effective" ;;
+    ./*) printf '%s/%s\n' "$(pwd)" "${_jcrp_effective#./}" ;;
+    *) printf '%s/%s\n' "$(pwd)" "$_jcrp_effective" ;;
+  esac
+  return 0
 }
 
 _jc_cmd_get() {
   [ "$#" -ge 1 ] || _jc_die_usage "get requer KEY"
   _jcg_key="$1"
-  [ -f "$_JC_CONFIG_FILE" ] || _jc_die "config ausente: $_JC_CONFIG_FILE (plugin inativo)" 3
-  if ! _jc_read_raw "$_jcg_key"; then
+  _jcg_file=$(_jc_resolve_config_path) \
+    || _jc_die "config ausente: nem $_JC_CONFIG_FILE nem a worktree principal (plugin inativo)" 3
+  if ! _jc_read_raw "$_jcg_key" "$_jcg_file"; then
     _jc_die "chave nao encontrada: $_jcg_key" 1
   fi
   return 0
@@ -130,22 +220,23 @@ _jc_is_bare_hostname() {
 }
 
 _jc_cmd_validate() {
-  [ -f "$_JC_CONFIG_FILE" ] || _jc_die "config ausente: $_JC_CONFIG_FILE (plugin inativo)" 3
+  _jcv_file=$(_jc_resolve_config_path) \
+    || _jc_die "config ausente: nem $_JC_CONFIG_FILE nem a worktree principal (plugin inativo)" 3
 
   for _jcv_field in $_JC_REQUIRED_FIELDS; do
-    _jcv_val=$(_jc_read_raw "$_jcv_field" 2>/dev/null) || _jcv_val=""
+    _jcv_val=$(_jc_read_raw "$_jcv_field" "$_jcv_file" 2>/dev/null) || _jcv_val=""
     if [ -z "$_jcv_val" ]; then
       _jc_die "campo obrigatorio ausente ou vazio: $_jcv_field" 1
     fi
   done
 
-  _jcv_site_host=$(_jc_read_raw site_host)
+  _jcv_site_host=$(_jc_read_raw site_host "$_jcv_file")
   if ! _jc_is_bare_hostname "$_jcv_site_host"; then
     _jc_die "site_host invalido (esperado hostname puro, sem esquema/path/porta/userinfo): $_jcv_site_host" 1
   fi
 
-  _jcv_status_pass=$(_jc_read_raw status_pass)
-  _jcv_status_fail=$(_jc_read_raw status_fail)
+  _jcv_status_pass=$(_jc_read_raw status_pass "$_jcv_file")
+  _jcv_status_fail=$(_jc_read_raw status_fail "$_jcv_file")
   if [ "$_jcv_status_pass" = "$_jcv_status_fail" ]; then
     _jc_die "status_fail e status_pass sao iguais ('$_jcv_status_pass') — crie um status distinto no workflow do projeto Jira para representar falha" 1
   fi
@@ -188,10 +279,13 @@ case "$_jc_sub" in
   validate)
     _jc_cmd_validate "$@"
     ;;
+  resolve-path)
+    _jc_cmd_resolve_path "$@"
+    ;;
   credential-check)
     _jc_cmd_credential_check "$@"
     ;;
   *)
-    _jc_die_usage "subcomando desconhecido: $_jc_sub (validos: get, validate, credential-check)"
+    _jc_die_usage "subcomando desconhecido: $_jc_sub (validos: get, validate, resolve-path, credential-check)"
     ;;
 esac

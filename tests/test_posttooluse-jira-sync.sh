@@ -60,6 +60,11 @@
 #   HS-17 resumo pos-drain (task 13.4.1): ConflictRecord JA RESOLVIDO
 #         (resolution != pending) NAO aparece — mesmo com um evento outbox
 #         `conflict` remanescente, o resumo nao acusa conflito pendente
+#   HS-18 r02 FASE 20 tarefa 20.1.2/20.1.3: worktree SEM ProjectConfig
+#         local mas com config na worktree principal (`sync_autonomous=on`)
+#         -> hook resolve via `jira-config.sh resolve-path` e enfileira
+#         normalmente; `runtime/` (outbox) e criado no cwd do WORKTREE,
+#         NUNCA na principal (fila/lock por worktree, FR-023)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -88,6 +93,25 @@ _config_off() {
 
 _feature_lock() {
   mkdir -p "$1/.claude/feature-00c-state/$2/.lock"
+}
+
+# _hs_setup_worktree: repo git minimo em $TMPDIR_TEST/main (commit inicial
+# SEM ProjectConfig) + worktree linkado em $TMPDIR_TEST/wt (r02 FASE 20
+# tarefa 20.1.2/20.1.3 — mesmo racional de
+# test_jira-config.sh::_jc_setup_worktree / test_parallel-launch.sh::
+# _pl_git_repo).
+_hs_setup_worktree() {
+  mkdir -p "$TMPDIR_TEST/main"
+  (
+    cd "$TMPDIR_TEST/main" || exit 1
+    git init -q .
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
+    printf 'x\n' > README.md
+    git add README.md
+    git commit -q -m init
+    git worktree add -q -b hs-test-branch "$TMPDIR_TEST/wt" HEAD
+  )
 }
 
 _jira_map() {
@@ -413,6 +437,22 @@ scenario_state_db_agente00c_canonical_project_diferente_do_basename_nao_vira_noo
   _line=$(awk -F '\t' 'NR==2' "$(_outbox "$TMPDIR_TEST")")
   printf '%s' "$_line" | grep -q '	cstk-jira-canon	5.1	pass	hook-record-task	0	queued$' \
     || { _fail "hs18_outbox_line" "linha gravada incorreta (esperado feature=cstk-jira-canon): $_line"; return 1; }
+  return 0
+}
+
+scenario_worktree_sem_config_local_usa_principal_runtime_fica_local() {
+  _hs_setup_worktree
+  mkdir -p "$TMPDIR_TEST/main/.claude/cstk-jira"
+  printf 'config_version=1\nsync_autonomous=on\n' \
+    > "$TMPDIR_TEST/main/.claude/cstk-jira/config"
+  _feature_lock "$TMPDIR_TEST/wt" demo
+  _jira_map "$TMPDIR_TEST/wt" demo
+  _J=$(_json_task "$TMPDIR_TEST/wt" 1.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  [ -f "$(_outbox "$TMPDIR_TEST/wt")" ] \
+    || { _fail "hs19_runtime_local_missing" "outbox nao foi criado no worktree — config da principal deveria ter sido resolvido e o sync deveria ter prosseguido"; return 1; }
+  [ -e "$TMPDIR_TEST/main/.claude/cstk-jira/runtime" ] \
+    && { _fail "hs19_runtime_leak_principal" "runtime vazou para a worktree principal (deveria ficar sempre no cwd)"; return 1; }
   return 0
 }
 

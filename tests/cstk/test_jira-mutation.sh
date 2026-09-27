@@ -304,10 +304,16 @@ scenario_mutation_8_4_4_hooks_inatividade_noop() {
 
   _mp=$(_mut_copy_plugin)
   _post="$_mp/hooks/posttooluse-jira-sync.sh"
-  grep -qF '[ -f "$_PJS_CONFIG" ] || exit 0' "$_post" \
-    || { _fail "mutant_stale" "no-op de config ausente nao encontrado em posttooluse-jira-sync.sh"; return 1; }
-  sed "s/\[ -f \"\$_PJS_CONFIG\" \] || exit 0/: /" "$_post" > "$_post.mut" && mv "$_post.mut" "$_post"
-  grep -qF '[ -f "$_PJS_CONFIG" ] || exit 0' "$_post" \
+  # r02 FASE 20 tarefa 20.1.2: o guard de inatividade agora resolve via
+  # `jira-config.sh resolve-path` (cwd, senao worktree principal) em vez do
+  # teste de existencia fixo do r01 — a mutacao reverte para o
+  # comportamento pre-20.1 (atribuicao direta, sem checagem), regressao
+  # equivalente a "esqueceu de checar se o config existe".
+  grep -qF 'resolve-path 2>/dev/null) || exit 0' "$_post" \
+    || { _fail "mutant_stale" "resolve-path do config ausente nao encontrado em posttooluse-jira-sync.sh"; return 1; }
+  sed 's#resolve-path 2>/dev/null) || exit 0#resolve-path 2>/dev/null) || _PJS_CONFIG="$_PJS_CWD/.claude/cstk-jira/config"#' \
+    "$_post" > "$_post.mut" && mv "$_post.mut" "$_post"
+  grep -qF 'resolve-path 2>/dev/null) || exit 0' "$_post" \
     && { _fail "mutant_apply" "sed nao aplicou a mutacao em posttooluse-jira-sync.sh"; return 1; }
   chmod +x "$_post"
 
@@ -327,10 +333,13 @@ scenario_mutation_8_4_4_hooks_inatividade_noop() {
     "$ORIG_PLUGIN_DIR/hooks/pretooluse-jira-deny-destructive.sh" || return 1
 
   _pre="$_mp/hooks/pretooluse-jira-deny-destructive.sh"
-  grep -qF '[ -f "$_PJD_CONFIG" ] || exit 0' "$_pre" \
-    || { _fail "mutant_stale" "no-op de config ausente nao encontrado em pretooluse-jira-deny-destructive.sh"; return 1; }
-  sed "s/\[ -f \"\$_PJD_CONFIG\" \] || exit 0/: /" "$_pre" > "$_pre.mut" && mv "$_pre.mut" "$_pre"
-  grep -qF '[ -f "$_PJD_CONFIG" ] || exit 0' "$_pre" \
+  # Mesma mutacao (r02 FASE 20 tarefa 20.1): reverte resolve-path para
+  # atribuicao direta sem checagem de existencia.
+  grep -qF 'resolve-path 2>/dev/null) || exit 0' "$_pre" \
+    || { _fail "mutant_stale" "resolve-path do config ausente nao encontrado em pretooluse-jira-deny-destructive.sh"; return 1; }
+  sed 's#resolve-path 2>/dev/null) || exit 0#resolve-path 2>/dev/null) || _PJD_CONFIG="$_PJD_CWD/.claude/cstk-jira/config"#' \
+    "$_pre" > "$_pre.mut" && mv "$_pre.mut" "$_pre"
+  grep -qF 'resolve-path 2>/dev/null) || exit 0' "$_pre" \
     && { _fail "mutant_apply" "sed nao aplicou a mutacao em pretooluse-jira-deny-destructive.sh"; return 1; }
   chmod +x "$_pre"
 
@@ -981,10 +990,14 @@ scenario_mutation_19_2_4_project_create_dupla_condicao() {
   # simula "negar so por execucao ativa, ignorando config" --
   _mp=$(_mut_copy_plugin)
   _hook="$_mp/hooks/pretooluse-jira-deny-destructive.sh"
-  grep -qF '[ -f "$_PJD_CONFIG" ] || exit 0' "$_hook" \
+  # r02 FASE 20 tarefa 20.1: guard agora resolve via `jira-config.sh
+  # resolve-path`; a mutacao reverte para atribuicao direta sem checagem
+  # (mesma tecnica de scenario_mutation_8_4_4_hooks_inatividade_noop).
+  grep -qF 'resolve-path 2>/dev/null) || exit 0' "$_hook" \
     || { _fail "mutant_stale" "guard de config nao encontrado em pretooluse-jira-deny-destructive.sh"; return 1; }
-  sed 's/\[ -f "\$_PJD_CONFIG" \] || exit 0/: /' "$_hook" > "$_hook.mut" && mv "$_hook.mut" "$_hook"
-  grep -qF '[ -f "$_PJD_CONFIG" ] || exit 0' "$_hook" \
+  sed 's#resolve-path 2>/dev/null) || exit 0#resolve-path 2>/dev/null) || _PJD_CONFIG="$_PJD_CWD/.claude/cstk-jira/config"#' \
+    "$_hook" > "$_hook.mut" && mv "$_hook.mut" "$_hook"
+  grep -qF 'resolve-path 2>/dev/null) || exit 0' "$_hook" \
     && { _fail "mutant_apply" "sed nao aplicou a mutacao em pretooluse-jira-deny-destructive.sh"; return 1; }
   chmod +x "$_hook"
 

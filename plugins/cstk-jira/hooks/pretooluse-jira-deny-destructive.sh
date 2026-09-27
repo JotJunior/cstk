@@ -25,10 +25,11 @@
 #   uma DUPLA condicao deliberada (nunca uma unica variavel combinada) —
 #   ver mutation test 19.2.4.
 #
-# Sem `<cwd>/.claude/cstk-jira/config` os DOIS modos sao no-op (exit 0):
-# quem instalou o plugin mas nunca o configurou pode estar usando o Rovo
-# MCP para outros fins fora do escopo do plugin, e mudar o comportamento
-# para essas pessoas seria vedado por FR-017/SC-006.
+# Sem ProjectConfig resolvivel (`jira-config.sh resolve-path` — cwd, senao a
+# worktree principal, r02 FASE 20 tarefa 20.1) os DOIS modos sao no-op
+# (exit 0): quem instalou o plugin mas nunca o configurou pode estar usando
+# o Rovo MCP para outros fins fora do escopo do plugin, e mudar o
+# comportamento para essas pessoas seria vedado por FR-017/SC-006.
 #
 # hooks.json ja restringe a invocacao deste script aos matchers
 # `mcp__.*__(deleteJiraIssue|executeDestructive)` e
@@ -109,9 +110,20 @@ esac
 # Sem config, o Rovo MCP pode estar em uso fora do escopo do plugin — nao
 # mudar comportamento para quem nunca configurou a integracao. Aplicavel
 # aos DOIS modos.
+#
+# r02 FASE 20 tarefa 20.1 (data-model.md ProjectConfig "Resolucao do arquivo
+# FR-023"): ate FASE 19 esta checagem era feita direto no cwd (documentado
+# como divida em tasks.md 19.2.2); agora delega a `jira-config.sh
+# resolve-path` (cwd, senao a worktree principal via `git rev-parse
+# --git-common-dir`, SOMENTE LEITURA), a mesma resolucao usada por
+# `posttooluse-jira-sync.sh` (task 20.1.2) — sem isso, uma execucao
+# paralela do roadmap sem config LOCAL (dec-022) nunca via a guarda como
+# "configurada" mesmo com a principal plenamente configurada.
 
-_PJD_CONFIG="$_PJD_CWD/.claude/cstk-jira/config"
-[ -f "$_PJD_CONFIG" ] || exit 0
+_PJD_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || exit 0
+_PJD_CONFIG_SCRIPT="$_PJD_SELF_DIR/../scripts/jira-config.sh"
+[ -r "$_PJD_CONFIG_SCRIPT" ] || exit 0
+_PJD_CONFIG=$(cd "$_PJD_CWD" 2>/dev/null && "$_PJD_CONFIG_SCRIPT" resolve-path 2>/dev/null) || exit 0
 
 # ==== 4. Bloqueio, por modo ====
 

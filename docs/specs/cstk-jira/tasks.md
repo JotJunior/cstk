@@ -2600,23 +2600,36 @@ checklists/security.md CHK022; plan.md SEC-7.
 Ref: plan.md fluxo 7 (Setup com oferta de projeto); quickstart.md
 Cenario 11; checklists/ux.md CHK014/CHK015.
 
-- [ ] 19.3.1 Skill `jira-setup`: reusar sempre primeiro
+- [x] 19.3.1 Skill `jira-setup`: reusar sempre primeiro
       (`getProject`/`searchProjects`); sem projeto e `project_create=
       gated` => oferecer criacao; *Interativo*: `create-project
       --confirm-key` repetindo a key; *Autonomo*: a skill NAO cria —
       devolve ao orquestrador um pedido de gate (`bloqueios.sh register`
       ou `ask_operator kind=confirm default=nao-criar`), encerra a onda;
       onda seguinte com bloqueio `respondido` => `create-project
-      --consent-block block-NNN`
-- [ ] 19.3.2 Gotcha nova na skill: "nunca criar projeto em contexto
-      autonomo" (mesmo padrao das Gotchas de FASE 6)
-- [ ] 19.3.3 Diagnostico de `403` (permissao insuficiente) orienta acao
+      --consent-block block-NNN` — `plugins/cstk-jira/skills/jira-setup/
+      SKILL.md` ETAPA 2.bis (`getProject` por key; `searchProjects`
+      mencionado como alternativa via Rovo MCP quando a key nao e certa);
+      fluxo diagram atualizado com o passo 2.bis
+- [x] 19.3.2 Gotcha nova na skill: "nunca criar projeto em contexto
+      autonomo" (mesmo padrao das Gotchas de FASE 6) — SKILL.md secao
+      "Nunca criar projeto em contexto autonomo (r02 FR-024/SEC-9)"
+- [x] 19.3.3 Diagnostico de `403` (permissao insuficiente) orienta acao
       concreta (conceder *Administer Jira*, ou criar manualmente) —
-      CHK015
-- [ ] 19.3.4 Teste (percorrer manualmente, quickstart Cenario 11): setup
+      CHK015 — SKILL.md ETAPA 2.bis, paragrafo final ("403 em qualquer um
+      dos dois fluxos")
+- [~] 19.3.4 Teste (percorrer manualmente, quickstart Cenario 11): setup
       autonomo sem projeto configurado gera exatamente 1 bloqueio humano
       com o marcador SEC-9; resposta `criar-projeto` seguida de retomada
-      cria o projeto; resposta negativa/timeout NUNCA cria
+      cria o projeto; resposta negativa/timeout NUNCA cria — PENDENTE:
+      exige uma execucao `feature-00c`/`agente-00c` real contra um site
+      Jira de teste (cria projeto de fato, mesma disciplina de 0.1.6/
+      6.1.8/6.2.7 do r01); esta onda (autonoma) NAO chama o Jira real nem
+      cria projeto algum. Operador: com uma execucao ativa apontando para
+      um projeto AINDA NAO configurado, disparar `jira-setup` e confirmar
+      as 3 asserções acima (1 bloqueio com marcador SEC-9; `criar-projeto`
+      cria; qualquer outra resposta nunca cria) contra o site de teste da
+      whitelist.
 
 ---
 
@@ -2635,25 +2648,57 @@ Ref: data-model.md ProjectConfig "Resolucao do arquivo (FR-023)";
 contracts/plugin-scripts.md `jira-config.sh resolve-path`; research.md
 Decision R2-8.
 
-- [ ] 20.1.1 `resolve-path`: imprime o caminho efetivo do ProjectConfig —
+- [x] 20.1.1 `resolve-path`: imprime o caminho efetivo do ProjectConfig —
       `<cwd>/.claude/cstk-jira/config`; ausente => `<worktree
       principal>/.claude/cstk-jira/config` via `git rev-parse
       --git-common-dir` (SOMENTE LEITURA, nunca grava la); ausente nos
       dois => exit 3 (plugin inativo, FR-017); sem `git` no PATH => so o
-      cwd, sem fallback, sem erro
-- [ ] 20.1.2 `posttooluse-jira-sync.sh` passo 1 (inatividade): usa
-      `resolve-path` em vez do teste de existencia fixo no cwd (r01)
-- [ ] 20.1.3 `runtime/` (outbox, locks, sidecars) SEMPRE relativo ao cwd,
+      cwd, sem fallback, sem erro — `jira-config.sh` `_jc_resolve_config_path`
+      + `_jc_cmd_resolve_path` (`resolve-path` subcommand, sempre imprime
+      path ABSOLUTO: bug real medido nesta onda — um path relativo
+      confundia chamadores que resolvem de um subshell `cd "$cwd" && ...`
+      e consomem o resultado DEPOIS, ja fora dele). `get`/`validate`
+      passam a delegar a MESMA resolucao (nunca duplicam a regra), o que
+      da o fallback de graca para `jira-sync.sh`/`jira-io.sh`/
+      `jira-setup.sh` sem tocar neles. Como bonus de consistencia,
+      `pretooluse-jira-deny-destructive.sh` (guard compartilhada
+      destructive+project-create, divida documentada em 19.2.2) tambem
+      passou a usar `resolve-path` em vez do teste de existencia fixo —
+      sem isso, uma execucao paralela do roadmap (dec-022, worktree sem
+      config local) nunca via a guarda como "configurada".
+- [x] 20.1.2 `posttooluse-jira-sync.sh` passo 1 (inatividade): usa
+      `resolve-path` em vez do teste de existencia fixo no cwd (r01) —
+      `_PJS_CONFIG=$(cd "$_PJS_CWD" && jira-config.sh resolve-path) ||
+      exit 0`.
+- [x] 20.1.3 `runtime/` (outbox, locks, sidecars) SEMPRE relativo ao cwd,
       mesmo quando o config resolvido vem da worktree principal — cada
-      worktree mantem fila/lock proprios
-- [ ] 20.1.4 Teste: worktree sem config proprio mas com config na
+      worktree mantem fila/lock proprios. Confirmado por auditoria (todos
+      os `_JS_*_FILE`/`_JS_*_LOCK_DIR` de `jira-sync.sh` sao literais
+      `"./.claude/cstk-jira/runtime/..."`, nunca derivados do config
+      resolvido) e por teste de integracao (20.1.4/HS-18 abaixo).
+- [x] 20.1.4 Teste: worktree sem config proprio mas com config na
       principal => `resolve-path` resolve o da principal, sync funciona;
       nenhuma escrita ocorre no path da principal; worktree sem `git` no
       PATH e sem config proprio => exit 3 (nunca erro nem fallback
-      silencioso para outro path)
-- [ ] 20.1.5 Mutation test: reverter 20.1.1 para gravar no path resolvido
+      silencioso para outro path) — `tests/cstk/test_jira-config.sh`
+      JC-12..JC-16 (`scenario_resolve_path_*`, `_jc_setup_worktree`/
+      `_jc_path_without_git`, o 2o com allowlist explicito de PATH —
+      feedback_test_path_stub_cannot_hide_usrbin) + integracao completa
+      via hook em `tests/test_posttooluse-jira-sync.sh` HS-18
+      (`scenario_worktree_sem_config_local_usa_principal_runtime_fica_local`:
+      outbox criado no worktree, runtime NUNCA vaza para a principal).
+- [x] 20.1.5 Mutation test: reverter 20.1.1 para gravar no path resolvido
       da worktree principal (em vez de tratar como somente-leitura) faz o
-      teste de "nenhuma escrita na principal" falhar
+      teste de "nenhuma escrita na principal" falhar —
+      `tests/cstk/test_jira-config.sh::scenario_mutation_20_1_5_resolve_path_grava_na_principal`
+      (controle: original nunca muta o config da principal; mutante que
+      injeta uma escrita apos a checagem de existencia falha a asserção,
+      confirmando que o teste detecta a regressao). Mutantes preexistentes
+      de `tests/cstk/test_jira-mutation.sh` (8.4.4, 19.2.4) que visavam o
+      literal antigo `[ -f "$_PJx_CONFIG" ] || exit 0` foram atualizados
+      para o novo anchor `resolve-path 2>/dev/null) || exit 0` (revertendo
+      para atribuicao direta sem checagem, preservando a semantica
+      original do mutante).
 
 ### 20.2 Um Epic por feature (FR-023) — confirmacao de comportamento agregado `[M]`
 
@@ -2661,17 +2706,38 @@ Ref: spec.md FR-023 Clarification (comportamento AGREGADO entre
 execucoes paralelas); research.md Decision R2-8; quickstart.md
 Cenario 13.
 
-- [ ] 20.2.1 Confirmar (auditoria de codigo, sem mudanca funcional) que
+- [x] 20.2.1 Confirmar (auditoria de codigo, sem mudanca funcional) que
       `jira-sync.sh convert`/`drain` sempre resolve `short_name` da
       PROPRIA execucao (`.claude/feature-00c-state/<short-name>/`) e
       nunca itera sobre `docs/roadmap.md` — comportamento agregado emerge
       de execucoes paralelas independentes, nunca de logica nova no
-      plugin
-- [ ] 20.2.2 Teste (quickstart Cenario 13): 2 worktrees (`<repo>-<A>`,
+      plugin. CONFIRMADO por auditoria (`grep -n roadmap.md
+      plugins/cstk-jira/scripts/jira-sync.sh` = zero ocorrencias):
+      `_js_cmd_convert`/`_js_cmd_drain` (linhas 2010/3049) chamam
+      `_js_parse_feature_arg "$@"` como PRIMEIRA linha — um parser que
+      exige `--feature F` explicito (string unica, `_js_die_usage` se
+      ausente/repetido) e nunca itera diretorio/arquivo algum para
+      descobri-lo; `_jsd_map_file="./docs/specs/$_jsd_feature/
+      jira-map.tsv"` (drain) confina a UM feature por vez. Quem resolve
+      `F` e o CHAMADOR (hooks: `.lock` sob `.claude/feature-00c-state/
+      <short>/` do PROPRIO cwd, `posttooluse-jira-sync.sh` secao 2 —
+      nunca `docs/roadmap.md`). So `status`/`requeue-auth-failed`
+      agregam TODAS as features (glob local `docs/specs/*/`, leitura,
+      sem rede) quando `--feature` e omitido — nunca `convert`/`drain`.
+      Nenhuma mudanca de codigo necessaria; comportamento ja e o
+      desejado por FR-023 desde o r01.
+- [~] 20.2.2 Teste (quickstart Cenario 13): 2 worktrees (`<repo>-<A>`,
       `<repo>-<B>`) com ProjectConfig SO na principal; cada uma roda
       `feature-00c` e fecha 1 onda; cada worktree sincroniza SO o proprio
       Epic; o marco de release compartilhado e criado uma vez (2a
-      execucao reusa via R13, ou releitura apos `400`)
+      execucao reusa via R13, ou releitura apos `400`) — PENDENTE: exige
+      2 worktrees reais + 2 execucoes `feature-00c` completas contra um
+      site Jira de teste (cria Epics/marco de release de fato), fora do
+      escopo desta onda autonoma (regra dura: nenhuma chamada real ao
+      Jira). Operador: criar as 2 worktrees, configurar ProjectConfig SO
+      na principal, rodar `/feature-00c` em cada uma ate fechar 1 onda de
+      `execute-task`, e confirmar as 3 asserções acima contra o site de
+      teste da whitelist.
 
 ### 20.3 Sincronizacao de skills e contratos com o comportamento r02 `[A]`
 

@@ -46,6 +46,12 @@ _PJS_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || exit 0
 _PJS_ENGINE="$_PJS_SELF_DIR/../scripts/jira-sync.sh"
 [ -r "$_PJS_ENGINE" ] || exit 0
 
+# r02 FASE 20 tarefa 20.1.2 (data-model.md ProjectConfig "Resolucao do
+# arquivo (FR-023)"): resolve-path substitui `jira-config.sh` como UNICO
+# lugar que sabe achar o config (cwd, senao a worktree principal — FR-023).
+_PJS_CONFIG_SCRIPT="$_PJS_SELF_DIR/../scripts/jira-config.sh"
+[ -r "$_PJS_CONFIG_SCRIPT" ] || exit 0
+
 # ==== Extracao JSON sem jq (flat, best-effort) ====
 
 # _pjs_json_str JSON KEY -> valor de um campo string simples ("key":"value"),
@@ -73,9 +79,13 @@ _PJS_CWD=$(_pjs_json_str "$_PJS_INPUT" cwd)
 [ -d "$_PJS_CWD" ] || exit 0
 
 # ==== 1. No-op de inatividade (FR-017/SC-006) — PRIMEIRA checagem real ====
+# r02 FASE 20 tarefa 20.1.2: `resolve-path` (cwd, senao a worktree principal
+# via `git rev-parse --git-common-dir`, SOMENTE LEITURA — FR-023) substitui
+# o teste de existencia fixo no cwd do r01. Exit != 0 (config ausente nos
+# dois lugares) => `_PJS_CONFIG` fica vazio e o `|| exit 0` dispara o
+# mesmo no-op de sempre.
 
-_PJS_CONFIG="$_PJS_CWD/.claude/cstk-jira/config"
-[ -f "$_PJS_CONFIG" ] || exit 0
+_PJS_CONFIG=$(cd "$_PJS_CWD" 2>/dev/null && "$_PJS_CONFIG_SCRIPT" resolve-path 2>/dev/null) || exit 0
 
 if grep -q '^sync_autonomous=off[ 	]*$' "$_PJS_CONFIG" 2>/dev/null; then
   exit 0

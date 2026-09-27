@@ -93,13 +93,19 @@ comportamento vedada por FR-017/SC-006.
 
 ## Round r02 (2026-09-26) — mudancas (FR-023, FR-024, FR-020..FR-025)
 
-`[PROPOSTA — a validar na implementacao]` para os itens ainda pendentes
-(FASE 20, `jira-config.sh resolve-path`); a entrada de `hooks.json` abaixo
-(FASE 19 tarefa 19.2) **JA ESTA IMPLEMENTADA** — `pretooluse-jira-deny-
-destructive.sh` deriva o modo (`destructive`/`project-create`) do
-`tool_name` casado internamente, sem flag posicional de modo; coberta por
+`[PROPOSTA — a validar na implementacao]` para os itens ainda pendentes de
+FASE 16-18 (marco/labels/links no resumo, ver `plugin-scripts.md`); a
+entrada de `hooks.json` abaixo (FASE 19 tarefa 19.2) e a resolucao de
+`jira-config.sh resolve-path` (FASE 20 tarefa 20.1) **JA ESTAO
+IMPLEMENTADAS** — `pretooluse-jira-deny-destructive.sh` deriva o modo
+(`destructive`/`project-create`) do `tool_name` casado internamente, sem
+flag posicional de modo; coberta por
 `tests/test_pretooluse-jira-deny-destructive.sh` (PJD-6/7/8) e mutation
 test `tests/cstk/test_jira-mutation.sh::scenario_mutation_19_2_4_project_create_dupla_condicao`.
+Os DOIS hooks (secao "No-op de inatividade" de cada um) delegam a
+`jira-config.sh resolve-path` em vez de checar `<cwd>/.claude/cstk-jira/
+config` diretamente — cobre a execucao paralela do roadmap (dec-022) onde
+so a worktree principal tem config local.
 
 **`hooks.json` — entrada nova**
 
@@ -107,17 +113,20 @@ test `tests/cstk/test_jira-mutation.sh::scenario_mutation_19_2_4_project_create_
 |--------|-----------------|--------|-------|-------|
 | `PreToolUse` | `mcp__.*__createJiraProject` | `hooks/pretooluse-jira-deny-destructive.sh` (modo `project-create`, derivado do `tool_name`) | nao | FR-024: nega (exit 2) criacao de projeto via Rovo MCP quando ha execucao 00c ATIVA no cwd (mesma deteccao de `.lock` do passo 2 abaixo) E o plugin esta configurado. Sessao interativa sem execucao ativa: nao interfere (o prompt de permissao do proprio Claude Code + a confirmacao da skill `jira-setup` sao o gate) |
 
-Limite honesto: sem ProjectConfig a guarda segue no-op (FR-017/SC-006 — o
-plugin nao pode mudar o comportamento de quem nunca o configurou), entao o
-PRIMEIRO setup dentro de uma execucao autonoma depende da regra da skill
-(`jira-setup` nunca cria em contexto autonomo, devolve o pedido de gate ao
-orquestrador) e do `create-project` exigir `--consent-block`.
+Limite honesto: sem ProjectConfig resolvivel (nem cwd, nem worktree
+principal) a guarda segue no-op (FR-017/SC-006 — o plugin nao pode mudar o
+comportamento de quem nunca o configurou), entao o PRIMEIRO setup dentro de
+uma execucao autonoma depende da regra da skill (`jira-setup` nunca cria em
+contexto autonomo, devolve o pedido de gate ao orquestrador) e do
+`create-project` exigir `--consent-block`.
 
 **`posttooluse-jira-sync.sh` — passos alterados**
 
 - **Passo 1 (inatividade)**: o teste de existencia usa
   `jira-config.sh resolve-path` (cwd, senao worktree principal — FR-023).
-  Sem `git` no PATH, so o cwd e considerado (sem fallback, sem erro).
+  Sem `git` no PATH, ou fora de um repositorio git, so o cwd e considerado
+  (sem fallback, sem erro dedicado — cai no mesmo exit 0 de "config
+  ausente"). Implementado (r02 FASE 20 tarefa 20.1).
 - **Passo 2 (execucao ativa)**: inalterado. FR-023 NAO exige branch novo:
   cada execucao paralela do roadmap roda na propria worktree, com 1 `.lock`
   no proprio cwd => resolve a propria `short_name` => sincroniza o proprio

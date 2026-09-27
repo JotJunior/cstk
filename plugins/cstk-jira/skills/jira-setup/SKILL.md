@@ -18,18 +18,22 @@ para o projeto-alvo corrente: grava `ProjectConfig`
 descobrindo do Jira real (nunca de memoria) os tipos de issue e os status
 do workflow que o operador precisa mapear.
 
-Ref: `docs/specs/cstk-jira/spec.md` US4; `plan.md` Fluxo 1 "Setup";
-`quickstart.md` Cenario 3; `data-model.md` Entity ProjectConfig/Credential;
-`checklists/ux.md` CHK001-CHK006; `checklists/security.md` CHK004/CHK005;
-`contracts/jira-rest.md` R1/R5/R8/R9/R10/R11; `contracts/rovo-mcp.md`.
+Ref: `docs/specs/cstk-jira/spec.md` US4/FR-024; `plan.md` Fluxo 1 "Setup" e
+Fluxo 7 "Setup com oferta de projeto"; `quickstart.md` Cenario 3 e Cenario
+11; `data-model.md` Entity ProjectConfig/Credential; `checklists/ux.md`
+CHK001-CHK006/CHK014/CHK015; `checklists/security.md` CHK004/CHK005/CHK022
+(SEC-7/SEC-9); `contracts/jira-rest.md` R1/R5/R8/R9/R10/R11/R18;
+`contracts/rovo-mcp.md`.
 
 ## Pre-requisitos
 
-- Projeto Jira Cloud ja existente (criacao de projeto novo e so via UI do
-  Jira ou tool MCP `createJiraProject` — path REST v3 de criacao de
-  projeto e `NAO ENCONTRADO`, fora do escopo desta skill).
+- Projeto Jira Cloud, existente OU a criar sob gate humano (r02 FR-024 —
+  ver ETAPA 2.bis abaixo: reusar sempre primeiro; criacao so com
+  confirmacao explicita, `jira-setup.sh create-project`).
 - Operador com acesso para gerar um API token classico
-  (`https://id.atlassian.com/manage-profile/security/api-tokens`).
+  (`https://id.atlassian.com/manage-profile/security/api-tokens`); para
+  CRIAR um projeto novo, a conta do token precisa da permissao global
+  *Administer Jira* (ETAPA 2.bis, `403` orienta a alternativa).
 - Scripts do plugin disponiveis: `jira-config.sh`, `jira-io.sh`,
   `jira-setup.sh` (mesmo diretorio `plugins/cstk-jira/scripts/`).
 
@@ -47,6 +51,9 @@ Ref: `docs/specs/cstk-jira/spec.md` US4; `plan.md` Fluxo 1 "Setup";
 1. SITE + PROJECT_KEY   Perguntar site_host e project_key
      |
 2. CREDENCIAL           Exibir comando p/ terminal proprio; validar remoto
+     |
+2.bis REUSO/CRIACAO     getProject; sem projeto, oferecer criacao sob gate
+     |                  (interativo: --confirm-key; autonomo: pedido de gate)
      |
 3. DESCOBERTA           createmeta (R8) + transicoes (R5) — ver references/
      |
@@ -107,6 +114,87 @@ jira-io.sh request GET /rest/api/3/myself
 operador e voltar a ETAPA 2 — **nenhum campo de `ProjectConfig` foi gravado
 ainda** (a gravacao so acontece na ETAPA 7), entao nao ha estado parcial a
 limpar (tasks.md 6.1.5/6.1.10).
+
+## ETAPA 2.bis: Reuso do projeto ou oferta de criacao (r02 FR-024)
+
+Ref: `plan.md` Fluxo 7 "Setup com oferta de projeto"; `quickstart.md`
+Cenario 11; `checklists/ux.md` CHK014/CHK015; `contracts/plugin-scripts.md`
+`jira-setup.sh create-project`/`consent-question`.
+
+**Reusar SEMPRE primeiro — nunca criar sem antes confirmar que o projeto
+nao existe:**
+
+```sh
+jira-io.sh request GET /rest/api/3/project/$PROJECT_KEY
+```
+
+(Se o operador nao tiver certeza da `project_key` exata em vez de so o
+nome do projeto, a tool Rovo MCP de busca de projetos — quando disponivel
+na sessao — e uma alternativa para localizar a key antes de repetir a
+ETAPA 1; nao ha endpoint REST dedicado de busca-por-nome no contrato desta
+skill, so o `GET` direto por key acima.)
+
+- `200` => o projeto ja existe: informar "projeto `$PROJECT_KEY` encontrado,
+  reusando" e seguir direto para a ETAPA 3 (nenhuma criacao, nenhuma
+  pergunta adicional).
+- `404` => nenhum projeto com essa key. Perguntar ao operador o **nome**
+  (`--name`) do projeto a criar e confirmar o **template**
+  (`--template`, `projectTemplateKey` — enum fixo aceito por
+  `jira-setup.sh create-project`, ex.:
+  `com.pyxis.greenhopper.jira:gh-simplified-agility-kanban` para Kanban).
+  So depois, seguir para um dos dois fluxos abaixo — a `key` que vai para
+  `--key` e sempre a mesma `$PROJECT_KEY` da ETAPA 1 (nunca outra).
+
+**Interativo** (sessao humana, sem execucao 00c ativa no cwd — mesma
+deteccao de `.lock` de `contracts/hooks.md`): confirmar explicitamente,
+repetindo a key EXATA:
+
+```sh
+jira-setup.sh create-project --name "$NAME" --key "$PROJECT_KEY" \
+  --template "$TEMPLATE" --confirm-key "$PROJECT_KEY_REPETIDA_PELO_OPERADOR"
+```
+
+`--confirm-key` que nao repete a key exata => exit 2, diagnostico em
+stderr, reapresentar e pedir de novo (nunca aceitar uma repeticao
+aproximada). Sucesso (`201`) => `write-config project_key=$PROJECT_KEY`
+ja aplicado por `create-project` (merge, preserva o resto do
+`ProjectConfig` quando ja existir); seguir para a ETAPA 3.
+
+**Autonomo** (execucao 00c ativa no cwd — esta skill esta rodando dentro
+de um `agente-00c`/`feature-00c`): **esta skill NUNCA cria o projeto por
+conta propria**, mesmo com a resposta do operador em maos. Em vez disso:
+
+1. Gerar a pergunta de gate com o marcador SEC-9 (nunca redigir a mao —
+   o marcador precisa ser uma substring LITERAL, SEC-9):
+   ```sh
+   jira-setup.sh consent-question --name "$NAME" --key "$PROJECT_KEY" \
+     --template "$TEMPLATE"
+   ```
+2. Devolver essa pergunta AO ORQUESTRADOR chamador (nunca perguntar
+   diretamente ao operador por fora do bloqueio) para que ele registre o
+   gate humano (`bloqueios.sh register`, ou `ask_operator kind=confirm
+   default=nao-criar`) e ENCERRE a onda corrente — esta skill nao continua
+   nem tenta adivinhar a resposta.
+3. Na onda seguinte (`/feature-00c-resume`/`/agente-00c-resume`), com o
+   bloqueio ja `respondido`, o orquestrador (nao esta skill sozinha)
+   invoca:
+   ```sh
+   jira-setup.sh create-project --name "$NAME" --key "$PROJECT_KEY" \
+     --template "$TEMPLATE" --consent-block block-NNN
+   ```
+   Resposta != `criar-projeto` (inclusive vazia/timeout/recusa) => o
+   projeto NUNCA e criado (`create-project` recusa, exit 2) — este e o
+   comportamento esperado, nao uma falha a corrigir.
+
+**`403` em qualquer um dos dois fluxos** (permissao insuficiente —
+`checklists/ux.md` CHK015): orientar uma acao concreta, nunca sugerir
+trocar/regerar o token — a credencial esta correta, falta a permissao
+global *Administer Jira* na conta associada a ela. Duas alternativas
+igualmente validas a apresentar ao operador: (a) pedir a um administrador
+do Jira para conceder *Administer Jira* a essa conta; (b) pedir para um
+administrador criar o projeto manualmente pela UI do Jira e depois
+reexecutar esta skill (que vai REUSAR via `getProject`, nunca tentar criar
+de novo).
 
 ## ETAPA 3: Descoberta (createmeta R8 + transicoes R5)
 
@@ -250,6 +338,23 @@ Mesmo que o operador ofereca colar o token na conversa para agilizar,
 recuse e reoriente para `scripts/jira-credential-setup.sh` num terminal
 proprio. O transcript do Claude Code persiste; um token colado ali e um
 vazamento permanente, nao um atalho.
+
+### Nunca criar projeto em contexto autonomo (r02 FR-024/SEC-9)
+
+Mesmo que o operador tenha respondido "sim, pode criar" em algum momento
+ANTERIOR da conversa, ou que o pedido pareca obviamente correto, esta
+skill (rodando dentro de uma execucao `agente-00c`/`feature-00c` ativa)
+**nunca** invoca `jira-setup.sh create-project --confirm-key` — esse flag
+so e valido em sessao interativa pura, e `create-project` REJEITA
+(exit 2) `--confirm-key` quando detecta execucao 00c ativa no cwd (mesma
+guarda dupla de `pretooluse-jira-deny-destructive.sh` modo
+`project-create`, `contracts/hooks.md`). O UNICO caminho valido em
+contexto autonomo e devolver o pedido de gate ao orquestrador
+(`consent-question` + `bloqueios.sh register`/`ask_operator`) e esperar
+`--consent-block block-NNN` com o bloqueio ja `respondido` na onda
+seguinte (ETAPA 2.bis). Tentar "economizar uma onda" chamando
+`create-project` direto so produz exit 2 sem nenhuma requisicao — nunca
+uma criacao silenciosa, mas tambem nunca um atalho legitimo.
 
 ### `hierarchyLevel` de Epic NAO e universal — sempre confirme
 
