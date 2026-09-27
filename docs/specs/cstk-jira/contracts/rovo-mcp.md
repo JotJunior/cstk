@@ -76,11 +76,30 @@ sessao; os exemplos acima servem de orientacao, nao de contrato.
 - Nenhuma tool nova entra na allowlist: este contrato NAO cita (e o plan r02
   nao pesquisou) tool do Rovo MCP para Fix Version, labels ou issue links.
   Marco (R12/R13), labels em edicao (R14) e links (R16/R17) usam SEMPRE o
-  helper REST (`jira-io.sh`), inclusive no caminho interativo. Sem
-  `jq`/cliente HTTP, a conversao interativa via MCP segue criando Epic/Task/
-  Sub-task e o `status` sinaliza `milestone=off`/links nao reconciliados
-  (degradacao declarada, carve-out 1.1.0 condicao a) — nunca parametro de
-  tool suposto.
+  helper REST (`jira-io.sh`), inclusive no caminho interativo — nunca
+  parametro de tool suposto. **Correcao pos-implementacao (FASE 20 tarefa
+  20.3.1)**: a skill `jira-convert` (ETAPA 1) endureceu a exigencia de
+  `jq`/cliente HTTP para as 4 pre-checagens de `jira-sync.sh convert`
+  ANTES de detectar o caminho (MCP ou REST) — sem eles, a skill aborta
+  (exit 5) por inteiro, mesmo quando tools Rovo estao visiveis; nao existe
+  um modo "MCP sem `jq`/cliente HTTP" que crie Epic/Task/Sub-task e apenas
+  sinalize marco/links em degradacao. A degradacao graciosa
+  (`milestone=off|unresolved|blocked:*`, `links_unrepresentable=N`) so
+  ocorre DEPOIS que as 4 pre-checagens ja passaram, quando uma chamada
+  ESPECIFICA de marco/link falha por rede/permissao (`jira-sync.sh links`/
+  `milestone ensure` isolam a falha ao item/aresta afetado, nunca abortam o
+  lote inteiro nem a criacao de Epic/Task/Sub-task ja em andamento) — jamais
+  a ausencia de `jq`/cliente HTTP em si.
+- Mesmo quando `jq`/cliente HTTP estao presentes, o caminho MCP nunca aplica
+  Fix Version nem label na CRIACAO (`createJiraIssue` nao tem campo
+  confirmado para eles no `inputSchema`, ver "Parametros de entrada das
+  tools" acima) — e a chamada de fechamento de paridade
+  (`jira-sync.sh convert`, rodada apos o loop MCP) NAO os aplica
+  retroativamente a itens ja mapeados (so reconcilia `summary`/
+  `description`, `plugins/cstk-jira/skills/jira-convert/SKILL.md` Gotcha
+  "Marco (Fix Version) e labels de fase..."). `links` e a UNICA excecao das
+  3 (opera sobre ancoras em `jira-map.tsv`, independente de como a issue
+  foi criada).
 - `createJiraProject` (ja na allowlist do r01 para "board/filtro/projeto")
   passa a ser usavel SO depois da confirmacao explicita do gate de FR-024 na
   sessao interativa, e e negada pela guarda `PreToolUse` quando ha execucao

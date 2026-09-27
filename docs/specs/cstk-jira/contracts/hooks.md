@@ -93,11 +93,9 @@ comportamento vedada por FR-017/SC-006.
 
 ## Round r02 (2026-09-26) — mudancas (FR-023, FR-024, FR-020..FR-025)
 
-`[PROPOSTA — a validar na implementacao]` para os itens ainda pendentes de
-FASE 16-18 (marco/labels/links no resumo, ver `plugin-scripts.md`); a
-entrada de `hooks.json` abaixo (FASE 19 tarefa 19.2) e a resolucao de
-`jira-config.sh resolve-path` (FASE 20 tarefa 20.1) **JA ESTAO
-IMPLEMENTADAS** — `pretooluse-jira-deny-destructive.sh` deriva o modo
+**JA ESTAO IMPLEMENTADAS** (marcador `[PROPOSTA — a validar na
+implementacao]` removido na FASE 20 tarefa 20.3.3, mesma disciplina da
+task 13.5.1) — `pretooluse-jira-deny-destructive.sh` deriva o modo
 (`destructive`/`project-create`) do `tool_name` casado internamente, sem
 flag posicional de modo; coberta por
 `tests/test_pretooluse-jira-deny-destructive.sh` (PJD-6/7/8) e mutation
@@ -136,9 +134,19 @@ contexto autonomo, devolve o pedido de gate ao orquestrador) e do
   `jira-sync.sh links` (`plugin-scripts.md` r02). Modo `task`/`bash`:
   inalterado (so transicao de status — nada de marco/label/link por task,
   para nao multiplicar escritas por `record_task`).
-- **Passo 5.bis (resumo)**: a linha de resumo passa a incluir
-  `milestone=` quando `unresolved`/`blocked:*` e `links_unrepresentable=`/
-  `links_stale=` quando > 0 — mesma regra de omissao no caminho feliz.
+- **Passo 5.bis (resumo)**: **NAO alterado** (achado de auditoria da FASE 20
+  tarefa 20.3.3, Principio VI — corrige uma aspiracao de plano que nunca foi
+  implementada em `posttooluse-jira-sync.sh`): a linha `resumo pos-drain
+  (...)` gravada em `runtime/hook.log` continua exibindo SOMENTE
+  `queued=`/`deferred=`/`conflict=`/`auth_failed=`, os mesmos 4 campos do
+  r01 (confirmado por grep — o hook nunca parseia `milestone=`/
+  `links_unrepresentable=`/`links_stale=` da saida de `jira-sync.sh
+  status`). Marco/labels/links continuam disponiveis sob demanda via
+  `jira-sync.sh status --feature F` (skill `jira-sync`, ETAPA 1) — so nao
+  sao surfaced automaticamente no resumo do hook. Estender o resumo
+  automatico do hook para incluir esses 2 campos e um gap real, nao
+  coberto por nenhuma tarefa desta FASE (fora de escopo desta rodada de
+  sincronizacao de documentacao).
 
 Inalterados: fail-open absoluto (passo 6), nao-exfiltracao de `session_id`
 (passo 7), nenhuma escrita no state da execucao, o hook NUNCA cria projeto

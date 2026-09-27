@@ -76,6 +76,35 @@ ja pronta) e os cards `orphan` de `jira-map.tsv` (com a dica
 nenhum campo aqui vem do Jira, so de TSVs locais ja gravados por
 `enqueue`/`drain`/`convert`; nao ha texto a rotular UNTRUSTED nesta etapa.
 
+**Com `--feature F`** (r02 FASE 16 task 16.4.4 / FASE 18 task 18.4.5), duas
+linhas grep-aveis adicionais — AMBAS locais (marco/nome de link nunca
+citados aqui vem de CHANGELOG.md/ProjectConfig/contagem de TSV local, nunca
+de texto ecoado do Jira: nao ha rotulo UNTRUSTED a aplicar, mesma disciplina
+do resto desta ETAPA):
+
+- `milestone=<nome>` (marco corrente resolvido), `milestone=blocked:<nome>`
+  (marco resolvido mas a Fix Version nao pode ser criada/reusada — permissao
+  insuficiente) ou `milestone=unresolved`/`milestone=off`. Diagnostico e
+  acao concreta por valor:
+  - `unresolved`: nenhum round ativo E `CHANGELOG.md` esta em
+    `[Unreleased]` (ou ausente) E `milestone_release` nao foi definido
+    (CHK017) — oriente o operador a editar `ProjectConfig` com
+    `milestone_release=<X.Y.Z>` (se quiser fixar o marco manualmente) ou
+    `milestone_mode=off` (se nao quiser sincronizar marco nesta feature).
+  - `blocked:<nome>`: `403`/`404` ao criar a Fix Version (Administer Jira/
+    Administer Projects ausente na credencial) — oriente reconfigurar a
+    credencial (`/jira-setup`) ou `milestone_mode=off`; criacao de itens
+    NOVOS fica suspensa para a feature ate resolver (R2-4).
+- `links_unrepresentable=N` / `links_stale=N` — contagens de
+  `docs/specs/<feature>/jira-links.tsv`. `links_unrepresentable > 0`
+  (CHK016): reason `no_link_type`/`ambiguous_link_type` (0 ou 2+ tipos de
+  link candidatos na instancia) ou `linking_disabled`/`limit` (API do site
+  nega/limita) — oriente o operador a definir `link_type_id` manualmente
+  (rode `/jira-setup` de novo, ETAPA 7, ou edite `ProjectConfig`
+  diretamente com o `id` confirmado). `links_stale > 0` e informativo (uma
+  aresta reorganizou de fase — a linha antiga nunca e removida, FR-012; a
+  nova `active` ja reflete a fase corrente, nenhuma acao exigida).
+
 ## ETAPA 2: Resolver um conflito
 
 Para cada conflito que o operador quiser inspecionar antes de decidir
@@ -100,7 +129,10 @@ Para cada conflito que o operador quiser inspecionar antes de decidir
 2. **Apresentar ao operador** o titulo/descricao/status/comentarios do
    Jira ROTULADOS como conteudo externo (ver "Texto vindo do Jira e
    UNTRUSTED" abaixo) junto com o `reason` do conflito
-   (`manual_edit`/`marker_missing`/`orphan`/`auth_failed`,
+   (`manual_edit`/`marker_missing`/`orphan`/`auth_failed`, e os dois
+   novos do r02 `milestone_drift`/`label_drift` — divergencia entre o
+   marco/label gravado no `SyncMarker` e o que o sidecar local
+   (`jira-milestones.tsv`/`written_phase_label`) reconhece como corrente;
    `data-model.md` Entity ConflictRecord) e as 3 opcoes possiveis.
 3. **A escolha e SEMPRE do operador** — `keep_jira` (mantem o Jira como
    esta, nada e escrito), `overwrite` (reenfileira o `desired_state`
@@ -204,6 +236,37 @@ como pre-requisito), mas e relevante para explicar ao operador por que
 "apagar uma issue no Jira manualmente, fora desta sessao" nunca e
 bloqueado pelo plugin — a guarda so cobre chamadas de tool MCP DENTRO de
 uma sessao com o plugin configurado.
+
+### `resolve` e agnostico ao `reason` — inclusive `milestone_drift`/`label_drift` (r02)
+
+`jira-sync.sh resolve` (`_js_cmd_resolve`) fecha QUALQUER `ConflictRecord`
+pendente de `(feature, local_key)` da MESMA forma, seja o `reason`
+`manual_edit`/`marker_missing` (r01) ou `milestone_drift`/`label_drift`
+(r02, gravados por `_js_reconcile_epic_milestone`/`_js_reconcile_phase_label`
+durante o evento `reconcile` do drain) — nao ha branch dedicado por `reason`.
+Isso tem uma implicacao pratica que vale explicar ao operador antes de
+escolher:
+
+- `keep_jira`/`ignored`: fecham o registro sem nenhuma escrita de conteudo
+  alem do rebaseline do SyncMarker (`_js_rebaseline_marker`) — que so
+  regrava `written_summary_sha256`/`written_status`/`written_description_sha256`,
+  NUNCA `written_fix_version_id`/`written_phase_label`. Ou seja: fechar um
+  `milestone_drift`/`label_drift` com `keep_jira` encerra o alerta, mas nao
+  "confirma" o marco/label atual da issue como novo baseline desses dois
+  campos especificos.
+- `overwrite`: reenfileira um evento com o `desired_state` do ULTIMO evento
+  outbox `conflict` do par ou, na ausencia dele (o caso normal aqui, ja que
+  `milestone_drift`/`label_drift` nascem de reconciliacao, nunca de um
+  evento outbox `conflict`), do `local_state` ATUAL (`pending`/
+  `in_progress`/`pass`/`fail`) via `jira-tasks.sh items` — um conceito de
+  TRANSICAO DE STATUS, nao de marco/label. `overwrite` NAO reaplica o marco
+  nem o label por si so.
+- A proxima chamada de `jira-sync.sh drain` (evento `reconcile`) e quem de
+  fato tenta reconciliar marco/label de novo, do zero (mesma logica que
+  gerou o conflito na 1a vez) — se a causa raiz nao mudou (ex.: o marco
+  antigo ainda nao consta no sidecar como `current`/`superseded`), o MESMO
+  `milestone_drift` pode reaparecer. Ajustar `jira-milestones.tsv`
+  manualmente esta fora do escopo desta skill (sidecar interno do plugin).
 
 ### `jira-conflict-view.sh` nunca interpreta a estrutura de `description`/`comment`
 

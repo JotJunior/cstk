@@ -147,11 +147,15 @@ para o proximo `jira-sync` interativo.
 
 ## Round r02 (2026-09-26) — subcomandos e flags novos (FR-020..FR-025)
 
-`[PROPOSTA — a validar na implementacao]`: interface NOVA do plugin (nao e
-contrato de sistema externo). Tudo e ADITIVO — nenhum subcomando/flag do r01
-muda de semantica; sem as flags novas o comportamento e byte-a-byte o do r01.
-Os pontos que tocam o Jira remetem a `jira-rest.md` R12-R18. `jq`/cliente
-HTTP continuam SO em `jira-io.sh` (carve-out 1.1.0 b); nenhum `sqlite3`.
+Interface NOVA do plugin (nao e contrato de sistema externo) — **FASE 16-19
+JA IMPLEMENTARAM** todos os subcomandos/flags abaixo (marcador `[PROPOSTA —
+a validar na implementacao]` removido na FASE 20 tarefa 20.3.3, mesma
+disciplina da task 13.5.1: cada linha desta secao foi reconferida por grep
+contra o codigo real de `plugins/cstk-jira/scripts/`). Tudo e ADITIVO —
+nenhum subcomando/flag do r01 muda de semantica; sem as flags novas o
+comportamento e byte-a-byte o do r01. Os pontos que tocam o Jira remetem a
+`jira-rest.md` R12-R18. `jq`/cliente HTTP continuam SO em `jira-io.sh`
+(carve-out 1.1.0 b); nenhum `sqlite3`.
 
 ### `jira-io.sh`
 
@@ -181,8 +185,8 @@ Classificacao de status (acrescimo a tabela do r01; demais linhas inalteradas):
 
 | Subcomando | Descricao |
 |------------|-----------|
-| `get KEY` | aceita as chaves novas; chave nova ausente => imprime o DEFAULT de `data-model.md` §"ProjectConfig — chaves novas" (exit 0) |
-| `validate` | + enums (`milestone_mode`, `labels_enabled`, `fix_versions_on_subtask`, `links_enabled`, `project_create`), SEC-6 em `milestone_release`, SEC-1 em `link_type_id` |
+| `get KEY` | `get` sempre foi generico (qualquer `KEY`, sem allowlist); as chaves novas so passam a ser LIDAS pelos consumidores (`jira-sync.sh`) com fallback ao DEFAULT de `data-model.md` §"ProjectConfig — chaves novas" quando ausentes/vazias — o fallback e aplicado por QUEM LE (`jira-sync.sh`), nao por `jira-config.sh get` em si (`_jc_cmd_get` inalterado desde o r01) |
+| `validate` | **inalterado desde o r01** (grounded via grep: `_jc_cmd_validate` so itera `_JC_REQUIRED_FIELDS`, a mesma lista do r01) — as chaves novas (`milestone_mode`, `labels_enabled`, `fix_versions_on_subtask`, `links_enabled`, `project_create`, `milestone_release`, `link_type_id`) NAO sao validadas por este subcomando; cada consumidor aplica sua propria checagem no ponto de uso: `milestone_release` via `_js_semver_ok` (SEC-11, nao SEC-6) em `jira-sync.sh milestone resolve` (valor fora do formato semver vira `status=unresolved`, nunca erro); `link_type_id` e confirmado em `jira-setup.sh check-link-type`/`resolve-link-type` no momento do setup, nunca revalidado depois; os `*_enabled`/`fix_versions_on_subtask`/`project_create` sao lidos como texto livre comparado a `"on"`/`"off"` por cada consumidor (sem allowlist de enum, sem erro para valor fora do esperado — qualquer valor diferente de `"on"` se comporta como o default documentado) |
 | `resolve-path` | NOVO: imprime o caminho efetivo do ProjectConfig — cwd, senao worktree principal (FR-023, somente leitura); exit 3 se nenhum existir |
 
 ### `jira-tasks.sh`
@@ -218,7 +222,7 @@ Classificacao de status (acrescimo a tabela do r01; demais linhas inalteradas):
 
 | Subcomando | Descricao |
 |------------|-----------|
-| `check-field-support FIELD_ID [FIELD_ID...]` | NOVO, POSIX puro: recebe (stdin) a lista de `fieldId` de um tipo (extraida pela skill de R8 via `jira-io.sh json-get`) e imprime `FIELD_ID=on\|off` — alimenta `labels_enabled`/`fix_versions_on_subtask` |
+| ~~`check-field-support`~~ | **NUNCA IMPLEMENTADO** (achado de auditoria da FASE 20 tarefa 20.3.3, Principio VI): este subcomando nao existe em `plugins/cstk-jira/scripts/jira-setup.sh` (confirmado por grep — ausente do dispatcher e do texto de `_js_usage`) nem e mencionado em `plugins/cstk-jira/skills/jira-setup/SKILL.md`. `labels_enabled`/`fix_versions_on_subtask` (e `milestone_mode`/`links_enabled`/`project_create`) NUNCA sao escritos pelo fluxo de `jira-setup` (ETAPA 8 so grava `config_version`/`site_host`/`project_key`/`board_id`/`issue_type_*`/`status_*`/`sync_autonomous`/`link_type_id`) — essas chaves so existem via edicao manual do `ProjectConfig` pelo operador; ausentes, cada consumidor em `jira-sync.sh` aplica o proprio DEFAULT (`labels_enabled`/`links_enabled` = `on`; `fix_versions_on_subtask`/`milestone_mode(auto)` = `off`/`auto` conforme `data-model.md`). Removido desta tabela; nao ha equivalente a documentar |
 | `check-link-type ID CANDIDATE_ID...` | NOVO: aceita `ID` so se estiver entre os ids REALMENTE devolvidos por R16 (nunca digitado de memoria); exit 1 com a lista se nao estiver |
 | `resolve-link-type` | NOVO (r02 FASE 18 tarefa 18.2.1/18.2.2): le de stdin `ID<TAB>INWARD<TAB>OUTWARD` por candidato de R16 desta execucao (SEC-13); exatamente 1 com inward E outward contendo "block" (case-insensitive) => imprime o ID; 0 ou 2+ => exit 1 `unrepresentable reason=no_link_type\|ambiguous_link_type` (nunca escolhe arbitrariamente) |
 | `create-project --name N --key K --template T (--confirm-key K \| --consent-block block-NNN)` | NOVO (FR-024): (1) `validate-project-key`; (2) `getProject` com K — `200` => exit 1 "projeto ja existe, reuse" (nunca cria); (3) consentimento: `--confirm-key` so e aceito FORA de execucao 00c ativa e MUST repetir K exatamente; com execucao 00c ativa so `--consent-block` e aceito, conferido via `bloqueios.sh list --status respondido` do `agente-00c-runtime` (delegado, como `state-rw.sh` no r01 13.1.1) — bloqueio inexistente/nao respondido => exit 2 SEM requisicao; (4) `leadAccountId` de `GET /rest/api/3/myself`; (5) R18. `403` => exit 7 + texto de criacao manual. Sucesso => `write-config project_key=K` (o resto do setup segue: tipos, status, board) |

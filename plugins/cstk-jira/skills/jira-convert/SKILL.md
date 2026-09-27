@@ -320,6 +320,51 @@ chamar essas tools em nenhum fluxo de correcao/rollback. Um item criado
 por engano fica sinalizado para decisao humana, nunca apagado
 automaticamente.
 
+### Marco (Fix Version) e labels de fase: SO a criacao via REST aplica; `links` e a excecao
+
+`contracts/rovo-mcp.md` "Round r02" e explicito: nenhuma tool Rovo cobre Fix
+Version, labels ou issue links — marco (R12/R13), labels em edicao (R14) e
+links (R16/R17) usam SEMPRE o helper REST (`jira-io.sh`), inclusive quando o
+caminho MCP esta disponivel. Na pratica, dentro do loop desta ETAPA 2b:
+
+- **Criacao (passo 5, `createJiraIssue`)**: o `inputSchema` documentado NAO
+  confirma campos para `fixVersions`/`labels` (`contracts/rovo-mcp.md`
+  "Parametros de entrada das tools") — este loop NUNCA tenta compo-los na
+  chamada MCP (Principio VI: nao inventar campo fora do schema exibido).
+  Marco e label so entram no corpo de criacao no caminho REST puro
+  (`_js_cmd_convert` em `jira-sync.sh`, flags `--fix-version-id`/`--label`
+  do corpo R1).
+- **"Fechamento de paridade" (passo 8, `jira-sync.sh convert`) NAO corrige
+  isso retroativamente**: quando essa chamada roda, os itens acabados de
+  criar via MCP ja estao `active` em `jira-map.tsv`, entao `_js_cmd_convert`
+  delega a eles SOMENTE `_js_maybe_update_mapped_issue` — que reconcilia
+  apenas `summary`/`description` (R2), nunca `fields.fixVersions`/
+  `fields.labels`. A reconciliacao de troca de fase (`_js_reconcile_phase_label`,
+  FASE 17.3) tambem nao ajuda aqui: ela so age quando o SyncMarker ja tem
+  `written_phase_label` gravado, e o marker inicial que este loop escreve no
+  passo 7b (`jira-io.sh json-build marker ...`) nunca passa esse campo.
+  **Consequencia pratica**: um item criado por este caminho (MCP) fica
+  PERMANENTEMENTE sem Fix Version/label de fase, mesmo com `milestone_mode=
+  auto`/`labels_enabled=on`, a nao ser que o operador edite a issue
+  manualmente no Jira. Quando marco/labels importam para a feature, prefira
+  o caminho REST (`jira-sync.sh convert --feature F`, ETAPA 2a) para a
+  criacao, mesmo com tools Rovo visiveis nesta sessao.
+- **`links` (chamado ao final de `_js_cmd_convert`, quando `links_enabled=on`)
+  e a excecao**: opera sobre as ancoras ja gravadas em `jira-map.tsv`
+  (`jira-map.sh anchor`) e a `## Matriz de Dependencias`, nunca sobre COMO a
+  issue foi criada — por isso links SAO reconciliados corretamente para
+  itens criados via MCP tambem, no passo 8 desta ETAPA.
+- **`jq`/cliente HTTP ausentes**: a ETAPA 1 (pre-checagens) ja aborta a
+  skill INTEIRA com exit 5 antes de chegar na deteccao de caminho — no
+  design atual nao existe um modo "MCP sem REST" que crie Epic/Task/
+  Sub-task e apenas sinalize marco/links em degradacao; a degradacao
+  graciosa (`milestone=off`/`links_unrepresentable`) so se aplica a falhas
+  de REDE/permissao numa chamada especifica de marco/link DEPOIS que as 4
+  pre-checagens ja passaram (`jira-sync.sh links`/`milestone ensure` sempre
+  isolam a falha ao item/aresta afetado, nunca abortam o lote inteiro) —
+  nunca a ausencia de `jq`/cliente HTTP em si, que e sempre fatal para a
+  skill inteira (ver Gotcha "Por que a credencial REST importa..." acima).
+
 ### `inputSchema` das tools MCP muda por instalacao — sempre leia antes de montar a chamada
 
 `contracts/rovo-mcp.md` documenta um EXEMPLO oficial de `createJiraIssue`

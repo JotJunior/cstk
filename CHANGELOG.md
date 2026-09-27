@@ -33,6 +33,35 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - Distribuido apenas como plugin nativo (`/plugin install
     cstk-jira@cstk`) — sem profile equivalente no `cstk install` classico
     (nao depende do binario `cstk`).
+  - **Round r02** (FR-020..FR-025, aditivo — sem as chaves novas o
+    comportamento e byte-a-byte o do incremento acima):
+    - **Marco (Fix Version) por round/release** (`milestone_mode`,
+      default `auto`): Epic e Task recebem a Fix Version resolvida do
+      round ativo (`<feature>-rNN`) ou, sem round ativo, de
+      `milestone_release`/do heading `## [X.Y.Z]` mais recente deste
+      CHANGELOG (`[Unreleased]` sem override deixa o marco `unresolved`);
+      `milestone_mode=off` desliga a sincronizacao.
+    - **Label de FASE** (`labels_enabled`, default `on`): Task/Sub-task
+      recebem `phase-<N>` derivado do heading `### FASE N`, reconciliado
+      quando a task muda de fase.
+    - **Links de dependencia** (`links_enabled`, default `on`): arestas da
+      `## Matriz de Dependencias` do backlog viram issue links entre as
+      Tasks-ancora de cada fase; `link_type_id` e confirmado uma vez no
+      setup ou resolvido automaticamente quando so ha 1 candidato no site.
+    - **Criacao de projeto sob gate humano** (FR-024): a skill
+      `jira-setup` pode oferecer criar um projeto Jira inexistente, sempre
+      com confirmacao explicita do operador; em execucao autonoma
+      (`agente-00c`/`feature-00c`) a decisao e SEMPRE delegada a um
+      bloqueio humano, a skill nunca cria sozinha. Novo hook `PreToolUse`
+      nega `createJiraProject` via MCP enquanto ha execucao 00c ativa.
+    - **Config compartilhada entre worktrees git** (FR-023):
+      `jira-config.sh resolve-path` cai para o `ProjectConfig` da
+      worktree principal (somente leitura) quando a worktree atual nao
+      tem config proprio — permite que execucoes paralelas do roadmap em
+      worktrees separadas compartilhem 1 setup do Jira, cada uma com sua
+      propria fila/lock de sincronizacao local.
+    - `jira-sync status --feature F` passa a exibir o marco resolvido e as
+      contagens `links_unrepresentable=N`/`links_stale=N`.
 
   Spec: `docs/specs/cstk-jira/`.
 

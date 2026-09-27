@@ -406,7 +406,41 @@ O plugin traz 2 hooks: `posttooluse-jira-sync.sh` (drena a fila de
 outcomes de task/onda para o Jira durante execuções autônomas) e
 `pretooluse-jira-deny-destructive.sh` (bloqueia chamadas destrutivas de
 tools MCP do Jira, como exclusão de issue — cards nunca são apagados, só
-desconectados/religados).
+desconectados/religados; com o plugin já configurado, também nega
+criação de projeto no Jira via MCP enquanto há uma execução
+`agente-00c`/`feature-00c` ativa).
+
+Novidades da rodada r02 (opt-in via chaves de `ProjectConfig`, todas com
+default igual ao comportamento do r01 quando ausentes):
+
+- **Sincronização de marco** (`milestone_mode`, default `auto`): o Epic e
+  suas Tasks recebem uma Fix Version resolvida a partir do round ativo
+  (`<feature>-rNN`) ou, sem round ativo, de `milestone_release` ou do
+  primeiro heading `## [X.Y.Z]` do `CHANGELOG.md` (um heading
+  `[Unreleased]` deixa o marco `unresolved` até um dos dois ser definido,
+  ou `milestone_mode=off` desligar a sincronização).
+- **Labels de fase** (`labels_enabled`, default `on`): Tasks/Sub-tasks
+  recebem o label `phase-<N>` do heading `### FASE N` a que pertencem,
+  mantido em sincronia quando uma task muda de fase.
+- **Links de dependência** (`links_enabled`, default `on`): arestas
+  declaradas na `## Matriz de Dependencias` do backlog viram links de
+  issue do Jira entre as Tasks-âncora de cada fase; o tipo de link é
+  confirmado uma vez no setup (`link_type_id`) ou resolvido
+  automaticamente quando não há ambiguidade.
+- **Criação de projeto sob gate humano** (FR-024): quando ainda não existe
+  um projeto no Jira, a skill `jira-setup` pode oferecer criá-lo, mas
+  sempre com confirmação explícita do operador — dentro de uma execução
+  autônoma, ela sempre delega a um gate respondido por humano, nunca cria
+  um projeto sozinha.
+- **Config compartilhada entre worktrees git** (FR-023): `jira-config.sh
+  resolve-path` lê o `ProjectConfig` da worktree corrente, com fallback
+  somente-leitura para o config da worktree principal — assim, execuções
+  paralelas do `roadmap` em worktrees separadas podem compartilhar um
+  único setup do Jira, cada uma mantendo sua própria fila/lock de
+  sincronização local.
+- `jira-sync status --feature F` passa a exibir o nome do marco resolvido
+  e as contagens de link (`links_unrepresentable=N`, `links_stale=N`)
+  junto do relatório de fila/conflito/órfão já existente.
 
 **Pré-requisitos**: `jq` e um cliente HTTP de linha de comando (confinados
 a um único script, `jira-io.sh`, sob o mesmo carve-out de zero-dependência

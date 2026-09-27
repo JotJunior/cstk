@@ -405,7 +405,39 @@ Two guard hooks ship with the plugin: `posttooluse-jira-sync.sh` (drains
 the outbox of task/wave outcomes into Jira during autonomous executions)
 and `pretooluse-jira-deny-destructive.sh` (blocks destructive Jira MCP
 tool calls such as issue deletion — cards are never deleted, only
-disconnected/re-linked).
+disconnected/re-linked; once the plugin is configured, it also denies
+Jira project creation via MCP while an `agente-00c`/`feature-00c`
+execution is active).
+
+Round r02 additions (opt-in via `ProjectConfig` keys, all default to the
+r01 behavior when unset):
+
+- **Milestone sync** (`milestone_mode`, default `auto`): the Epic and its
+  Tasks are tagged with a Fix Version resolved from the active round
+  (`<feature>-rNN`) or, once there is no active round, from
+  `milestone_release` or the top `## [X.Y.Z]` heading of `CHANGELOG.md`
+  (an unreleased `[Unreleased]` heading leaves the milestone `unresolved`
+  until one of the two is set, or `milestone_mode=off` disables it).
+- **Phase labels** (`labels_enabled`, default `on`): Tasks/Sub-tasks are
+  tagged `phase-<N>` from the `### FASE N` heading they belong to, kept in
+  sync when a task moves to a different phase.
+- **Dependency links** (`links_enabled`, default `on`): edges declared in
+  the backlog's `## Matriz de Dependencias` become Jira issue links between
+  the anchor Tasks of each phase; the link type is confirmed once during
+  setup (`link_type_id`) or resolved automatically when unambiguous.
+- **Project creation under a human gate** (FR-024): when no Jira project
+  exists yet, the `jira-setup` skill can offer to create one, but only
+  ever with explicit operator confirmation — inside an autonomous
+  execution it always defers to a human-answered gate, never creates one
+  on its own.
+- **Shared config across git worktrees** (FR-023): `jira-config.sh
+  resolve-path` reads `ProjectConfig` from the current worktree, falling
+  back read-only to the main worktree's config — so parallel `roadmap`
+  executions in separate worktrees can share one Jira setup while each
+  keeps its own local sync queue/lock.
+- `jira-sync status --feature F` surfaces the resolved milestone name and
+  link counts (`links_unrepresentable=N`, `links_stale=N`) alongside the
+  existing outbox/conflict/orphan report.
 
 **Prerequisites**: `jq` and a command-line HTTP client (confined to a
 single script, `jira-io.sh`, under the same zero-dependency carve-out

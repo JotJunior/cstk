@@ -2744,26 +2744,97 @@ Cenario 13.
 Ref: plan.md "Impacto em hooks e skills existentes"; checklists/security.md
 CHK005 (SEC-2 extensao); checklists/ux.md CHK016/CHK017/CHK018.
 
-- [ ] 20.3.1 Skill `jira-convert`: Gotcha nova — caminho MCP (Rovo) NAO
+- [x] 20.3.1 Skill `jira-convert`: Gotcha nova — caminho MCP (Rovo) NAO
       cobre marco/labels/links (sem tool citada em `rovo-mcp.md` r02);
       usa SEMPRE o helper REST (`jira-io.sh`) para eles; sem `jq`/cliente
       HTTP, sinaliza degradacao (`milestone=off`, links nao reconciliados)
-      em vez de falhar
-- [ ] 20.3.2 Skill `jira-sync`: `status` exibe marco/labels/links (16.4.4,
+      em vez de falhar — Gotcha "Marco (Fix Version) e labels de fase: SO
+      a criacao via REST aplica; `links` e a excecao" acrescentada a
+      `plugins/cstk-jira/skills/jira-convert/SKILL.md` (grounded via grep:
+      `_js_maybe_update_mapped_issue` so reconcilia summary/description,
+      NUNCA fixVersions/labels; `_js_reconcile_phase_label` so age com
+      `written_phase_label` ja gravado, que o marker inicial do loop MCP
+      nunca grava — item criado via MCP fica PERMANENTEMENTE sem Fix
+      Version/label). Achado de auditoria durante a tarefa: a frase
+      "sem jq/cliente HTTP, sinaliza degradacao... em vez de falhar" de
+      `contracts/rovo-mcp.md` estava DESATUALIZADA — a ETAPA 1 (pre-
+      checagens) do SKILL.md ja aborta a skill INTEIRA com exit 5 quando
+      falta `jq`/cliente HTTP, para os dois caminhos, desde uma tarefa
+      anterior (Gotcha "Por que a credencial REST importa..."); nao existe
+      modo "MCP sem jq" que degrade em vez de falhar. Corrigido em
+      `contracts/rovo-mcp.md` "Round r02" (secao "Correcao pos-
+      implementacao") para refletir o comportamento FINAL: a degradacao
+      graciosa so cobre falha de rede/permissao numa chamada especifica de
+      marco/link, nunca a ausencia de `jq`/cliente HTTP em si.
+- [x] 20.3.2 Skill `jira-sync`: `status` exibe marco/labels/links (16.4.4,
       18.4.5) rotulados como conteudo externo quando aplicavel (SEC-2
       extensao + SEC-13, 18.1.2); `resolve` aceita os `reason` novos
       `milestone_drift`/`label_drift` (CHK018); diagnostico de marco
       `unresolved` por `[Unreleased]` orienta `milestone_release` ou
       `milestone_mode=off` (CHK017); diagnostico de `links_unrepresentable`
-      orienta `link_type_id` manual (CHK016)
-- [ ] 20.3.3 `contracts/plugin-scripts.md`/`contracts/hooks.md`/
+      orienta `link_type_id` manual (CHK016) — ETAPA 1 do SKILL.md ganhou
+      as duas linhas grep-aveis (`milestone=`, `links_unrepresentable=`/
+      `links_stale=`) com diagnostico+acao por valor (grounded via grep de
+      `_js_cmd_milestone_resolve`/`_js_cmd_links` em `jira-sync.sh`); nota
+      explicita de que sao dados LOCAIS (CHANGELOG/ProjectConfig/TSV), sem
+      rotulo UNTRUSTED (SEC-13 se aplica so ao nome/frase do tipo de link
+      exibido em `jira-setup` ETAPA 7, ja coberto la, nao em `jira-sync
+      status`). ETAPA 2 e novo Gotcha "`resolve` e agnostico ao `reason`"
+      documentam `milestone_drift`/`label_drift` E a limitacao real de
+      `keep_jira`/`overwrite` para esses 2 reasons (rebaseline do marker
+      nao carrega `written_fix_version_id`/`written_phase_label`; overwrite
+      reenfileira so transicao de status, nunca reaplica marco/label —
+      grounded via grep de `_js_rebaseline_marker`/`_js_cmd_resolve`).
+- [x] 20.3.3 `contracts/plugin-scripts.md`/`contracts/hooks.md`/
       `contracts/rovo-mcp.md`: remover marcadores `[PROPOSTA — a validar
       na implementacao]` das secoes r02 apos 16-19 implementarem o
       comportamento (documentacao reflete o FINAL, mesma disciplina da
-      task 13.5.1)
-- [ ] 20.3.4 Teste: percorrer manualmente quickstart Cenarios 8-11 e 13
+      task 13.5.1) — marcadores removidos dos 2 arquivos que os tinham
+      (`plugin-scripts.md` intro do r02; `hooks.md` intro do r02);
+      `rovo-mcp.md` ja nao tinha marcador (confirmado por grep). Durante a
+      reconferencia por grep exigida pelo Principio VI, 3 divergencias
+      REAIS doc-vs-codigo foram encontradas e corrigidas (nao so o
+      marcador): (1) `plugin-scripts.md` `jira-config.sh validate`
+      afirmava validar 5 enums novos + SEC-6/SEC-1 — `_jc_cmd_validate`
+      permanece IDENTICO ao r01 (so `_JC_REQUIRED_FIELDS`), corrigido para
+      descrever onde cada checagem REALMENTE acontece (`_js_semver_ok`
+      SEC-11 em `milestone resolve`, `check-link-type` no setup, resto sem
+      enum); (2) `jira-setup.sh check-field-support` documentado mas NUNCA
+      implementado (ausente do dispatcher/usage; `labels_enabled`/
+      `fix_versions_on_subtask` nunca sao gravados pelo fluxo de setup) —
+      linha removida da tabela com nota explicativa; (3) `hooks.md`
+      "Passo 5.bis (resumo)" afirmava que a linha de log do hook passou a
+      incluir `milestone=`/`links_unrepresentable=`/`links_stale=` —
+      `posttooluse-jira-sync.sh` nunca foi alterado para isso (so
+      `queued/deferred/conflict/auth_failed`, igual ao r01), corrigido
+      para descrever a realidade e marcar a extensao como gap conhecido
+      fora de escopo. `rovo-mcp.md` tambem corrigido (achado durante
+      20.3.1): a claim de "MCP sem jq degrada em vez de falhar" nao bate
+      com a ETAPA 1 do `jira-convert` (aborta exit 5 pra ambos os
+      caminhos) — reescrita para refletir o comportamento final.
+- [~] 20.3.4 Teste: percorrer manualmente quickstart Cenarios 8-11 e 13
       (marco, labels, links, criacao de projeto, execucoes paralelas)
-      contra o plugin implementado — mesma disciplina da task 9.3.1
+      contra o plugin implementado — mesma disciplina da task 9.3.1 —
+      PENDENTE: exige um site Jira de teste real (cria Fix Version, labels,
+      issue links e, no Cenario 11, um projeto de fato) e 2 worktrees para
+      o Cenario 13; esta onda (autonoma) NAO faz nenhuma chamada real ao
+      Jira nem cria projeto algum (regra dura desta execucao). Operador,
+      contra o site de teste da whitelist: (a) Cenario 8 — rodar
+      `/jira-convert` numa feature com round ativo e depois sem round
+      (release), confirmar Fix Version criada/reusada no Epic/Task e
+      `jira-sync status --feature F` reportando `milestone=<nome>`; (b)
+      Cenario 9 — confirmar label `phase-<N>` em Task/Sub-task e a
+      reconciliacao ao mover uma task de FASE; (c) Cenario 10 — confirmar
+      issue link criado entre Tasks de fases dependentes (`## Matriz de
+      Dependencias`) e `jira-sync status --feature F` com
+      `links_unrepresentable=0`; (d) Cenario 11 — disparar `/jira-setup`
+      sem projeto configurado, confirmar exatamente 1 bloqueio humano com
+      o marcador SEC-9, resposta `criar-projeto` cria o projeto, qualquer
+      outra resposta NUNCA cria (mesma disciplina de 19.3.4); (e) Cenario
+      13 — 2 worktrees com `ProjectConfig` SO na principal, 1 execucao
+      `feature-00c` completa em cada, confirmar que cada uma sincroniza SO
+      o proprio Epic e o marco de release compartilhado e criado 1 vez
+      (2a execucao reusa via R13)
 
 ### 20.4 Docs, CHANGELOG e registro de testes (release r02) `[A]`
 
@@ -2771,17 +2842,48 @@ Ref: plan.md Constitution Check Principio I (lockstep MP-5);
 `tests/test_doc-counts.sh`; `tests/test_state-parity-sweep.sh`;
 `tests/run.sh`.
 
-- [ ] 20.4.1 `README.md`/`README.pt-BR.md`: atualizar a secao "Jira Cloud
+- [x] 20.4.1 `README.md`/`README.pt-BR.md`: atualizar a secao "Jira Cloud
       integration (cstk-jira)" com marco/labels/links/criacao de projeto
-      (subcomandos e chaves novas de ProjectConfig)
-- [ ] 20.4.2 `CHANGELOG.md`: entrada em `## [Unreleased]` descrevendo o
+      (subcomandos e chaves novas de ProjectConfig) — paragrafo "Round r02
+      additions"/"Novidades da rodada r02" acrescentado nos 2 arquivos
+      (paridade EN/PT-BR), citando `milestone_mode`/`labels_enabled`/
+      `links_enabled`/`link_type_id`/`milestone_release` com seus DEFAULTs
+      reais (grounded na mesma fonte usada nas tarefas 20.3.x) e o novo
+      comportamento do hook `pretooluse-jira-deny-destructive.sh` para
+      `createJiraProject`; nenhum numero de versao inventado (fica para a
+      release-wave)
+- [x] 20.4.2 `CHANGELOG.md`: entrada em `## [Unreleased]` descrevendo o
       incremento round r02 (FR-020..FR-025) — marco, labels de fase,
-      links de dependencia, criacao de projeto sob gate
-- [ ] 20.4.3 Registrar TODAS as suites novas de `tests/cstk/test_jira-*.sh`
+      links de dependencia, criacao de projeto sob gate — sub-bullet
+      "Round r02" acrescentado dentro do item ja existente do plugin
+      `cstk-jira` (ainda sob `[Unreleased]`, sem numero de versao — fica
+      para a `release-wave`), cobrindo os 5 pontos + `jira-sync status`
+- [x] 20.4.3 Registrar TODAS as suites novas de `tests/cstk/test_jira-*.sh`
       (cenarios 8-13) em `tests/run.sh`; `sh tests/run.sh
-      --check-coverage` (parity-sweep) zero orfaos
-- [ ] 20.4.4 Teste: `tests/test_doc-counts.sh` e
+      --check-coverage` (parity-sweep) zero orfaos — NADA a registrar: os
+      cenarios 8-13 (marco/labels/links/criacao de projeto/paralelismo)
+      foram acrescentados como scenarios NOVOS dentro de suites JA
+      existentes nas FASES 16-19 (`test_jira-io.sh` JI-93..96,
+      `test_jira-sync.sh` scenarios `convert_labels_enabled_*`/
+      `milestone_*`, `test_jira-config.sh` JC-12..16, `test_jira-map.sh`,
+      `test_jira-setup.sh`, `test_jira-mutation.sh` scenarios 16.x-20.x —
+      nenhum arquivo `tests/cstk/test_jira-*.sh` novo foi criado no r02); o
+      mapeamento generico de `tests/run.sh` (linha ~160
+      `find plugins/cstk-jira/scripts -name '*.sh'` + linha ~172
+      `*/plugins/cstk-jira/scripts/*) -> tests/cstk/test_$base.sh`) ja
+      cobre TODOS os scripts do plugin sem lista manual — confirmado
+      rodando `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C sh tests/run.sh
+      --check-coverage`: "Cobertura completa: zero orfaos."
+- [x] 20.4.4 Teste: `tests/test_doc-counts.sh` e
       `tests/test_state-parity-sweep.sh` verdes apos as edicoes; `bash
       scripts/validate-plugin-manifests.sh --strict` continua verde
       (nenhum bump de versao nesta onda — bump coordenado fica para a
-      `release-wave`)
+      `release-wave`) — `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C sh
+      tests/test_doc-counts.sh` 3/3 ok; `JIRA_IO_BACKOFF_SECONDS=0
+      LC_ALL=C sh tests/test_state-parity-sweep.sh` 4/4 ok; `bash
+      scripts/validate-plugin-manifests.sh --strict` exit 0 ("OK (3
+      aviso(s))" — os 3 avisos MP-5 sao so por `--version` omitido nesta
+      chamada manual, esperado fora da release-wave); tambem reconferidos
+      nesta tarefa (suites que tocam os arquivos editados nas tarefas
+      20.3.x): `tests/cstk/test_jira-contract.sh` 8/8, `tests/
+      test_doc-subcommands.sh` 4/4
