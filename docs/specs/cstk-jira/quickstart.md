@@ -230,11 +230,14 @@ criar projeto real exige gate humano proprio):
    status real de duplicata). **Executado (onda-006, r02): `400` com corpo
    `{"errors":{"name":"A version with this name already exists in this
    project."}}`.**
-   - 1.bis (CHK022, `{humano}`, **pendente**): repetir R12 com uma 2a
-     credencial de teste SEM *Administer Projects*/*Administer Jira* para
-     registrar o status real de permissao negada (`403` vs `404`
+   - 1.bis (CHK022, `{humano}`, **FECHADO sem roundtrip**): repetir R12 com
+     uma 2a credencial de teste SEM *Administer Projects*/*Administer Jira*
+     para registrar o status real de permissao negada (`403` vs `404`
      documentado) — nao executado na onda-006 por falta de credencial
-     restrita disponivel; bloqueio humano registrado no state da execucao.
+     restrita disponivel; decisao humana (block-001/dec-039, r02 FASE 15
+     task 15.1.2) aceitou o risco SEM roundtrip, mantendo a classificacao
+     de desenho (`404` documentado, `403` por equivalencia). Nenhuma 2a
+     credencial sera fornecida.
 2. R1 com `fields.fixVersions` e `fields.labels`; R3 com
    `?fields=labels,fixVersions,issuelinks` (registrar nome/shape real).
    **Executado (onda-006): `labels` = array de string; `fixVersions` =
@@ -254,8 +257,10 @@ criar projeto real exige gate humano proprio):
 ou CORRIGIDO no contrato antes do codigo (Principio VI). Nenhum `DELETE`;
 issues/versoes de teste ficam para arquivamento manual (mesma nota 0.1.6 do
 r01). Passos 1-4 fechados na onda-006 (ver `contracts/jira-rest.md`
-"Roundtrip real onda-006"); passo 1.bis (CHK022) e R18/board (CHK026)
-seguem pendentes de decisao humana.
+"Roundtrip real onda-006"); passo 1.bis (CHK022) e R18/board (CHK026) foram
+fechados na FASE 15 (task 15.1.2/15.4.2) por decisao humana explicita SEM
+roundtrip real — risco aceito e documentado (block-001/dec-039,
+block-002/dec-040), nao fato observado empiricamente.
 
 ## Cenario 13 — Execucoes paralelas do roadmap (FR-023)
 

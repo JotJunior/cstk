@@ -223,6 +223,17 @@ USO:
       `posttooluse-jira-sync.sh` para `execution.canonical_project`. String
       vazia (exit 0) sem state.json/state.db ou sem runtime localizavel.
 
+  jira-sync.sh milestone resolve --feature F
+      r02 FASE 16 (FR-020/FR-021, research.md Decision R2-1): resolve o
+      nome/tipo do marco (Fix Version) SEM rede. Ordem: milestone_mode=off
+      -> `status=off`; round ativo (.previous_round.round, cross-checado
+      contra o numero de diretorios rounds/rNN) -> `name=<F>-rNN`
+      `kind=round`; senao milestone_release de ProjectConfig ou o 1o
+      heading `## [X.Y.Z]` do CHANGELOG.md (SE for o mais alto) ->
+      `name=<versao>` `kind=release`; nada resolvido -> `status=unresolved`.
+      SEMPRE exit 0 (estado nao-resolvido nao e erro). `milestone ensure`
+      chega na FASE 16.3.
+
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
@@ -741,6 +752,213 @@ _js_parse_feature_arg() {
   _js_is_safe_feature "$_jspf_feature" \
     || _js_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jspf_feature"
   printf '%s' "$_jspf_feature"
+}
+
+# --- milestone (r02 FASE 16, FR-020/FR-021) --------------------------------
+
+# _js_round_token_ok TOKEN — SEC-11: TOKEN MUST casar `^r[0-9]{2,}$`
+# (research.md Decision R2-1/R2-1 SEC-11, tasks.md 16.2.3). POSIX puro
+# (case + bracket expression): `r[0-9][0-9]*` exige 'r' seguido de AO MENOS
+# 2 digitos; o `case` seguinte confere que TODO o restante apos o 'r' e so
+# digitos (rejeita "r01x", que o glob acima sozinho aceitaria).
+_js_round_token_ok() {
+  case "$1" in
+    r[0-9][0-9]*) : ;;
+    *) return 1 ;;
+  esac
+  _jsrt_rest=${1#r}
+  case "$_jsrt_rest" in
+    *[!0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
+# _js_semver_ok VALUE — SEC-11: aproximacao POSIX (sem regex estendida) de
+# `^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$` (tasks.md 16.2.2,
+# research.md Decision R2-1 regra 3). major/minor/patch MUST ser so digitos;
+# sufixo pre-release/build (apos '-' ou '+') e opcional, charset
+# [0-9A-Za-z.-], nao-vazio quando presente.
+_js_semver_ok() {
+  _jssv_v="$1"
+  [ -n "$_jssv_v" ] || return 1
+  _jssv_major=${_jssv_v%%.*}
+  _jssv_after_major=${_jssv_v#*.}
+  [ "$_jssv_after_major" != "$_jssv_v" ] || return 1
+  case "$_jssv_major" in ''|*[!0-9]*) return 1 ;; esac
+
+  _jssv_minor=${_jssv_after_major%%.*}
+  _jssv_after_minor=${_jssv_after_major#*.}
+  [ "$_jssv_after_minor" != "$_jssv_after_major" ] || return 1
+  case "$_jssv_minor" in ''|*[!0-9]*) return 1 ;; esac
+
+  _jssv_patch_and_suffix="$_jssv_after_minor"
+  case "$_jssv_patch_and_suffix" in
+    *[-+]*)
+      _jssv_patch=${_jssv_patch_and_suffix%%[-+]*}
+      _jssv_suffix=${_jssv_patch_and_suffix#"$_jssv_patch"}
+      case "$_jssv_suffix" in
+        -*|+*) : ;;
+        *) return 1 ;;
+      esac
+      _jssv_suffix_body=${_jssv_suffix#?}
+      [ -n "$_jssv_suffix_body" ] || return 1
+      case "$_jssv_suffix_body" in *[!0-9A-Za-z.-]*) return 1 ;; esac
+      ;;
+    *)
+      _jssv_patch="$_jssv_patch_and_suffix"
+      ;;
+  esac
+  case "$_jssv_patch" in ''|*[!0-9]*) return 1 ;; esac
+  return 0
+}
+
+# _js_cmd_milestone_resolve --feature F — 16.2 (research.md Decision R2-1):
+# resolve o nome/tipo do marco (Fix Version) da feature, SEM rede (so le
+# ProjectConfig + state da execucao + CHANGELOG.md). Ordem (1a regra que
+# produzir nome vence, nunca combinadas):
+#   1. milestone_mode=off (ProjectConfig)                    -> status=off
+#   2. round ativo (.previous_round.round via
+#      resolve-state-field, cross-checado contra
+#      `1 + numero de dirs rounds/r[0-9][0-9]*`)              -> kind=round
+#   3. sem round ativo: milestone_release (ProjectConfig,
+#      SEC-6) ou 1o heading `## [X.Y.Z]` do CHANGELOG.md
+#      (SE for o mais alto — `[Unreleased]` no topo = ainda
+#      sem nome)                                              -> kind=release
+#   4. nada resolvido                                         -> status=unresolved
+# Saida (contracts/plugin-scripts.md `milestone resolve`): resolvido ->
+# `name=<N>` + `kind=<round|release>`; nao resolvido -> `name=` (vazia) +
+# `status=<unresolved|off>`. SEMPRE exit 0 (estado nao-resolvido/off nao e
+# erro — o chamador de `convert`/`drain` decide o que fazer). Nunca chuta:
+# divergencia de contagem de rounds ou formato invalido => unresolved
+# (Principio VI).
+_js_cmd_milestone_resolve() {
+  _jsmr_feature=$(_js_parse_feature_arg "$@")
+
+  _jsmr_dir="$(_js_script_dir)"
+  _jsmr_config="$_jsmr_dir/jira-config.sh"
+
+  "$_jsmr_config" validate
+
+  _jsmr_mode=$("$_jsmr_config" get milestone_mode 2>/dev/null) || _jsmr_mode="auto"
+  [ -n "$_jsmr_mode" ] || _jsmr_mode="auto"
+
+  if [ "$_jsmr_mode" = "off" ]; then
+    printf 'name=\n'
+    printf 'status=off\n'
+    return 0
+  fi
+
+  # 2. round ativo — mesma resolucao de diretorio de _js_resolve_stage,
+  # mas so a fonte feature-00c (rounds sao por FEATURE, nunca do
+  # agente-00c que cobre o projeto inteiro).
+  _jsmr_state_dir=""
+  if [ -f "./.claude/feature-00c-state/$_jsmr_feature/state.json" ] \
+     || [ -f "./.claude/feature-00c-state/$_jsmr_feature/state.db" ]; then
+    _jsmr_state_dir="./.claude/feature-00c-state/$_jsmr_feature"
+  fi
+
+  _jsmr_prev_round=""
+  if [ -n "$_jsmr_state_dir" ]; then
+    _jsmr_prev_round=$(_js_resolve_state_field "$_jsmr_state_dir" "previous_round.round") || _jsmr_prev_round=""
+  fi
+
+  if [ -n "$_jsmr_prev_round" ]; then
+    if _js_round_token_ok "$_jsmr_prev_round"; then
+      _jsmr_prev_num=${_jsmr_prev_round#r}
+      _jsmr_dircount=0
+      if [ -d "$_jsmr_state_dir/rounds" ]; then
+        for _jsmr_rd in "$_jsmr_state_dir"/rounds/r[0-9][0-9]*; do
+          [ -d "$_jsmr_rd" ] || continue
+          _jsmr_dircount=$((_jsmr_dircount + 1))
+        done
+      fi
+      # Descarta zeros a esquerda via parameter expansion (POSIX puro, sem
+      # `10#` de base aritmetica — SC3052/nao-portavel): evita que o shell
+      # interprete "08"/"09" como octal invalido na aritmetica abaixo.
+      _jsmr_prev_num_dec="$_jsmr_prev_num"
+      while [ "${_jsmr_prev_num_dec#0}" != "$_jsmr_prev_num_dec" ] \
+            && [ "${#_jsmr_prev_num_dec}" -gt 1 ]; do
+        _jsmr_prev_num_dec=${_jsmr_prev_num_dec#0}
+      done
+      _jsmr_prev_num_dec=$((_jsmr_prev_num_dec + 0))
+      if [ "$_jsmr_prev_num_dec" -eq "$_jsmr_dircount" ]; then
+        _jsmr_next_num=$((_jsmr_prev_num_dec + 1))
+        _jsmr_next_nn=$(printf '%02d' "$_jsmr_next_num")
+        printf 'name=%s-r%s\n' "$_jsmr_feature" "$_jsmr_next_nn"
+        printf 'kind=round\n'
+        return 0
+      fi
+      printf 'name=\n'
+      printf 'status=unresolved\n'
+      return 0
+    fi
+    printf 'name=\n'
+    printf 'status=unresolved\n'
+    return 0
+  fi
+
+  # 3. release (sem round ativo): milestone_release override PRIMEIRO.
+  _jsmr_release=$("$_jsmr_config" get milestone_release 2>/dev/null) || _jsmr_release=""
+  if [ -n "$_jsmr_release" ]; then
+    if _js_semver_ok "$_jsmr_release"; then
+      printf 'name=%s\n' "$_jsmr_release"
+      printf 'kind=release\n'
+      return 0
+    fi
+    printf 'name=\n'
+    printf 'status=unresolved\n'
+    return 0
+  fi
+
+  # Sem override: 1o heading `## [X.Y.Z]` do CHANGELOG.md da raiz do
+  # projeto-alvo (cwd) — o heading mais alto pela convencao Keep a
+  # Changelog (mais novo no topo).
+  _jsmr_changelog="./CHANGELOG.md"
+  _jsmr_heading_name=""
+  if [ -f "$_jsmr_changelog" ]; then
+    _jsmr_heading_line=$(grep -m1 '^## \[' "$_jsmr_changelog" 2>/dev/null) || _jsmr_heading_line=""
+    if [ -n "$_jsmr_heading_line" ]; then
+      _jsmr_heading_name=$(printf '%s\n' "$_jsmr_heading_line" | sed -n 's/^## \[\([^]]*\)\].*/\1/p')
+    fi
+  fi
+
+  if [ -z "$_jsmr_heading_name" ] || [ "$_jsmr_heading_name" = "Unreleased" ]; then
+    printf 'name=\n'
+    printf 'status=unresolved\n'
+    return 0
+  fi
+
+  if _js_semver_ok "$_jsmr_heading_name"; then
+    printf 'name=%s\n' "$_jsmr_heading_name"
+    printf 'kind=release\n'
+    return 0
+  fi
+
+  printf 'name=\n'
+  printf 'status=unresolved\n'
+  return 0
+}
+
+# _js_cmd_milestone MODE [ARGS...] — dispatcher interno de `milestone`.
+# MODE em {resolve} nesta onda (16.2); `ensure` chega na FASE 16.3
+# (research.md Decision R2-3/R2-4) — allowlist FECHADA, mesmo estilo de
+# `_ji_cmd_json_build`.
+_js_cmd_milestone() {
+  _jsm_mode="${1:-}"
+  if [ "$#" -ge 1 ]; then
+    shift
+  fi
+  case "$_jsm_mode" in
+    resolve)
+      _js_cmd_milestone_resolve "$@"
+      ;;
+    '')
+      _js_die_usage "milestone requer MODE (resolve)"
+      ;;
+    *)
+      _js_die_usage "milestone: MODE desconhecido: $_jsm_mode (valido nesta onda: resolve)"
+      ;;
+  esac
 }
 
 # --- plan ------------------------------------------------------------------
@@ -2442,7 +2660,10 @@ case "$_js_sub" in
   resolve-state-field)
     _js_cmd_resolve_state_field "$@"
     ;;
+  milestone)
+    _js_cmd_milestone "$@"
+    ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, resolve-state-field)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, resolve-state-field, milestone)"
     ;;
 esac

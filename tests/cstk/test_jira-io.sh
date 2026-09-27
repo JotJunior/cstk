@@ -1457,4 +1457,168 @@ https://example.atlassian.net/rest/agile/1.0/board|201|{"id":85,"name":"x","self
   return 0
 }
 
+# JI-78..JI-92 (r02 FASE 16 task 16.1, SEC-6, checklists/security.md
+# CHK016): `validate-version-name` + `json-build version` + `request --op
+# R12`/`--op R13` (contracts/jira-rest.md R12/R13,
+# contracts/plugin-scripts.md `jira-io.sh` r02).
+#
+#   JI-78 validate-version-name: nome valido (alfanumerico) -> exit 0
+#   JI-79 validate-version-name: nome com ponto/hifen internos (ex.
+#         "10.8.0", "cstk-jira-r02") -> exit 0
+#   JI-80 validate-version-name: vazio -> exit 2
+#   JI-81 validate-version-name: comeca com ponto -> exit 2
+#   JI-82 validate-version-name: comeca com hifen -> exit 2
+#   JI-83 validate-version-name: contem espaco -> exit 2
+#   JI-84 validate-version-name: contem barra -> exit 2
+#   JI-85 validate-version-name: 255 chars (limite) -> exit 0; 256 chars
+#         (acima do limite) -> exit 2
+#   JI-86 json-build version: corpo completo (--name/--project-id/
+#         --description) -> {"name":...,"projectId":<numero>,
+#         "description":...}; --project-id NUMERO JSON, nunca string
+#   JI-87 json-build version: sem --description -> corpo SEM a chave
+#         "description"
+#   JI-88 json-build version: falta --name/--project-id -> exit 2, SEM
+#         montar corpo (json-get contra stdout vazio nao e chamado)
+#   JI-89 json-build version: --project-id fora da allowlist [0-9] -> exit 2
+#   JI-90 json-build version: --name invalido (SEC-6) -> exit 2, MESMA
+#         mensagem de validate-version-name (falha ANTES de montar corpo)
+#   JI-91 request --op R12: 403 e 404 -> exit 7,
+#         classification=permission_denied (ambos, R2-4); --op R13: 404
+#         NAO recebe essa classificacao especial (passthrough, exit 0)
+#   JI-92 request --op R12: 400 -> exit 1,
+#         classification=version_conflict_or_invalid (R2-3)
+
+scenario_validate_version_name_valido_exit0() {
+  assert_exit 0 "$SCRIPT" validate-version-name "cstk-jira-r02" || return 1
+  assert_exit 0 "$SCRIPT" validate-version-name "10.8.0" || return 1
+}
+
+scenario_validate_version_name_vazio_exit2() {
+  assert_exit 2 "$SCRIPT" validate-version-name "" || return 1
+  assert_stderr_contains "SEC-6" || return 1
+}
+
+scenario_validate_version_name_comeca_com_ponto_exit2() {
+  assert_exit 2 "$SCRIPT" validate-version-name ".v1" || return 1
+}
+
+scenario_validate_version_name_comeca_com_hifen_exit2() {
+  assert_exit 2 "$SCRIPT" validate-version-name "-v1" || return 1
+}
+
+scenario_validate_version_name_com_espaco_exit2() {
+  assert_exit 2 "$SCRIPT" validate-version-name "cstk jira" || return 1
+}
+
+scenario_validate_version_name_com_barra_exit2() {
+  assert_exit 2 "$SCRIPT" validate-version-name "cstk/jira" || return 1
+}
+
+scenario_validate_version_name_limite_255_ok_256_falha() {
+  _name255=$(_ji_test_repeat_char a 255)
+  assert_exit 0 "$SCRIPT" validate-version-name "$_name255" || return 1
+  _name256=$(_ji_test_repeat_char a 256)
+  assert_exit 2 "$SCRIPT" validate-version-name "$_name256" || return 1
+}
+
+# _ji_test_repeat_char CHAR N — helper local (POSIX, sem seq/GNU): imprime
+# CHAR repetido N vezes.
+_ji_test_repeat_char() {
+  _jitrc_char="$1"
+  _jitrc_n="$2"
+  _jitrc_out=""
+  _jitrc_i=0
+  while [ "$_jitrc_i" -lt "$_jitrc_n" ]; do
+    _jitrc_out="${_jitrc_out}${_jitrc_char}"
+    _jitrc_i=$((_jitrc_i + 1))
+  done
+  printf '%s' "$_jitrc_out"
+}
+
+scenario_json_build_version_corpo_completo() {
+  _body=$("$SCRIPT" json-build version --name "cstk-jira-r02" --project-id 10000 --description "Marco r02") \
+    || { _fail "json_build_version_corpo_completo_exit" "falhou"; return 1; }
+  printf '%s' "$_body" | "$SCRIPT" json-get . >/dev/null \
+    || { _fail "json_build_version_corpo_completo_json" "corpo nao e JSON valido"; return 1; }
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.name')" = "cstk-jira-r02" ] \
+    || { _fail "json_build_version_name" "name incorreto"; return 1; }
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.description')" = "Marco r02" ] \
+    || { _fail "json_build_version_description" "description incorreta"; return 1; }
+  # projectId MUST ser numero JSON, nunca string: `.projectId|type` == "number"
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.projectId|type')" = "number" ] \
+    || { _fail "json_build_version_projectid_type" "projectId deveria ser numero JSON"; return 1; }
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.projectId')" = "10000" ] \
+    || { _fail "json_build_version_projectid_value" "projectId incorreto"; return 1; }
+}
+
+scenario_json_build_version_sem_description() {
+  _body=$("$SCRIPT" json-build version --name "cstk-jira-r02" --project-id 10000) \
+    || { _fail "json_build_version_sem_description_exit" "falhou"; return 1; }
+  _has_key=$(printf '%s' "$_body" | "$SCRIPT" json-get 'has("description")')
+  [ "$_has_key" = "false" ] \
+    || { _fail "json_build_version_sem_description_key" "chave description nao deveria existir quando omitida"; return 1; }
+}
+
+scenario_json_build_version_falta_name_exit2() {
+  assert_exit 2 "$SCRIPT" json-build version --project-id 10000 || return 1
+}
+
+scenario_json_build_version_falta_project_id_exit2() {
+  assert_exit 2 "$SCRIPT" json-build version --name "cstk-jira-r02" || return 1
+}
+
+scenario_json_build_version_project_id_nao_digitos_exit2() {
+  assert_exit 2 "$SCRIPT" json-build version --name "cstk-jira-r02" --project-id "abc" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+}
+
+scenario_json_build_version_name_invalido_exit2() {
+  assert_exit 2 "$SCRIPT" json-build version --name ".invalido" --project-id 10000 || return 1
+  assert_stderr_contains "SEC-6" || return 1
+}
+
+scenario_request_op_r12_403_permission_denied() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/version|403|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/version --op R12 || return 1
+  assert_stderr_contains "classification=permission_denied" || return 1
+}
+
+scenario_request_op_r12_404_permission_denied() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/version|404|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/version --op R12 || return 1
+  assert_stderr_contains "classification=permission_denied" || return 1
+}
+
+scenario_request_op_r13_404_sem_classificacao_especial() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/project/SCRUM/versions|404|{}')
+  # R13 nao tem classificacao especial de 404 (so R12): passthrough exit 0,
+  # http_status=404 em stderr, corpo relayed — o chamador (jira-sync.sh)
+  # decide o que fazer, mesmo comportamento pre-r02 de qualquer OP nao
+  # listado nos `case` de 401/403/404/429/400/409.
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/project/SCRUM/versions --op R13 || return 1
+  assert_stderr_contains "http_status=404" || return 1
+}
+
+scenario_request_op_r12_400_version_conflict_or_invalid() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/version|400|{"errors":{"name":"A version with this name already exists in this project."}}')
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/version --op R12 || return 1
+  assert_stderr_contains "classification=version_conflict_or_invalid" || return 1
+}
+
 run_all_scenarios

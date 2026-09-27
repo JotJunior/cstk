@@ -400,4 +400,81 @@ scenario_mutation_8_4_5_umask_trap_credencial() {
   return 0
 }
 
+# ==== 16.1.5 (r02): allowlist de validate-version-name (SEC-6) — 16.1.4 ====
+
+scenario_mutation_16_1_5_validate_version_name_allowlist() {
+  # -- controle: original rejeita nome vazio (exit 2) --
+  assert_exit 2 "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" validate-version-name "" || return 1
+
+  # -- mutante: neutraliza a checagem "deve comecar com alfanumerico",
+  # aceitando qualquer string (inclusive vazia) na 1a guarda do case --
+  _mp=$(_mut_copy_plugin)
+  _io="$_mp/scripts/jira-io.sh"
+  grep -q '\[A-Za-z0-9\]\*) : ;;' "$_io" \
+    || { _fail "mutant_stale" "guarda [A-Za-z0-9]*) : ;; nao encontrada — repo mudou"; return 1; }
+  sed 's/\[A-Za-z0-9\]\*) : ;;/*) : ;;/' "$_io" > "$_io.mut" && mv "$_io.mut" "$_io"
+  grep -q '^    \*) : ;;$' "$_io" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao da allowlist"; return 1; }
+  chmod +x "$_io"
+
+  capture "$_io" validate-version-name ""
+  [ "$_CAPTURED_EXIT" != "2" ] \
+    || { _fail "mutant_exit" "esperado exit != 2 (regressao: nome vazio aceito pela allowlist mutada), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# ==== 16.2.5 (r02): checagem de divergencia rounds/rNN em milestone resolve ====
+
+_write_full_config_mut() {
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/config" <<'EOF'
+config_version=1
+site_host=example.atlassian.net
+project_key=DEMO
+board_id=1
+issue_type_epic=10001
+issue_type_task=10004
+issue_type_subtask=10002
+status_pending=To Do
+status_in_progress=In Progress
+status_pass=Done
+status_fail=Failed
+sync_autonomous=on
+EOF
+}
+
+scenario_mutation_16_2_5_milestone_round_divergence_check() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r03"}}
+EOF
+
+  # -- controle: original detecta divergencia (r03 vs 1 dir) -> unresolved --
+  _out=$("$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" milestone resolve --feature demo) \
+    || { _fail "controle_exit" "milestone resolve deveria sair exit 0 no original"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=unresolved" \
+    || { _fail "controle_unresolved" "esperado status=unresolved no original, obtido: $_out"; return 1; }
+
+  # -- mutante: neutraliza a checagem de divergencia (sempre "bate") --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -q 'if \[ "\$_jsmr_prev_num_dec" -eq "\$_jsmr_dircount" \]; then' "$_sy" \
+    || { _fail "mutant_stale" "checagem de divergencia nao encontrada — repo mudou"; return 1; }
+  sed 's/if \[ "\$_jsmr_prev_num_dec" -eq "\$_jsmr_dircount" \]; then/if [ "$_jsmr_prev_num_dec" -eq "$_jsmr_prev_num_dec" ]; then/' \
+    "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -q 'if \[ "\$_jsmr_prev_num_dec" -eq "\$_jsmr_prev_num_dec" \]; then' "$_sy" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao"; return 1; }
+  chmod +x "$_sy"
+
+  _out_mut=$("$_sy" milestone resolve --feature demo) \
+    || { _fail "mutant_run" "mutante deveria sair exit 0"; return 1; }
+  if printf '%s\n' "$_out_mut" | grep -qx "status=unresolved"; then
+    _fail "mutant_divergence" "esperado NAO unresolved (regressao: divergencia rounds/rNN nunca detectada), obtido: $_out_mut"
+    return 1
+  fi
+  return 0
+}
+
 run_all_scenarios

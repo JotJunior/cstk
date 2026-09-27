@@ -232,7 +232,7 @@
 #     `classification=deferred` (429; 5xx/rede/timeout apos ate 3
 #     tentativas; 400/409 em `--op R4`) — candidato a retry pelo chamador
 #   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, PATH/
-#     segmento fora da allowlist SEC-1, `--op` fora de R1..R11, args,
+#     segmento fora da allowlist SEC-1, `--op` fora de R1..R13, args,
 #     `json-get` com filtro/entrada invalidos, `json-build` com segmento
 #     fora da allowlist SEC-1 ou campo obrigatorio ausente)
 #   3 ProjectConfig ausente/inacessivel (propagado de jira-config.sh get)
@@ -273,7 +273,7 @@ USO:
       e nao pode conter .. // \ @ # espaco CR/LF/controle (SEC-1).
       Autenticacao Basic (email + API token de Credential) enviada via
       arquivo de config temporario do cliente HTTP (SEC-4) — nunca em argv.
-      --op OP (opcional, R1..R11) informa a operacao para classificar 403
+      --op OP (opcional, R1..R13) informa a operacao para classificar 403
       (permission_denied em R1/R2, auth_failed nas demais/omitido) e 400/409
       (deferred em R4). 401/429/5xx/rede/timeout tambem sao classificados
       (classification=<token> em stderr) — ver cabecalho do script.
@@ -282,6 +282,11 @@ USO:
       Valida cada VALUE contra a allowlist [A-Za-z0-9_-] (SEC-1), a usar
       pelo motor ANTES de interpolar jira_id/jira_key/project_key em
       PATH ou JQL.
+
+  jira-io.sh validate-version-name NAME
+      Valida NAME (nome de Fix Version, R12/R13) contra a allowlist
+      ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$ (SEC-6). Exit 2 se falhar. Nao
+      exige jq/cliente HTTP.
 
   jira-io.sh json-get FILTER
       Le JSON de stdin, aplica 'jq -r FILTER'. Wrapper de leitura (SEC-3);
@@ -332,6 +337,15 @@ USO:
       (+ "description" em ADF, opcional). SEM project/issuetype/parent —
       um update so envia os campos que mudam. summary/description texto
       livre, escapado via jq --arg.
+
+  jira-io.sh json-build version --name N --project-id DIGITS
+                                [--description TEXT]
+      Monta o corpo de R12 (criar Fix Version):
+      {"name":N,"projectId":<numero>,"description":TEXT}. N passa por
+      validate-version-name (SEC-6) ANTES de entrar no corpo;
+      --project-id MUST ser so digitos (emitido como numero JSON, nunca
+      string); --description e texto FIXO do plugin (nunca lido do
+      Jira), opcional.
 
   jira-io.sh sha256-stdin
       Le stdin, imprime o SHA-256 hex (sha256sum ou shasum -a 256, o que
@@ -427,11 +441,12 @@ _ji_cred_cleanup() {
   fi
 }
 
-# _ji_op_allowed OP — allowlist FECHADA da flag `--op` (3.4, dec-073): OP
-# MUST ser uma das operacoes R1-R11 documentadas em contracts/jira-rest.md.
+# _ji_op_allowed OP — allowlist FECHADA da flag `--op` (3.4, dec-073); r02
+# FASE 16 task 16.1.3 estende para R12/R13 (contracts/jira-rest.md). OP
+# MUST ser uma das operacoes R1-R13 documentadas em contracts/jira-rest.md.
 _ji_op_allowed() {
   case "$1" in
-    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11) return 0 ;;
+    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11|R12|R13) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -610,7 +625,7 @@ _ji_cmd_request() {
   # (deferred em R4). Fora da allowlist fechada => uso incorreto (exit 2).
   if [ -n "$_jir_op" ]; then
     _ji_op_allowed "$_jir_op" || _ji_die_usage \
-      "--op invalido: $_jir_op (permitido: R1..R11 — contracts/jira-rest.md)"
+      "--op invalido: $_jir_op (permitido: R1..R13 — contracts/jira-rest.md)"
   fi
 
   _ji_method_allowed "$_jir_method" || _ji_die_usage \
@@ -786,9 +801,18 @@ _ji_cmd_request() {
       if [ "$_jir_op" = "R1" ] || [ "$_jir_op" = "R2" ]; then
         _ji_fail_status "$_jir_status" permission_denied 7 \
           "resposta 403 em $_jir_op (permission_denied) — credencial valida, permissao insuficiente no projeto/tipo, NUNCA reconfigurar credencial: $_jir_method $_jir_path"
+      elif [ "$_jir_op" = "R12" ]; then
+        _ji_fail_status "$_jir_status" permission_denied 7 \
+          "resposta 403 em R12 (permission_denied) — falta Administer Jira/Administer Projects para criar Fix Version; projeto ja resolvido nesta execucao (R2-4), NUNCA reconfigurar credencial: $_jir_method $_jir_path"
       else
         _ji_fail_status "$_jir_status" auth_failed 4 \
-          "resposta 403 fora de R1/R2 (sem fonte que distinga) — tratado como auth_failed ate nova fonte: $_jir_method $_jir_path"
+          "resposta 403 fora de R1/R2/R12 (sem fonte que distinga) — tratado como auth_failed ate nova fonte: $_jir_method $_jir_path"
+      fi
+      ;;
+    404)
+      if [ "$_jir_op" = "R12" ]; then
+        _ji_fail_status "$_jir_status" permission_denied 7 \
+          "resposta 404 em R12 (permission_denied — falta Administer Jira/Administer Projects; documentado no OpenAPI junto com 'projeto nao encontrado', mas o project_key ja foi resolvido nesta execucao, R2-4): $_jir_method $_jir_path"
       fi
       ;;
     429)
@@ -801,6 +825,9 @@ _ji_cmd_request() {
       if [ "$_jir_op" = "R4" ]; then
         _ji_fail_status "$_jir_status" deferred 1 \
           "resposta $_jir_status em transicao concorrente (R4, deferred) — candidato a retry (change-notice confirmado): $_jir_method $_jir_path"
+      elif [ "$_jir_op" = "R12" ] && [ "$_jir_status" = "400" ]; then
+        _ji_fail_status "$_jir_status" version_conflict_or_invalid 1 \
+          "resposta 400 em R12 (version_conflict_or_invalid) — nome de Fix Version duplicado ou corpo invalido; o chamador MUST refazer R13 antes de repetir R12 (R2-3): $_jir_method $_jir_path"
       fi
       ;;
   esac
@@ -821,6 +848,33 @@ _ji_cmd_validate_segment() {
     _ji_charset_ok "$_jivs_val" \
       || _ji_die_usage "segmento fora da allowlist [A-Za-z0-9_-] (SEC-1) — jira_id/jira_key/project_key devem casar esse charset antes de qualquer interpolacao em PATH ou JQL"
   done
+  return 0
+}
+
+# _ji_cmd_validate_version_name NAME — r02 FASE 16 task 16.1.1 (SEC-6,
+# checklists/security.md CHK016): valida o nome de Fix Version (R12/R13,
+# contracts/jira-rest.md) contra a allowlist FECHADA
+# `^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$` (comeca com alfanumerico, so
+# alfanumerico/ponto/underscore/hifen depois, MAX 255 chars — mesmo limite
+# do schema `Version.name` do OpenAPI). Nao exige jq/cliente HTTP (mesma
+# disciplina de `validate-segment`). Exit 2 (via `_ji_die_usage`) se
+# falhar; NENHUM eco do valor bruto na mensagem de erro (evita vazar nome
+# potencialmente malicioso em log, mesma cautela de PATH em `request`).
+_ji_cmd_validate_version_name() {
+  [ "$#" -ge 1 ] || _ji_die_usage "validate-version-name requer NAME"
+  _jivvn_name="$1"
+  case "$_jivvn_name" in
+    [A-Za-z0-9]*) : ;;
+    *) _ji_die_usage "validate-version-name: nome fora da allowlist ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}\$ (SEC-6) — deve comecar com alfanumerico" ;;
+  esac
+  _jivvn_len=${#_jivvn_name}
+  [ "$_jivvn_len" -le 255 ] \
+    || _ji_die_usage "validate-version-name: nome excede 255 caracteres (SEC-6, limite do schema Version.name)"
+  case "$_jivvn_name" in
+    *[!A-Za-z0-9._-]*)
+      _ji_die_usage "validate-version-name: nome fora da allowlist ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}\$ (SEC-6) — so alfanumerico/ponto/underscore/hifen apos o 1o caractere"
+      ;;
+  esac
   return 0
 }
 
@@ -866,11 +920,14 @@ _ji_cmd_json_build() {
     issue-update)
       _ji_cmd_json_build_issue_update "$@"
       ;;
+    version)
+      _ji_cmd_json_build_version "$@"
+      ;;
     '')
-      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update)"
+      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update, version)"
       ;;
     *)
-      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update)"
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update, version)"
       ;;
   esac
 }
@@ -1236,6 +1293,64 @@ _ji_cmd_json_build_marker() {
      | if $have_desc_sha then .written_description_sha256 = $desc_sha else . end'
 }
 
+# _ji_cmd_json_build_version --name N --project-id DIGITS --description TEXT
+# — r02 FASE 16 task 16.1.2 (contracts/jira-rest.md R12
+# `POST /rest/api/3/version`, contracts/plugin-scripts.md `json-build
+# version`): monta o corpo `{"name":N,"projectId":<numero>,
+# "description":TEXT}`. `--name` MUST passar por
+# `_ji_cmd_validate_version_name` (SEC-6) ANTES de entrar no corpo — nunca
+# em PATH/querystring/JQL, so no corpo via `jq --arg`. `--project-id` MUST
+# ser so digitos (`_ji_digits_ok`, mesma disciplina de `json-build board
+# --filter-id`) e e emitido como NUMERO JSON (`--argjson`, nunca string) —
+# o schema `Version.projectId` do OpenAPI e integer. `--description` e
+# texto FIXO do plugin (nunca texto lido do Jira, mesma nota de
+# `contracts/jira-rest.md` R12) e opcional (o schema nao a exige).
+_ji_cmd_json_build_version() {
+  _jbv_name=""
+  _jbv_project_id=""
+  _jbv_description=""
+  _jbv_have_description="no"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name)
+        [ "$#" -ge 2 ] || _ji_die_usage "--name requer argumento"
+        _jbv_name="$2"; shift 2 ;;
+      --project-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--project-id requer argumento"
+        _jbv_project_id="$2"; shift 2 ;;
+      --description)
+        [ "$#" -ge 2 ] || _ji_die_usage "--description requer argumento"
+        _jbv_description="$2"; _jbv_have_description="yes"; shift 2 ;;
+      *)
+        _ji_die_usage "json-build version: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$_jbv_name" ] || _ji_die_usage "json-build version requer --name"
+  [ -n "$_jbv_project_id" ] || _ji_die_usage "json-build version requer --project-id"
+
+  # SEC-6: nome ANTES de montar o corpo — falha SEM montar corpo algum
+  # (nenhuma chamada a jq), mesma disciplina de SEC-1 em `json-build issue`.
+  _ji_cmd_validate_version_name "$_jbv_name"
+  _ji_digits_ok "$_jbv_project_id" \
+    || _ji_die_usage "--project-id fora da allowlist [0-9] (SEC-1) — deve ser so digitos"
+
+  _ji_require_jq
+
+  _jbv_have_description_json="false"
+  [ "$_jbv_have_description" = "yes" ] && _jbv_have_description_json="true"
+
+  jq -n \
+    --arg name "$_jbv_name" \
+    --argjson project_id "$_jbv_project_id" \
+    --arg description "$_jbv_description" \
+    --argjson have_description "$_jbv_have_description_json" \
+    '{name: $name, projectId: $project_id}
+     | if $have_description then .description = $description else . end'
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _ji_sub="${1:-}"
@@ -1252,6 +1367,9 @@ case "$_ji_sub" in
   validate-segment)
     _ji_cmd_validate_segment "$@"
     ;;
+  validate-version-name)
+    _ji_cmd_validate_version_name "$@"
+    ;;
   request)
     _ji_cmd_request "$@"
     ;;
@@ -1265,6 +1383,6 @@ case "$_ji_sub" in
     _ji_cmd_sha256_stdin "$@"
     ;;
   *)
-    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, json-get, json-build, sha256-stdin)"
+    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, validate-version-name, json-get, json-build, sha256-stdin)"
     ;;
 esac

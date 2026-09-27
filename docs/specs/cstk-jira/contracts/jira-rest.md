@@ -433,12 +433,19 @@ como `404` (junto com "projeto nao encontrado"). Tratamento de desenho
 documentado) E `404` como `permission_denied` (exit 7), porque o
 `project_key` ja foi resolvido por `getProject` na mesma execucao (o ramo
 "projeto nao encontrado" ja teria falhado antes); o motor suspende a
-sincronizacao daquele marco (FR-020). O status real devolvido por falta de
-permissao **continua a confirmar por roundtrip** — CHK022 (2a credencial sem
-*Administer Projects*/*Administer Jira*) ficou bloqueado por falta de
-credencial de teste disponivel nesta execucao (onda-006, ver bloqueio
-humano registrado nesta mesma onda); o tratamento de desenho acima
-permanece a classificacao aplicada ate resposta do operador.
+sincronizacao daquele marco (FR-020).
+
+**Status real de permissao negada — FECHADO SEM ROUNDTRIP (decisao humana,
+block-001/dec-039, onda-006/r02 FASE 15 task 15.1.2)**: o operador optou
+pela opcao (b) do bloqueio — "aceitar sem roundtrip. Manter o contrato pela
+OpenAPI (404 documentado; 403 tratado por equivalencia como
+permission_denied). CHK022 marcado aceito-sem-verificacao. Nenhuma segunda
+credencial sera fornecida." Nenhuma 2a credencial de teste sem *Administer
+Projects*/*Administer Jira* foi ou sera fornecida nesta feature; o status
+HTTP real de `createVersion` sem permissao **continua NAO exercitado
+empiricamente**. A classificacao aplicada permanece a de desenho (`403` OU
+`404` → `permission_denied`, exit 7), agora como risco aceito e documentado
+— nao mais como pendencia de roundtrip.
 
 **Nome duplicado (corrida entre execucoes paralelas, FR-023) — CONFIRMADO
 (roundtrip onda-006, r02 FASE 15 task 15.1.1)**: `POST /rest/api/3/version`
@@ -583,8 +590,21 @@ Decision 3 e da secao "Continua fora do contrato apos a onda-005".
 operador no gate (confirmacao explicita de `name`/`key`/tipo/template); o
 default e so a opcao pre-selecionada. Se o template ja cria um board
 kanban, o reuso de R11 (`projectKeyOrId`+`type=kanban`) o encontra e o setup
-NAO cria um segundo — se cria ou nao e **a confirmar por roundtrip no
-execute-task** (o OpenAPI nao diz).
+NAO cria um segundo.
+
+**Se o template cria board automaticamente — FECHADO COMO MOOT (decisao
+humana, block-002/dec-040, onda-006/r02 FASE 15 task 15.4.2)**: o operador
+optou pela opcao (a) do bloqueio — "aceitar como moot. O setup reusa/cria o
+board via R11/R9/R10 apos o projeto existir, entao a existencia de board
+automatico no template de R18 nao altera o comportamento. Registrar a
+decisao no contrato; nenhum roundtrip de createProject." O OpenAPI NAO
+documenta se `gh-simplified-agility-kanban` cria um board na criacao do
+projeto, e essa lacuna permanece **NAO exercitada empiricamente** — nenhum
+roundtrip real de `createProject` foi ou sera executado fora do gate
+humano de FASE 19. A decisao e operacional (nao fixa eixo estrutural): o
+comportamento do motor (checar R11 antes de criar) e identico nos dois
+casos possiveis (template cria board ou nao), entao a lacuna nao bloqueia
+codigo nem release.
 
 `403` em R18 => `permission_denied` (exit 7) e o setup cai no ramo "orientar
 criacao manual" de FR-024 (UI do Jira ou tool `createJiraProject` do Rovo MCP
@@ -631,18 +651,21 @@ roundtrip onda-011): Fix Version `id=10000`
 labels/fixVersions de teste), issueLink `id=10000` (tipo `Blocks` entre
 `SCRUM-5`→`SCRUM-6`, ja existentes do roundtrip onda-011).
 
-**Pendente (nao coberto nesta onda)**: status real de falta de permissao em
-R12 (`403` vs `404` documentado) — CHK022 ficou sem 2a credencial de teste
-disponivel, bloqueio humano registrado na mesma onda; se o template de R18
-cria board (sem roundtrip de `createProject`, CHK026, tambem sob bloqueio
-humano nesta onda).
+**Fechado por decisao humana nesta onda (sem roundtrip empirico)**: status
+real de falta de permissao em R12 (`403` vs `404` documentado) — CHK022
+fechado como aceito-sem-verificacao (block-001/dec-039, r02 FASE 15 task
+15.1.2); se o template de R18 cria board — CHK026 fechado como moot
+(block-002/dec-040, r02 FASE 15 task 15.4.2). Nenhum dos dois foi exercitado
+por roundtrip real; ambos permanecem risco aceito e documentado, nao fato
+observado.
 
 ### Continua fora do contrato apos o plan r02
 
-Status real de falta de permissao em R12 (documentado como `404`, spec fala
-em `403` — CHK022, pendente de 2a credencial); se o template de R18 cria
-board (CHK026, pendente de decisao sobre roundtrip manual de
-`createProject`). Os demais 5 pontos desta secao (nome duplicado em R12,
-forma `update.fixVersions`, nome/shape de `labels`/`fixVersions` na resposta
-de R3/R15, direcao inward/outward de R17) foram CONFIRMADOS pelo roundtrip
-onda-006 acima (task 15.1-15.3) e nao entram mais nesta lista.
+Nenhum ponto pendente. Os 6 pontos originais desta secao foram todos
+fechados na FASE 15 (r02): nome duplicado em R12, forma `update.fixVersions`,
+nome/shape de `labels`/`fixVersions` na resposta de R3/R15 e direcao
+inward/outward de R17 foram CONFIRMADOS por roundtrip real (onda-006, tasks
+15.1.1/15.2/15.3); status de permissao negada em R12 (CHK022) e
+comportamento de board no template de R18 (CHK026) foram fechados por
+decisao humana explicita SEM roundtrip (ver secoes R12/R18 acima) — risco
+aceito e documentado, nao fato observado empiricamente.

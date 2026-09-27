@@ -2817,4 +2817,136 @@ scenario_resolve_state_field_state_db_caminho_pontuado_via_stub() {
   return 0
 }
 
+# ==== milestone resolve (r02 FASE 16 task 16.2, research.md Decision R2-1) ====
+#
+# SY-68 milestone_mode=off -> status=off, name= vazio
+# SY-69 round ativo consistente (rounds/r01 + previous_round.round=r01)
+#       -> name=<feature>-r02, kind=round
+# SY-70 round divergente (previous_round.round=r03, so rounds/r01 existe)
+#       -> status=unresolved (nunca chute)
+# SY-71 sem round ativo, milestone_release definido (SemVer valido) ->
+#       name=<release>, kind=release
+# SY-72 sem round, sem milestone_release: 1o heading `## [X.Y.Z]` do
+#       CHANGELOG.md -> name=<versao>, kind=release
+# SY-73 sem round, sem milestone_release, CHANGELOG com `[Unreleased]` no
+#       topo -> status=unresolved (nunca inventa proxima versao)
+# SY-74 token de round fora do formato SEC-6 (^r[0-9]{2,}$) ->
+#       status=unresolved, nunca fallback silencioso para release
+# SY-75 milestone_release fora do formato SemVer -> status=unresolved
+
+# _append_config_line KEY=VALUE -> acrescenta uma linha ao config ja escrito
+# por _write_full_config (milestone_mode/milestone_release sao opcionais,
+# ausentes do fixture base).
+_append_config_line() {
+  printf '%s\n' "$1" >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+}
+
+scenario_milestone_resolve_mode_off() {
+  _write_full_config
+  _append_config_line "milestone_mode=off"
+  cd "$TMPDIR_TEST" || return 1
+  _out=$("$SCRIPT" milestone resolve --feature demo) \
+    || { _fail "sy68_exit" "milestone resolve deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "name=" \
+    || { _fail "sy68_name" "esperado name= vazio, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=off" \
+    || { _fail "sy68_status" "esperado status=off, obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_round_ativo_consistente() {
+  _write_full_config
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r01"}}
+EOF
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy69_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "name=demo-r02" \
+    || { _fail "sy69_name" "esperado name=demo-r02, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "kind=round" \
+    || { _fail "sy69_kind" "esperado kind=round, obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_round_divergente_unresolved() {
+  _write_full_config
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r03"}}
+EOF
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy70_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=unresolved" \
+    || { _fail "sy70_status" "esperado status=unresolved (divergencia r03 vs 1 dir), obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_sem_round_release_definida() {
+  _write_full_config
+  _append_config_line "milestone_release=10.8.0"
+  cd "$TMPDIR_TEST" || return 1
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy71_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "name=10.8.0" \
+    || { _fail "sy71_name" "esperado name=10.8.0, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "kind=release" \
+    || { _fail "sy71_kind" "esperado kind=release, obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_sem_round_changelog_heading() {
+  _write_full_config
+  cd "$TMPDIR_TEST" || return 1
+  cat > "$TMPDIR_TEST/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## [1.2.3]
+
+- x
+EOF
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy72_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "name=1.2.3" \
+    || { _fail "sy72_name" "esperado name=1.2.3, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "kind=release" \
+    || { _fail "sy72_kind" "esperado kind=release, obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_changelog_unreleased_no_topo_unresolved() {
+  _write_full_config
+  cd "$TMPDIR_TEST" || return 1
+  cat > "$TMPDIR_TEST/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## [Unreleased]
+
+- x
+
+## [1.2.3]
+
+- x
+EOF
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy73_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=unresolved" \
+    || { _fail "sy73_status" "esperado status=unresolved ([Unreleased] no topo nunca vira nome inventado), obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_round_token_fora_do_formato_unresolved() {
+  _write_full_config
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r1"}}
+EOF
+  # "r1" tem so 1 digito -> fora de ^r[0-9]{2,}$ (SEC-11) -> unresolved,
+  # NUNCA cai para a regra de release (sem fallback silencioso).
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy74_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=unresolved" \
+    || { _fail "sy74_status" "esperado status=unresolved (token r1 fora do formato SEC-11), obtido: $_out"; return 1; }
+}
+
+scenario_milestone_resolve_release_fora_do_semver_unresolved() {
+  _write_full_config
+  _append_config_line "milestone_release=nao-e-semver"
+  cd "$TMPDIR_TEST" || return 1
+  _out=$("$SCRIPT" milestone resolve --feature demo) || { _fail "sy75_exit" "falhou"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "status=unresolved" \
+    || { _fail "sy75_status" "esperado status=unresolved (milestone_release fora de SemVer), obtido: $_out"; return 1; }
+}
+
 run_all_scenarios

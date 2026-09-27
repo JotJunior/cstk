@@ -1842,17 +1842,20 @@ Ref: quickstart.md Cenario 12 passo 1; contracts/jira-rest.md R12/R13
       `jira-io.sh request --op R12`; repetir R12 com o MESMO nome e
       registrar o status HTTP REAL da duplicata (CHK021) — corrigir
       `contracts/jira-rest.md` R12 "Nome duplicado" se divergir de `400`
-- [ ] 15.1.2 Fecha CHK022 (`[Gap]`): com uma 2a credencial de teste SEM
-      *Administer Projects*/*Administer Jira* no projeto `SCRUM` (obtida do
-      operador, mesma disciplina de terminal proprio de `data-model.md`
-      Credential), repetir R12 e registrar o status HTTP REAL de permissao
-      negada — corrigir `contracts/jira-rest.md` R12 "Divergencia com a
-      Clarification r02" (`403` vs `404`) e `plugin-scripts.md`
-      "Classificacao de status" se divergir do documentado
-- [ ] 15.1.3 Registrar Decisao auditavel (`--score 3 --evidencia "<trecho
-      literal das 2 respostas observadas>"`) por achado de 15.1.1/15.1.2;
-      adicionar o passo de permissao negada ao Cenario 12 do
-      `quickstart.md` (fecha CHK022 definitivamente)
+- [x] 15.1.2 Fecha CHK022 (`[Gap]`): sem 2a credencial de teste disponivel
+      (operador recusou fornece-la, block-001/dec-039, opcao b), fechado
+      SEM roundtrip — `contracts/jira-rest.md` R12 "Status real de
+      permissao negada" e `checklists/api.md` CHK022 atualizados
+      registrando aceito-sem-verificacao (classificacao de desenho `403`/
+      `404` -> `permission_denied` mantida como risco aceito, nao fato
+      observado); `plugin-scripts.md` nao exige correcao (nada novo
+      observado)
+- [x] 15.1.3 Decisao auditavel registrada (dec-042, score 2 — nao 3: nao
+      houve sonda empirica, aplicacao de decisao humana ja registrada;
+      evidencia = trecho literal da resposta do operador em block-001);
+      passo de permissao negada atualizado no Cenario 12 do
+      `quickstart.md` (marcado FECHADO sem roundtrip, fecha CHK022
+      definitivamente)
 
 ### 15.2 Roundtrip de fixVersions/labels: criacao, leitura e edicao (R1/R2/R3) `[C]`
 
@@ -1911,15 +1914,19 @@ proposto" (L558-564); quickstart.md Cenario 12 (exclui R18) e Cenario 11
       (b) exigir roundtrip real e MANUAL de `createProject` (fora do
       fluxo automatizado, FASE 19) antes do release — Decisao classe
       `operacional` (nao fixa eixo estrutural), score 0, ate resposta
-- [ ] 15.4.2 Apos resposta do operador: editar `contracts/jira-rest.md`
-      "Continua fora do contrato apos o plan r02" e `checklists/api.md`
-      CHK026 registrando a decisao tomada (fecha `[Gap]` de forma
-      auditavel, nao mecanica)
-- [ ] 15.4.3 Teste: `grep` de auditoria confirmando que
-      `contracts/jira-rest.md` R12-R18 nao contem mais nenhum marcador "a
-      confirmar por roundtrip no execute-task" para os 5 pontos fechados
-      em 15.1-15.3 (o 6o, R18/board, segue rotulado conforme a decisao de
-      15.4.1)
+- [x] 15.4.2 Resposta do operador aplicada (block-002/dec-040, opcao a —
+      moot): `contracts/jira-rest.md` R18 "Se o template cria board
+      automaticamente" e secao "Continua fora do contrato apos o plan
+      r02" (esvaziada — 0 pontos pendentes) editadas; `checklists/api.md`
+      CHK026 fechado registrando a decisao (dec-043)
+- [x] 15.4.3 Teste de auditoria executado: `awk` restrito as secoes
+      R12..."Continua fora do contrato apos o plan r02" + `grep -n "a
+      confirmar por roundtrip no execute-task"` retornou 0 ocorrencias
+      (unica ocorrencia remanescente no arquivo e a frase generica da
+      introducao da secao onda-005, que explica a convencao, nao um ponto
+      pendente) — os 6 pontos do round r02 estao fechados: 4 por roundtrip
+      real (15.1.1/15.2/15.3) e 2 por decisao humana explicita sem
+      roundtrip (15.1.2 CHK022, 15.4.2 CHK026)
 
 ---
 
@@ -1936,52 +1943,71 @@ contracts/jira-rest.md R12/R13/R14. **Depende de FASE 15** (roundtrip
 Ref: contracts/plugin-scripts.md `jira-io.sh` r02 (`validate-version-name`,
 `json-build version`); plan.md SEC-6; checklists/security.md CHK016.
 
-- [ ] 16.1.1 `validate-version-name NAME`: allowlist
+- [x] 16.1.1 `validate-version-name NAME`: allowlist
       `^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$` (SEC-6); exit 2 se falhar; sem
-      `jq`/cliente HTTP
-- [ ] 16.1.2 `json-build version --name N --project-id DIGITS --description
+      `jq`/cliente HTTP — implementado em `jira-io.sh`
+      `_ji_cmd_validate_version_name` (subcomando `validate-version-name`)
+- [x] 16.1.2 `json-build version --name N --project-id DIGITS --description
       TEXT`: corpo `{"name":N,"projectId":<numero>,"description":TEXT}`
       (contracts/jira-rest.md R12); `--project-id` so digitos, emitido
       como numero JSON; `N` NUNCA em PATH/querystring/JQL, so no corpo via
-      `jq --arg`
-- [ ] 16.1.3 `request --op R12`/`--op R13` classificando `403`/`404` como
+      `jq --arg` — implementado em `jira-io.sh` `_ji_cmd_json_build_version`
+      (`json-build version`)
+- [x] 16.1.3 `request --op R12`/`--op R13` classificando `403`/`404` como
       `permission_denied` (exit 7) e `400` como
       `version_conflict_or_invalid` (exit 1) — tabela `plugin-scripts.md`
-      r02
-- [ ] 16.1.4 Teste: `validate-version-name` rejeita nome vazio, nome
+      r02 — `_ji_op_allowed` estendido para R12/R13; `case` de classificacao
+      de `_ji_cmd_request` cobre 403/404/400 para R12 (404 documentado no
+      OpenAPI, 403 por equivalencia — R2-4); R13 sem classificacao especial
+      (passthrough)
+- [x] 16.1.4 Teste: `validate-version-name` rejeita nome vazio, nome
       iniciando com `.`/`-`, nome > 255 chars, e nome contendo
-      espaco/`/`; aceita `cstk-jira-r02`/`10.8.0`
-- [ ] 16.1.5 Mutation test: reverter a allowlist de 16.1.1 para aceitar
-      qualquer string faz o teste de 16.1.4 falhar
+      espaco/`/`; aceita `cstk-jira-r02`/`10.8.0` — `tests/cstk/test_jira-io.sh`
+      JI-78..JI-92 (14 scenarios novos: validate-version-name, json-build
+      version, request --op R12/R13); suite completa 102/102 verde
+- [x] 16.1.5 Mutation test: reverter a allowlist de 16.1.1 para aceitar
+      qualquer string faz o teste de 16.1.4 falhar — implementado em
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_16_1_5_validate_version_name_allowlist`
+      (neutraliza a guarda `[A-Za-z0-9]*) : ;;`, confirma que nome vazio
+      passa a ser aceito na copia mutada)
 
 ### 16.2 `jira-sync.sh milestone resolve` — regra de granularidade (R2-1) `[C]`
 
 Ref: research.md Decision R2-1; data-model.md ProjectConfig
 `milestone_mode`/`milestone_release`; plan.md SEC-11.
 
-- [ ] 16.2.1 `milestone resolve --feature F`, sem rede: `milestone_mode=off`
+- [x] 16.2.1 `milestone resolve --feature F`, sem rede: `milestone_mode=off`
       => `status=off`; round ativo (`.previous_round.round` via
       `resolve-state-field` READ-ONLY, mesmo padrao das tasks
       13.1.1/14.1.1) => `name=<feature>-r<NN>`, `kind=round` — `NN`
       conferido contra `1 + numero de diretorios rounds/r[0-9][0-9]`
-      (divergencia => `status=unresolved`, nunca chute)
-- [ ] 16.2.2 Sem round ativo: `milestone_release` de ProjectConfig (SEC-6)
+      (divergencia => `status=unresolved`, nunca chute) — implementado em
+      `jira-sync.sh` `_js_cmd_milestone_resolve` (subcomando `milestone
+      resolve`) + `_js_round_token_ok`
+- [x] 16.2.2 Sem round ativo: `milestone_release` de ProjectConfig (SEC-6)
       quando definido; senao 1o heading `## [X.Y.Z]` do `CHANGELOG.md` do
       projeto-alvo SE for o mais alto (SEC-11: heading MUST casar SemVer
       `^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$` ANTES de compor o
       nome) — heading mais alto `[Unreleased]` ou nome fora do formato =>
-      `status=unresolved`
-- [ ] 16.2.3 Token de round MUST casar `^r[0-9]{2,}$` (SEC-11) antes de
+      `status=unresolved` — implementado via `_js_semver_ok` (aproximacao
+      POSIX pura da regex) + leitura de `./CHANGELOG.md` (cwd)
+- [x] 16.2.3 Token de round MUST casar `^r[0-9]{2,}$` (SEC-11) antes de
       compor `<feature>-rNN`; divergencia => `status=unresolved`, nunca
-      fallback silencioso para release
-- [ ] 16.2.4 Teste: round ativo com `rounds/r01` + `.previous_round.round=
+      fallback silencioso para release — `_js_round_token_ok` valida ANTES
+      de qualquer composicao de nome; divergencia nunca cai para a regra 3
+      (release)
+- [x] 16.2.4 Teste: round ativo com `rounds/r01` + `.previous_round.round=
       r01` => `name=<feature>-r02`; divergencia de contagem
       (`.previous_round.round=r03` mas so `rounds/r01` existe) =>
       `unresolved`; `milestone_mode=off` => `off`; `[Unreleased]` no topo
-      do CHANGELOG sem `milestone_release` => `unresolved`
-- [ ] 16.2.5 Mutation test: reverter a checagem de divergencia de 16.2.1
+      do CHANGELOG sem `milestone_release` => `unresolved` —
+      `tests/cstk/test_jira-sync.sh` SY-68..SY-75 (8 scenarios novos,
+      inclui token de round fora do formato e release fora de SemVer);
+      suite completa 79/79 verde
+- [x] 16.2.5 Mutation test: reverter a checagem de divergencia de 16.2.1
       (aceitar `NN` sem conferir contra `rounds/`) faz o teste de 16.2.4
-      falhar
+      falhar — implementado em
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_16_2_5_milestone_round_divergence_check`
 
 ### 16.3 `jira-sync.sh milestone ensure` — idempotencia e degradacao (R2-3, R2-4) `[C]`
 
