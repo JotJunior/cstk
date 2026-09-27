@@ -164,6 +164,11 @@ USO:
   jira-sync.sh convert --feature F
       Cria Epic/Task/Sub-task no Jira (US1), gravando jira-map.tsv item a
       item; idempotente por presenca no mapeamento (FR-013/FR-014).
+      r02 FASE 16 task 16.4.1: se milestone_mode=auto, roda `milestone
+      ensure` ANTES da 1a criacao; Epic/Task recebem o marco resolvido via
+      --fix-version-id (Sub-task so se fix_versions_on_subtask=on); marco
+      blocked aborta a criacao de itens NOVOS (exit 7) sem afetar
+      transicoes de itens ja mapeados.
 
   jira-sync.sh enqueue --feature F --local-key K --state S --source SRC
       Acrescenta um OutboxEvent (append-only) em
@@ -182,13 +187,19 @@ USO:
       conflito, transiciona (R4/R5) e regrava o SyncMarker (R6 PUT).
       auth_failed em qualquer chamada real interrompe o processamento do
       restante do lote nesta chamada (credencial invalida vale para todas).
+      r02 FASE 16 task 16.4.2: no evento `reconcile` (local_key=*), o item
+      Epic tambem reaplica o marco corrente via update.fixVersions add/
+      remove (SEC-10: remove so se o id antigo ainda constar no sidecar
+      jira-milestones.tsv como current/superseded; divergencia vira
+      ConflictRecord milestone_drift, nunca remocao forcada).
 
   jira-sync.sh status [--feature F]
       Resumo LOCAL (sem rede), legivel pelo operador: contagem do outbox
       por status (queued/deferred/conflict/auth_failed) + detalhe dos
       eventos auth_failed; ConflictRecord pendentes (runtime/conflicts.tsv);
       cards orphan de cada jira-map.tsv. Sem --feature, agrega TODAS as
-      features sob docs/specs/*/.
+      features sob docs/specs/*/. Com --feature (r02 FASE 16 task 16.4.4):
+      linha grep-avel milestone=<nome|unresolved|off|blocked:nome>.
 
   jira-sync.sh resolve --feature F --local-key K \
                         --choice keep_jira|overwrite|ignored
@@ -1105,6 +1116,123 @@ _js_cmd_milestone_ensure() {
   _js_die "falha ao criar Fix Version \"$_jsme_name\" (jira-io.sh exit $_jsme_ec)" "$_jsme_ec"
 }
 
+# _js_reconcile_epic_milestone FEATURE EPIC_JKEY WRITTEN_FIX_VERSION_ID —
+# r02 FASE 16 task 16.4.2/16.4.3 (research.md Decision R2-2; plan.md SEC-10;
+# data-model.md SyncMarker `written_fix_version_id`): reaplica o marco
+# CORRENTE ao Epic via `update.fixVersions` add/remove (R14), chamado a cada
+# `drain` (evento `local_key=* desired_state=reconcile`) SO para o item
+# `kind=epic`. Reusa `_js_cmd_milestone_ensure` (mesma resolucao/
+# idempotencia de `convert` — R13 + casamento exato, senao R12).
+#
+# Contrato de saida: imprime (stdout, SEM newline) o valor de
+# written_fix_version_id que o CHAMADOR deve gravar no proximo R6 PUT do
+# marker (pode ser igual a WRITTEN_FIX_VERSION_ID quando nada mudou). Exit
+# sempre 0 exceto falha de rede no R2 final (repassa o exit code de
+# jira-io.sh — o chamador decide auth_failed/deferred, mesmo padrao do
+# resto do arquivo); qualquer falha ANTES do R2 (milestone ensure
+# indisponivel, R13/R12 fora do ar) degrada SILENCIOSAMENTE para "nada
+# muda nesta passada" (imprime WRITTEN_FIX_VERSION_ID inalterado, exit 0) —
+# o proximo `drain` tenta de novo, nunca quebra a reconciliacao de status
+# do mesmo item.
+#
+# Ramos (nenhuma chamada de rede de fixVersions fora do ultimo):
+#   - milestone_mode=off: no-op, written inalterado.
+#   - marco nao `current` (unresolved/deferred/blocked): no-op — blocked/
+#     deferred NUNCA forcam remocao do marco ja aplicado (R2-4: so suspende
+#     CRIACAO de itens novos, nunca desfaz o que ja esta certo no Epic).
+#   - marco `current` e id == WRITTEN_FIX_VERSION_ID: idempotente, no-op.
+#   - marco `current` e id != WRITTEN_FIX_VERSION_ID: SEC-10 — `remove` do
+#     id antigo SO e emitido se `jira-map.sh milestone-id-known` confirma
+#     que WRITTEN_FIX_VERSION_ID ainda consta no sidecar (current/
+#     superseded) daquela feature; WRITTEN_FIX_VERSION_ID vazio (1a
+#     aplicacao pos-convert sem marco, ou Epic pre-r02) -> so `add`, sem
+#     `remove`. Divergencia (marker aponta um id que sumiu do sidecar) ->
+#     `ConflictRecord milestone_drift`, ZERO chamadas de `update.fixVersions`
+#     — NUNCA remocao forcada (mesma garantia de `manual_edit`/
+#     `marker_missing`, so que para o marco em vez do titulo/status).
+_js_reconcile_epic_milestone() {
+  _jrem_feature="$1"
+  _jrem_jkey="$2"
+  _jrem_written="$3"
+
+  _jrem_dir="$(_js_script_dir)"
+  _jrem_config="$_jrem_dir/jira-config.sh"
+  _jrem_io="$_jrem_dir/jira-io.sh"
+  _jrem_map="$_jrem_dir/jira-map.sh"
+
+  _jrem_mode=$("$_jrem_config" get milestone_mode 2>/dev/null) || _jrem_mode="auto"
+  [ -n "$_jrem_mode" ] || _jrem_mode="auto"
+  if [ "$_jrem_mode" != "auto" ]; then
+    printf '%s' "$_jrem_written"
+    return 0
+  fi
+
+  # `|| :` (mesma tecnica de `_js_cmd_convert`): qualquer exit nao-zero de
+  # `milestone ensure` (blocked=7, deferred=1, ou uma falha de rede que caia
+  # em `_js_die` dentro de `_js_milestone_r13_match`) e absorvido aqui — o
+  # status impresso (ou a ausencia dele) decide o ramo abaixo, nunca o exit
+  # code.
+  _jrem_resolved=$(_js_cmd_milestone_ensure --feature "$_jrem_feature" 2>/dev/null) || :
+  _jrem_name=$(printf '%s\n' "$_jrem_resolved" | sed -n 's/^name=//p')
+  _jrem_status=$(printf '%s\n' "$_jrem_resolved" | sed -n 's/^status=//p')
+
+  if [ "$_jrem_status" != "current" ] || [ -z "$_jrem_name" ]; then
+    printf '%s' "$_jrem_written"
+    return 0
+  fi
+
+  _jrem_pkey=$("$_jrem_config" get project_key 2>/dev/null) || _jrem_pkey=""
+  if [ -z "$_jrem_pkey" ]; then
+    printf '%s' "$_jrem_written"
+    return 0
+  fi
+  if ! _jrem_mline=$("$_jrem_map" milestone-get --feature "$_jrem_feature" \
+      --name "$_jrem_name" --project-key "$_jrem_pkey" 2>/dev/null); then
+    printf '%s' "$_jrem_written"
+    return 0
+  fi
+  _jrem_new_id=$(printf '%s' "$_jrem_mline" | cut -f3)
+  if [ -z "$_jrem_new_id" ] || [ "$_jrem_new_id" = "$_jrem_written" ]; then
+    printf '%s' "$_jrem_written"
+    return 0
+  fi
+
+  _jrem_do_remove="no"
+  if [ -n "$_jrem_written" ]; then
+    if "$_jrem_map" milestone-id-known --feature "$_jrem_feature" \
+        --project-key "$_jrem_pkey" --version-id "$_jrem_written" 2>/dev/null; then
+      _jrem_do_remove="yes"
+    else
+      # SEC-10: marker aponta um id que o sidecar nao reconhece mais ->
+      # ConflictRecord, NUNCA remocao forcada. O marco novo tambem NAO e
+      # aplicado nesta passada (evita acumular 2 versoes no Epic — "nunca
+      # os dois" da Clarification); o proximo drain tenta de novo apos
+      # resolucao humana.
+      _js_conflict_pending_exists "$_jrem_feature" "$_jrem_feature" \
+        || _js_append_conflict "$_jrem_feature" "$_jrem_feature" "$_jrem_jkey" milestone_drift
+      printf '%s' "$_jrem_written"
+      return 0
+    fi
+  fi
+
+  set -- --add-fix-version-id "$_jrem_new_id"
+  [ "$_jrem_do_remove" = "yes" ] && set -- "$@" --remove-fix-version-id "$_jrem_written"
+  _jrem_body=$("$_jrem_io" json-build issue-update "$@")
+  _jrem_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2fvbody.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jrem_body" > "$_jrem_body_file"
+  if "$_jrem_io" request PUT "/rest/api/3/issue/$_jrem_jkey" \
+      --body-file "$_jrem_body_file" --op R2 >/dev/null 2>/dev/null; then
+    rm -f "$_jrem_body_file"
+    printf '%s' "$_jrem_new_id"
+    return 0
+  fi
+  _jrem_ec=$?
+  rm -f "$_jrem_body_file"
+  printf '%s' "$_jrem_written"
+  return "$_jrem_ec"
+}
+
 # _js_cmd_milestone MODE [ARGS...] — dispatcher interno de `milestone`.
 # MODE em {resolve, ensure} (16.2/16.3) — allowlist FECHADA, mesmo estilo
 # de `_ji_cmd_json_build`.
@@ -1441,7 +1569,7 @@ _js_maybe_update_mapped_issue() {
 }
 
 # _js_write_initial_marker IO FEATURE LOCAL_KEY JIRA_KEY SUMMARY
-#   [DESCRIPTION] — feature cstk-jira FASE 11 tarefa 11.1.1 (FR-011,
+#   [DESCRIPTION] [FIX_VERSION_ID] — feature cstk-jira FASE 11 tarefa 11.1.1 (FR-011,
 # plan.md Fluxo 2 "Convert" grava SyncMarker; data-model.md: "Gravado em
 # cada issue sincronizada"). Sem isto, o 1o `drain` de qualquer issue
 # recem-criada lia R6=404 e virava `marker_missing` (ConflictRecord) em
@@ -1460,7 +1588,12 @@ _js_maybe_update_mapped_issue() {
 # R3 ou no R6 PUT: diagnostico em stderr, retorna 0 SEM abortar `convert`
 # nem desfazer a criacao (issue e jira-map.tsv ja gravados) — a proxima
 # `drain` detecta o SyncMarker ausente (404) e reporta `marker_missing`, o
-# mesmo efeito de um R6 PUT que tivesse falhado aqui.
+# mesmo efeito de um R6 PUT que tivesse falhado aqui. FIX_VERSION_ID (r02
+# FASE 16 task 16.4.1, opcional — so quando o chamador aplicou um marco
+# NESTA criacao E o item e o Epic, data-model.md SyncMarker
+# `written_fix_version_id`: "so no Epic"): quando nao-vazio, grava tambem
+# `written_fix_version_id` no marker, estabelecendo a baseline que
+# `_js_reconcile_epic_milestone` compara depois.
 _js_write_initial_marker() {
   _jwim_io="$1"
   _jwim_feature="$2"
@@ -1468,6 +1601,7 @@ _js_write_initial_marker() {
   _jwim_jkey="$4"
   _jwim_summary="$5"
   _jwim_description="${6:-}"
+  _jwim_fix_version_id="${7:-}"
 
   if _jwim_issue_resp=$("$_jwim_io" request GET "/rest/api/3/issue/$_jwim_jkey?fields=status" --op R3 2>/dev/null); then
     :
@@ -1485,6 +1619,9 @@ _js_write_initial_marker() {
   if [ -n "$_jwim_description" ]; then
     _jwim_desc_sha=$(printf '%s' "$_jwim_description" | "$_jwim_io" sha256-stdin)
     set -- "$@" --written-description-sha256 "$_jwim_desc_sha"
+  fi
+  if [ -n "$_jwim_fix_version_id" ]; then
+    set -- "$@" --written-fix-version-id "$_jwim_fix_version_id"
   fi
   _jwim_marker_body=$("$_jwim_io" json-build marker "$@")
   _jwim_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
@@ -1532,6 +1669,40 @@ _js_cmd_convert() {
   _jsc_issuetype_epic=$("$_jsc_config" get issue_type_epic)
   _jsc_issuetype_task=$("$_jsc_config" get issue_type_task)
   _jsc_issuetype_subtask=$("$_jsc_config" get issue_type_subtask)
+
+  # r02 FASE 16 task 16.4.1 (research.md Decision R2-2/R2-3/R2-4): antes da
+  # 1a criacao, garante o marco (Fix Version) corrente via `milestone
+  # ensure` — SO quando milestone_mode=auto (default). `milestone ensure`
+  # ja e no-op de rede quando o marco nao esta resolvido (off/unresolved).
+  # Chamado DIRETO (nao via subshell) seria a forma mais simples, mas
+  # precisamos capturar name=/status= mesmo quando a funcao termina com
+  # `exit 7` (blocked) — por isso via `$(...)`: o `exit` so derruba o
+  # SUBSHELL da substituicao, preservando o stdout ja impresso ANTES do
+  # exit e o exit code em `$?` (mesmo padrao de captura sem negacao usado
+  # no resto do arquivo).
+  _jsc_milestone_mode=$("$_jsc_config" get milestone_mode 2>/dev/null) || _jsc_milestone_mode="auto"
+  [ -n "$_jsc_milestone_mode" ] || _jsc_milestone_mode="auto"
+  _jsc_milestone_name=""
+  _jsc_milestone_status=""
+  _jsc_milestone_id=""
+  if [ "$_jsc_milestone_mode" = "auto" ]; then
+    # `|| :` — a mesma tecnica de _js_cmd_status abaixo: sob `set -e`, um
+    # exit nao-zero (blocked=7, deferred=1) dentro da substituicao NAO deve
+    # abortar `convert` aqui (a decisao de abortar so acontece mais abaixo,
+    # por item, quando o marco esta de fato blocked e ha item novo a criar).
+    _jsc_milestone_resolved=$(_js_cmd_milestone_ensure --feature "$_jsc_feature") || :
+    _jsc_milestone_name=$(printf '%s\n' "$_jsc_milestone_resolved" | sed -n 's/^name=//p')
+    _jsc_milestone_status=$(printf '%s\n' "$_jsc_milestone_resolved" | sed -n 's/^status=//p')
+    if [ "$_jsc_milestone_status" = "current" ] && [ -n "$_jsc_milestone_name" ]; then
+      if _jsc_milestone_line=$("$_jsc_map" milestone-get --feature "$_jsc_feature" \
+          --name "$_jsc_milestone_name" --project-key "$_jsc_project_key" 2>/dev/null); then
+        _jsc_milestone_id=$(printf '%s' "$_jsc_milestone_line" | cut -f3)
+      fi
+    fi
+  fi
+  _jsc_fix_versions_on_subtask=$("$_jsc_config" get fix_versions_on_subtask 2>/dev/null) \
+    || _jsc_fix_versions_on_subtask="off"
+  [ -n "$_jsc_fix_versions_on_subtask" ] || _jsc_fix_versions_on_subtask="off"
 
   _jsc_items=$("$_jsc_tasks" items --feature "$_jsc_feature") \
     || _js_die "jira-tasks.sh items falhou para a feature: $_jsc_feature" 1
@@ -1609,6 +1780,28 @@ _js_cmd_convert() {
       continue
     fi
 
+    # r02 FASE 16 task 16.4.1 (research.md Decision R2-4): marco blocked
+    # (permission_denied ao tentar criar a Fix Version) SUSPENDE a criacao
+    # de itens NOVOS desta feature — transicoes de issues JA mapeadas (ramo
+    # acima) nao dependem do marco e continuam normalmente.
+    if [ "$_jsc_milestone_status" = "blocked" ]; then
+      _js_die "marco de Fix Version bloqueado (permission_denied, R2-4) — criacao de itens novos suspensa para $_jsc_key; ajuste a credencial (Administer Jira/Administer Projects) ou defina milestone_mode=off" 7
+    fi
+
+    # r02 FASE 16 task 16.4.1 (research.md Decision R2-2): Epic e Task
+    # recebem o marco corrente SEMPRE que resolvido ("quando aplicavel" de
+    # FR-020); Sub-task so quando fix_versions_on_subtask=on (campo
+    # presente na tela de criacao do tipo Sub-task, R8/setup).
+    _jsc_apply_fixver=""
+    if [ -n "$_jsc_milestone_id" ]; then
+      case "$_jsc_kind" in
+        epic|task) _jsc_apply_fixver="$_jsc_milestone_id" ;;
+        subtask)
+          [ "$_jsc_fix_versions_on_subtask" = "on" ] && _jsc_apply_fixver="$_jsc_milestone_id"
+          ;;
+      esac
+    fi
+
     set -- --project-id "$_jsc_project_id" --issuetype-id "$_jsc_issuetype_id" \
       --summary "$_jsc_summary"
     if [ -n "$_jsc_parent_key" ]; then
@@ -1616,6 +1809,9 @@ _js_cmd_convert() {
     fi
     if [ -n "$_jsc_description" ]; then
       set -- "$@" --description "$_jsc_description"
+    fi
+    if [ -n "$_jsc_apply_fixver" ]; then
+      set -- "$@" --fix-version-id "$_jsc_apply_fixver"
     fi
     _jsc_body=$("$_jsc_io" json-build issue "$@")
 
@@ -1647,8 +1843,14 @@ _js_cmd_convert() {
       || _js_die "issue $_jsc_new_key criada no Jira mas falha ao gravar jira-map.tsv para $_jsc_key — religar manualmente (jira-map.sh put)" 1
 
     # 11.1.1 (FR-011): SyncMarker inicial — sem isto, o 1o drain desta issue
-    # leria R6=404 e cairia em marker_missing.
-    _js_write_initial_marker "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_new_key" "$_jsc_summary" "$_jsc_description"
+    # leria R6=404 e cairia em marker_missing. r02 FASE 16 task 16.4.1/16.4.2
+    # (data-model.md SyncMarker `written_fix_version_id`: "so no Epic",
+    # R2-2) — Task/Sub-task recebem o marco na CRIACAO mas NUNCA carregam
+    # `written_fix_version_id` no marker (nunca sao remarcadas depois).
+    _jsc_marker_fixver=""
+    [ "$_jsc_kind" = "epic" ] && _jsc_marker_fixver="$_jsc_apply_fixver"
+    _js_write_initial_marker "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_new_key" \
+      "$_jsc_summary" "$_jsc_description" "$_jsc_marker_fixver"
   done
 }
 
@@ -1984,6 +2186,11 @@ _js_process_reconcile_event() {
       # `convert` tratava a ausencia da chave como "sem baseline" e
       # sobrescrevia a descricao em silencio).
       _jspr_written_desc_sha=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_description_sha256? // ""')
+      # r02 FASE 16 task 16.4.2 (data-model.md SyncMarker
+      # `written_fix_version_id`, "so no Epic"): carrega adiante a baseline
+      # atual — mesma disciplina de `written_description_sha256` acima (o
+      # R6 PUT substitui o valor inteiro da propriedade).
+      _jspr_written_fixver=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_fix_version_id? // ""')
       if [ "$_jspr_cur_sha" != "$_jspr_written_sha" ] || [ "$_jspr_cur_status" != "$_jspr_written_status" ]; then
         _jspr_conflict="yes"
         _jspr_conflict_reason="manual_edit"
@@ -1996,8 +2203,48 @@ _js_process_reconcile_event() {
       continue
     fi
 
-    # Idempotencia (FR-004/10.3): ja no status alvo -> no-op, sem R5/R4.
+    # r02 FASE 16 task 16.4.2 (research.md Decision R2-2): reaplica o marco
+    # CORRENTE ao Epic, independente do status alvo — roda ANTES da
+    # idempotencia de status porque o marco pode mudar (round r01 -> r02)
+    # mesmo quando o Epic ja esta no status alvo (idempotencia de status e
+    # idempotencia de marco sao dimensoes independentes).
+    _jspr_milestone_changed="no"
+    if [ "$_jspr_kind" = "epic" ]; then
+      _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}")
+      if [ "$_jspr_new_fixver" != "${_jspr_written_fixver:-}" ]; then
+        _jspr_written_fixver="$_jspr_new_fixver"
+        _jspr_milestone_changed="yes"
+      fi
+    fi
+
+    # Idempotencia (FR-004/10.3): ja no status alvo E sem mudanca de marco
+    # -> no-op, sem R5/R4/R6-PUT. Marco mudou mas status ja e o alvo -> so
+    # regrava o marker (sem R4/R5) com o written_fix_version_id novo.
     if [ "$_jspr_cur_status" = "$_jspr_target" ]; then
+      if [ "$_jspr_milestone_changed" != "yes" ]; then
+        continue
+      fi
+      _jspr_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      set -- marker --local-key "$_jspr_lkey" --feature "$_jsd_feature" \
+        --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_cur_status" --written-at "$_jspr_now"
+      [ -n "${_jspr_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspr_written_desc_sha"
+      [ -n "${_jspr_written_fixver:-}" ] && set -- "$@" --written-fix-version-id "$_jspr_written_fixver"
+      _jspr_marker_body=$("$_jsd_io" json-build "$@")
+      _jspr_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
+        || _js_die "falha ao criar arquivo temporario" 1
+      printf '%s' "$_jspr_marker_body" > "$_jspr_marker_body_file"
+      if "$_jsd_io" request PUT "/rest/api/3/issue/$_jspr_jkey/properties/$_JS_MARKER_PROPERTY_KEY" \
+          --body-file "$_jspr_marker_body_file" --op R6 >/dev/null 2>/dev/null; then
+        rm -f "$_jspr_marker_body_file"
+      else
+        _jspr_ec=$?
+        rm -f "$_jspr_marker_body_file"
+        if [ "$_jspr_ec" -eq 4 ]; then
+          _JSPE_BREAK="yes"
+          break
+        fi
+        _jspr_had_deferred="yes"
+      fi
       continue
     fi
 
@@ -2043,11 +2290,14 @@ _js_process_reconcile_event() {
     # R6 PUT — regravar o SyncMarker com o novo written_status/sha256.
     # task 13.2.1: preserva `written_description_sha256` (lido acima do
     # marker atual) — o PUT substitui o valor inteiro da propriedade, entao
-    # omiti-lo apagaria a baseline de protecao da descricao.
+    # omiti-lo apagaria a baseline de protecao da descricao. task 16.4.2:
+    # mesma disciplina para `written_fix_version_id` (ja atualizado acima
+    # por `_js_reconcile_epic_milestone`, se aplicavel).
     _jspr_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     set -- marker --local-key "$_jspr_lkey" --feature "$_jsd_feature" \
       --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_target" --written-at "$_jspr_now"
     [ -n "${_jspr_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspr_written_desc_sha"
+    [ -n "${_jspr_written_fixver:-}" ] && set -- "$@" --written-fix-version-id "$_jspr_written_fixver"
     _jspr_marker_body=$("$_jsd_io" json-build "$@")
     _jspr_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
       || _js_die "falha ao criar arquivo temporario" 1
@@ -2501,6 +2751,35 @@ _js_cmd_status() {
     printf '=== jira-sync status (feature=%s) ===\n' "$_jss_feature"
   else
     printf '=== jira-sync status (todas as features) ===\n'
+  fi
+
+  # r02 FASE 16 task 16.4.4 (contracts/plugin-scripts.md `status` r02):
+  # linha grep-avel `milestone=<nome|unresolved|off|blocked:nome>` — SO
+  # emitida com `--feature` (o marco e por feature; sem --feature nao ha um
+  # unico valor a mostrar). Inteiramente LOCAL/sem rede: `milestone resolve`
+  # nao faz chamadas de rede, `jira-config.sh get`/`jira-map.sh milestone-get`
+  # so leem arquivos locais.
+  if [ -n "$_jss_feature" ]; then
+    _jss_m_resolved=$(_js_cmd_milestone_resolve --feature "$_jss_feature" 2>/dev/null) || _jss_m_resolved=""
+    _jss_m_name=$(printf '%s\n' "$_jss_m_resolved" | sed -n 's/^name=//p')
+    _jss_m_status=$(printf '%s\n' "$_jss_m_resolved" | sed -n 's/^status=//p')
+    if [ -n "$_jss_m_name" ]; then
+      _jss_m_dir="$(_js_script_dir)"
+      _jss_m_state=""
+      if _jss_m_pkey=$("$_jss_m_dir/jira-config.sh" get project_key 2>/dev/null) && [ -n "$_jss_m_pkey" ]; then
+        if _jss_m_line=$("$_jss_m_dir/jira-map.sh" milestone-get --feature "$_jss_feature" \
+            --name "$_jss_m_name" --project-key "$_jss_m_pkey" 2>/dev/null); then
+          _jss_m_state=$(printf '%s' "$_jss_m_line" | cut -f5)
+        fi
+      fi
+      if [ "$_jss_m_state" = "blocked" ]; then
+        printf 'milestone=blocked:%s\n' "$_jss_m_name"
+      else
+        printf 'milestone=%s\n' "$_jss_m_name"
+      fi
+    else
+      printf 'milestone=%s\n' "${_jss_m_status:-unresolved}"
+    fi
   fi
 
   printf '\n-- Outbox (fila de eventos, runtime/outbox.tsv) --\n'

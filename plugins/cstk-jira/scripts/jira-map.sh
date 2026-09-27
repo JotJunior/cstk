@@ -149,6 +149,15 @@ USO:
       obrigatorio exceto para --state blocked. Gravar current rebaixa
       qualquer outra current do arquivo para superseded no mesmo write.
 
+  jira-map.sh milestone-id-known --feature F --project-key K --version-id ID
+      r02 FASE 16 task 16.4.3 (plan.md SEC-10): exit 0 se ID aparece em
+      alguma linha de jira-milestones.tsv com (project_key=K) e
+      state em {current, superseded}; exit 1 caso contrario (inclusive
+      arquivo ausente). Usado por `jira-sync.sh` ANTES de emitir
+      `update.fixVersions` `remove` — nunca remove um id que o sidecar
+      versionado da feature nao reconhece mais (evita clobber de marco
+      alterado a mao no Jira).
+
 Arquivo: <cwd>/docs/specs/F/jira-map.tsv (TAB-separado, cabecalho na 1a linha)
 Arquivo: <cwd>/docs/specs/F/jira-milestones.tsv (idem, chave (project_key, name))
 
@@ -552,6 +561,41 @@ _jm_cmd_milestone_put() {
   mv -- "$_jmmp_tmp" "$_jmmp_file"
 }
 
+# --- milestone-id-known -----------------------------------------------------
+
+# _jm_cmd_milestone_id_known --feature F --project-key K --version-id ID —
+# r02 FASE 16 task 16.4.3 (plan.md SEC-10, data-model.md SyncMarker
+# `written_fix_version_id`): exit 0 SOMENTE se ID aparece em alguma linha de
+# jira-milestones.tsv com (project_key=K) e state em {current, superseded};
+# exit 1 caso contrario (inclusive arquivo ausente — nunca tratado como
+# erro, SEC-10 exige o comportamento mais conservador: sem sidecar, nenhum
+# id e "conhecido"). READ-ONLY (nenhuma escrita).
+_jm_cmd_milestone_id_known() {
+  _jmik_feature=""
+  _jmik_pkey=""
+  _jmik_vid=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --feature)     [ "$#" -ge 2 ] || _jm_die_usage "--feature requer valor"; _jmik_feature="$2"; shift 2 ;;
+      --project-key) [ "$#" -ge 2 ] || _jm_die_usage "--project-key requer valor"; _jmik_pkey="$2"; shift 2 ;;
+      --version-id)  [ "$#" -ge 2 ] || _jm_die_usage "--version-id requer valor"; _jmik_vid="$2"; shift 2 ;;
+      *) _jm_die_usage "argumento desconhecido: $1" ;;
+    esac
+  done
+  [ -n "$_jmik_feature" ] || _jm_die_usage "milestone-id-known requer --feature F"
+  _jm_is_safe_feature "$_jmik_feature" \
+    || _jm_die_usage "--feature invalido (charset [A-Za-z0-9_-]): $_jmik_feature"
+  _jm_is_safe_field "$_jmik_pkey" || _jm_die_usage "milestone-id-known requer --project-key K valido (nao-vazio, sem TAB/newline)"
+  _jm_is_safe_field "$_jmik_vid" || _jm_die_usage "milestone-id-known requer --version-id ID valido (nao-vazio, sem TAB/newline)"
+
+  _jmik_file=$(_jm_milestone_file "$_jmik_feature")
+  [ -f "$_jmik_file" ] || return 1
+
+  awk -F '\t' -v pk="$_jmik_pkey" -v vid="$_jmik_vid" \
+    'NR > 1 && $4 == pk && $3 == vid && ($5 == "current" || $5 == "superseded") { f = 1; exit } END { exit (f ? 0 : 1) }' \
+    "$_jmik_file"
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _jm_sub="${1:-}"
@@ -580,7 +624,10 @@ case "$_jm_sub" in
   milestone-put)
     _jm_cmd_milestone_put "$@"
     ;;
+  milestone-id-known)
+    _jm_cmd_milestone_id_known "$@"
+    ;;
   *)
-    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put)"
+    _jm_die_usage "subcomando desconhecido: $_jm_sub (validos: get, put, mark-orphans, relink, milestone-get, milestone-put, milestone-id-known)"
     ;;
 esac

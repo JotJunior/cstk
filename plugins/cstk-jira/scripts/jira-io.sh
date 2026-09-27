@@ -295,10 +295,11 @@ USO:
 
   jira-io.sh json-build issue --project-id ID --issuetype-id ID
                              --summary TEXT [--parent-key KEY]
-                             [--description TEXT]
+                             [--description TEXT] [--fix-version-id ID]
       Monta o corpo de R1 (criar issue). ID/KEY passam pela allowlist
       [A-Za-z0-9_-] (SEC-1); summary/description sao texto livre, escapado
-      via jq --arg.
+      via jq --arg. --fix-version-id (digitos, R14) acrescenta
+      fields.fixVersions:[{"id":ID}].
 
   jira-io.sh json-build filter --name TEXT --project-key KEY
       Monta o corpo de R9 (criar filtro): {"name":..., "jql":...}. KEY
@@ -322,6 +323,7 @@ USO:
                               --written-summary-sha256 H --written-status S
                               --written-at T
                               [--written-description-sha256 H2]
+                              [--written-fix-version-id ID]
       Monta o VALOR CRU do SyncMarker (R6 PUT, sem envelope {key,value} —
       a chave ja vai na URL): {"schema":1,"local_key":K,"feature":F,
       "written_summary_sha256":H,"written_status":S,"written_at":T}.
@@ -330,13 +332,22 @@ USO:
       --written-description-sha256 e OPCIONAL (FASE 12 tarefa 12.5.1): se
       informado, acrescenta "written_description_sha256":H2 ao corpo; se
       omitido, a chave NAO aparece no JSON (Epic/Sub-task e Task sem
-      descricao composta nunca gravam este campo).
+      descricao composta nunca gravam este campo). --written-fix-version-id
+      e OPCIONAL (r02 FASE 16, so o Epic carrega este campo) — mesma
+      disciplina: omitido = chave ausente, nunca string vazia.
 
   jira-io.sh json-build issue-update --summary TEXT [--description TEXT]
+                                    [--add-fix-version-id ID]
+                                    [--remove-fix-version-id ID]
       Monta o corpo de R2 (editar issue, FR-003): {"fields":{"summary":...}}
       (+ "description" em ADF, opcional). SEM project/issuetype/parent —
       um update so envia os campos que mudam. summary/description texto
-      livre, escapado via jq --arg.
+      livre, escapado via jq --arg. --add-fix-version-id/
+      --remove-fix-version-id (digitos, r02 FASE 16, R14 CONFIRMADO)
+      acrescentam update.fixVersions:[{"remove":{"id":...}},{"add":{"id":...}}]
+      (ordem fixa remove-antes-de-add quando ambos presentes) — NUNCA
+      fields.fixVersions numa edicao (clobbaria versoes humanas).
+      --summary passa a ser OPCIONAL quando ha ao menos uma dessas 2 flags.
 
   jira-io.sh json-build version --name N --project-id DIGITS
                                 [--description TEXT]
@@ -934,21 +945,30 @@ _ji_cmd_json_build() {
 
 # _ji_cmd_json_build_issue --project-id ID --issuetype-id ID --summary TEXT
 #                          [--parent-key KEY] [--description TEXT]
+#                          [--fix-version-id ID]
 # — 3.5 (SEC-3): monta o corpo de R1 (`POST /rest/api/3/issue`,
 # contracts/jira-rest.md). `--project-id`/`--issuetype-id`/`--parent-key`
 # MUST casar a allowlist [A-Za-z0-9_-] (SEC-1) — a mesma de
 # `validate-segment` — ANTES de entrar no corpo; `--summary`/`--description`
 # sao texto livre, passados a `jq --arg` (NUNCA concatenacao de string), o
 # que preserva aspas/barras/quebras de linha como JSON valido.
+# `--fix-version-id ID` — r02 FASE 16 task 16.4 (contracts/jira-rest.md R14,
+# CONFIRMADO roundtrip onda-006): acrescenta `fields.fixVersions:[{"id":ID}]`
+# na CRIACAO (fields SUBSTITUI, mas aqui nao ha valor humano a preservar
+# ainda — a issue nao existe). ID MUST casar `_ji_digits_ok` (Version.id e
+# sempre numerico no schema do Jira, ex. "10001") ANTES de entrar no corpo —
+# recusado SEM montar corpo algum, mesma disciplina de SEC-1.
 _ji_cmd_json_build_issue() {
   _jbi_project_id=""
   _jbi_issuetype_id=""
   _jbi_summary=""
   _jbi_parent_key=""
   _jbi_description=""
+  _jbi_fix_version_id=""
   _jbi_have_summary="no"
   _jbi_have_parent="no"
   _jbi_have_description="no"
+  _jbi_have_fix_version="no"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -980,6 +1000,12 @@ _ji_cmd_json_build_issue() {
         _jbi_have_description="yes"
         shift 2
         ;;
+      --fix-version-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--fix-version-id requer argumento"
+        _jbi_fix_version_id="$2"
+        _jbi_have_fix_version="yes"
+        shift 2
+        ;;
       *)
         _ji_die_usage "json-build issue: argumento desconhecido: $1"
         ;;
@@ -1003,6 +1029,10 @@ _ji_cmd_json_build_issue() {
     _ji_charset_ok "$_jbi_parent_key" \
       || _ji_die_usage "--parent-key fora da allowlist [A-Za-z0-9_-] (SEC-1)"
   fi
+  if [ "$_jbi_have_fix_version" = "yes" ]; then
+    _ji_digits_ok "$_jbi_fix_version_id" \
+      || _ji_die_usage "--fix-version-id fora da allowlist [0-9] (SEC-1)"
+  fi
 
   _ji_require_jq
 
@@ -1010,6 +1040,8 @@ _ji_cmd_json_build_issue() {
   [ "$_jbi_have_parent" = "yes" ] && _jbi_have_parent_json="true"
   _jbi_have_description_json="false"
   [ "$_jbi_have_description" = "yes" ] && _jbi_have_description_json="true"
+  _jbi_have_fix_version_json="false"
+  [ "$_jbi_have_fix_version" = "yes" ] && _jbi_have_fix_version_json="true"
 
   jq -n \
     --arg pid "$_jbi_project_id" \
@@ -1017,8 +1049,10 @@ _ji_cmd_json_build_issue() {
     --arg summary "$_jbi_summary" \
     --arg parent_key "$_jbi_parent_key" \
     --arg description "$_jbi_description" \
+    --arg fix_version_id "$_jbi_fix_version_id" \
     --argjson have_parent "$_jbi_have_parent_json" \
     --argjson have_description "$_jbi_have_description_json" \
+    --argjson have_fix_version "$_jbi_have_fix_version_json" \
     '{fields: {project: {id: $pid}, issuetype: {id: $tid}, summary: $summary}}
      | if $have_parent then .fields.parent = {key: $parent_key} else . end
      | if $have_description then
@@ -1027,10 +1061,13 @@ _ji_cmd_json_build_issue() {
            version: 1,
            content: [{type: "paragraph", content: [{type: "text", text: $description}]}]
          }
-       else . end'
+       else . end
+     | if $have_fix_version then .fields.fixVersions = [{id: $fix_version_id}] else . end'
 }
 
-# _ji_cmd_json_build_issue_update --summary TEXT [--description TEXT] —
+# _ji_cmd_json_build_issue_update --summary TEXT [--description TEXT]
+#                                 [--add-fix-version-id ID]
+#                                 [--remove-fix-version-id ID] —
 # feature cstk-jira FASE 10 tarefa 10.2 (FR-003): monta o corpo de R2
 # (`PUT /rest/api/3/issue/{issueIdOrKey}`, `contracts/jira-rest.md` R2 —
 # mesmo schema `IssueUpdateDetails` de R1, mas so os campos que MUDAM: uma
@@ -1041,11 +1078,26 @@ _ji_cmd_json_build_issue() {
 # novo). summary/description via `jq --arg` (nunca concatenacao de string,
 # mesma disciplina de `json-build issue`); description usa a MESMA forma ADF
 # (paragrafo unico).
+# `--add-fix-version-id`/`--remove-fix-version-id` — r02 FASE 16 task 16.4.2
+# (research.md Decision R2-2; contracts/jira-rest.md R14 CONFIRMADO roundtrip
+# onda-006): monta `update.fixVersions` com operacoes `add`/`remove` — NUNCA
+# `fields.fixVersions` numa edicao (isso clobbaria versoes humanas, R14).
+# Ambos ID MUST casar `_ji_digits_ok`. Quando os dois sao informados, a ORDEM
+# no array e SEMPRE remove-antes-de-add (byte-a-byte igual ao exemplo
+# confirmado `[{"remove":{"id":"10000"}},{"add":{"id":"10001"}}]`); so um dos
+# dois -> array de 1 elemento. `--summary` passa a ser OPCIONAL quando ha
+# pelo menos uma operacao de `update.fixVersions` (edicao so de versao, sem
+# tocar summary) — sem nenhuma flag reconhecida, o `--summary` continua
+# obrigatorio (comportamento r01 preservado).
 _ji_cmd_json_build_issue_update() {
   _jbu_summary=""
   _jbu_description=""
+  _jbu_add_fix_version_id=""
+  _jbu_remove_fix_version_id=""
   _jbu_have_summary="no"
   _jbu_have_description="no"
+  _jbu_have_add_fix_version="no"
+  _jbu_have_remove_fix_version="no"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1061,32 +1113,76 @@ _ji_cmd_json_build_issue_update() {
         _jbu_have_description="yes"
         shift 2
         ;;
+      --add-fix-version-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--add-fix-version-id requer argumento"
+        _jbu_add_fix_version_id="$2"
+        _jbu_have_add_fix_version="yes"
+        shift 2
+        ;;
+      --remove-fix-version-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--remove-fix-version-id requer argumento"
+        _jbu_remove_fix_version_id="$2"
+        _jbu_have_remove_fix_version="yes"
+        shift 2
+        ;;
       *)
         _ji_die_usage "json-build issue-update: argumento desconhecido: $1"
         ;;
     esac
   done
 
-  [ "$_jbu_have_summary" = "yes" ] \
-    || _ji_die_usage "json-build issue-update requer --summary"
+  _jbu_have_fixversion_op="no"
+  { [ "$_jbu_have_add_fix_version" = "yes" ] || [ "$_jbu_have_remove_fix_version" = "yes" ]; } \
+    && _jbu_have_fixversion_op="yes"
+
+  if [ "$_jbu_have_summary" != "yes" ] && [ "$_jbu_have_fixversion_op" != "yes" ]; then
+    _ji_die_usage "json-build issue-update requer --summary (ou ao menos uma de --add-fix-version-id/--remove-fix-version-id)"
+  fi
+
+  if [ "$_jbu_have_add_fix_version" = "yes" ]; then
+    _ji_digits_ok "$_jbu_add_fix_version_id" \
+      || _ji_die_usage "--add-fix-version-id fora da allowlist [0-9] (SEC-1)"
+  fi
+  if [ "$_jbu_have_remove_fix_version" = "yes" ]; then
+    _ji_digits_ok "$_jbu_remove_fix_version_id" \
+      || _ji_die_usage "--remove-fix-version-id fora da allowlist [0-9] (SEC-1)"
+  fi
 
   _ji_require_jq
 
   _jbu_have_description_json="false"
   [ "$_jbu_have_description" = "yes" ] && _jbu_have_description_json="true"
 
-  jq -n \
+  _jbu_body=$(jq -n \
     --arg summary "$_jbu_summary" \
     --arg description "$_jbu_description" \
+    --argjson have_summary "$( [ "$_jbu_have_summary" = "yes" ] && printf 'true' || printf 'false' )" \
     --argjson have_description "$_jbu_have_description_json" \
-    '{fields: {summary: $summary}}
+    '{}
+     | if $have_summary then .fields.summary = $summary else . end
      | if $have_description then
          .fields.description = {
            type: "doc",
            version: 1,
            content: [{type: "paragraph", content: [{type: "text", text: $description}]}]
          }
-       else . end'
+       else . end')
+
+  if [ "$_jbu_have_fixversion_op" = "yes" ]; then
+    _jbu_fv_ops="[]"
+    if [ "$_jbu_have_remove_fix_version" = "yes" ]; then
+      _jbu_fv_ops=$(printf '%s' "$_jbu_fv_ops" | jq -c --arg id "$_jbu_remove_fix_version_id" \
+        '. + [{remove: {id: $id}}]')
+    fi
+    if [ "$_jbu_have_add_fix_version" = "yes" ]; then
+      _jbu_fv_ops=$(printf '%s' "$_jbu_fv_ops" | jq -c --arg id "$_jbu_add_fix_version_id" \
+        '. + [{add: {id: $id}}]')
+    fi
+    _jbu_body=$(printf '%s' "$_jbu_body" | jq -c --argjson ops "$_jbu_fv_ops" \
+      '.update.fixVersions = $ops')
+  fi
+
+  printf '%s' "$_jbu_body"
 }
 
 # _ji_cmd_json_build_filter --name TEXT --project-key KEY — 3.5 (SEC-3):
@@ -1225,7 +1321,8 @@ _ji_cmd_json_build_transition() {
 # _ji_cmd_json_build_marker --local-key K --feature F
 #                          --written-summary-sha256 H --written-status S
 #                          --written-at T
-#                          [--written-description-sha256 H2] — FASE 4.2.5
+#                          [--written-description-sha256 H2]
+#                          [--written-fix-version-id ID] — FASE 4.2.5
 # (dec-081), campo opcional acrescentado na FASE 12 tarefa 12.5.1: monta o
 # VALOR CRU do SyncMarker (R6 PUT — contracts/jira-rest.md R6 confirma que
 # o corpo e o `value` sem envelope, a chave ja vai na URL; data-model.md
@@ -1237,7 +1334,12 @@ _ji_cmd_json_build_transition() {
 # LocalWorkItem: "Epic/Sub-task nunca carregam esses campos"). Todos os
 # campos sao texto livre (local_key pode conter pontos, ex. "4.2.1";
 # written_status pode conter espacos, ex. "In Progress") — escapados via
-# jq --arg, NUNCA concatenacao de string (SEC-3).
+# jq --arg, NUNCA concatenacao de string (SEC-3). `--written-fix-version-id`
+# e OPCIONAL (r02 FASE 16 task 16.4.1/16.4.2, data-model.md SyncMarker
+# `written_fix_version_id`: "so no Epic") — omitido = chave ausente do JSON
+# (nunca string vazia); toda regravacao do marker MUST carregar adiante o
+# valor lido do marker anterior, mesma disciplina de
+# `written_description_sha256` (o R6 PUT e overwrite total, nao merge).
 _ji_cmd_json_build_marker() {
   _jbm_local_key=""
   _jbm_feature=""
@@ -1246,6 +1348,8 @@ _ji_cmd_json_build_marker() {
   _jbm_at=""
   _jbm_desc_sha=""
   _jbm_have_desc_sha="no"
+  _jbm_fix_version_id=""
+  _jbm_have_fix_version="no"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --local-key)
@@ -1266,6 +1370,9 @@ _ji_cmd_json_build_marker() {
       --written-description-sha256)
         [ "$#" -ge 2 ] || _ji_die_usage "--written-description-sha256 requer argumento"
         _jbm_desc_sha="$2"; _jbm_have_desc_sha="yes"; shift 2 ;;
+      --written-fix-version-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--written-fix-version-id requer argumento"
+        _jbm_fix_version_id="$2"; _jbm_have_fix_version="yes"; shift 2 ;;
       *)
         _ji_die_usage "json-build marker: argumento desconhecido: $1"
         ;;
@@ -1280,6 +1387,8 @@ _ji_cmd_json_build_marker() {
   _ji_require_jq
   _jbm_have_desc_sha_json="false"
   [ "$_jbm_have_desc_sha" = "yes" ] && _jbm_have_desc_sha_json="true"
+  _jbm_have_fix_version_json="false"
+  [ "$_jbm_have_fix_version" = "yes" ] && _jbm_have_fix_version_json="true"
   jq -n --argjson schema 1 \
     --arg local_key "$_jbm_local_key" \
     --arg feature "$_jbm_feature" \
@@ -1288,9 +1397,12 @@ _ji_cmd_json_build_marker() {
     --arg at "$_jbm_at" \
     --arg desc_sha "$_jbm_desc_sha" \
     --argjson have_desc_sha "$_jbm_have_desc_sha_json" \
+    --arg fix_version_id "$_jbm_fix_version_id" \
+    --argjson have_fix_version "$_jbm_have_fix_version_json" \
     '{schema: $schema, local_key: $local_key, feature: $feature,
       written_summary_sha256: $sha, written_status: $status, written_at: $at}
-     | if $have_desc_sha then .written_description_sha256 = $desc_sha else . end'
+     | if $have_desc_sha then .written_description_sha256 = $desc_sha else . end
+     | if $have_fix_version then .written_fix_version_id = $fix_version_id else . end'
 }
 
 # _ji_cmd_json_build_version --name N --project-id DIGITS --description TEXT

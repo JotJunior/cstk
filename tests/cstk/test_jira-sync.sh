@@ -3091,4 +3091,136 @@ scenario_milestone_ensure_off_e_unresolved_sem_rede() {
     || { _fail "sy79_off_no_network" "milestone_mode=off nao deveria fazer chamadas de rede"; return 1; }
 }
 
+# ==== reconcile de marco no Epic (r02 FASE 16 task 16.4.2/16.4.3, R2-2/SEC-10) ====
+
+# SY-80 (16.4.5): Epic criado com marco A (demo-r01, id 30001, ja `current`
+# no sidecar) e reaberto com marco B (demo-r02, round seguinte via
+# `_write_round_demo_r01`) — `drain` (evento reconcile) reaplica o marco via
+# `update.fixVersions` add=B/remove=A (nunca acumula os dois); a Task 1.1
+# (marco A gravado na criacao, NUNCA remarcada) nao recebe nenhuma chamada
+# de fixVersions — so o Epic e alvo de `_js_reconcile_epic_milestone`.
+scenario_drain_reconcile_epic_marco_a_para_b_update_add_remove() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  # Sidecar pre-existente: marco A (demo-r01) e o `current` de uma convert
+  # anterior (round r01). `milestone ensure`, ao resolver demo-r02, rebaixa
+  # esta linha para `superseded` no MESMO write (jira-map.sh milestone-put) —
+  # e essa transicao para `superseded` que autoriza o `remove` via SEC-10.
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n' \
+    > "$(_milestone_file)"
+  printf 'demo-r01\tround\t30001\tDEMO\tcurrent\n' >> "$(_milestone_file)"
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo Qualquer" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): R3, R6-GET (written_fix_version_id=30001), milestone
+  # ensure (project + R13 casa demo-r02=30002 por igualdade exata, sem R12),
+  # R2 update.fixVersions (remove 30001/add 30002), R5, R4, R6-PUT final.
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"To Do\",\"written_fix_version_id\":\"30001\"}}"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[{"id":"30001","name":"demo-r01"},{"id":"30002","name":"demo-r02"}]'
+  _queue_push 204 ''
+  _queue_push 200 '{"transitions":[{"id":"21","to":{"name":"To Do"}},{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  # Task 1.1 (DEMO-2): ja "Done" com marker batendo -> idempotente, SEM
+  # nenhuma chamada de fixVersions (so o Epic e alvo de reconcile de marco).
+  _queue_push 200 '{"fields":{"summary":"Titulo Qualquer","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\"}}"
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "10" ] \
+    || { _fail "sy80_calls_count" "esperado 10 chamadas (8 epic com marco + 2 task idempotente), obtido $(_queue_calls_count)"; return 1; }
+
+  _fv_ops=$("$IO_SCRIPT" json-get '.update.fixVersions | tostring' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_fv_ops" = '[{"remove":{"id":"30001"}},{"add":{"id":"30002"}}]' ] \
+    || { _fail "sy80_fixversions_ops" "esperado remove 30001/add 30002 (nunca os dois na fields), obtido: $_fv_ops"; return 1; }
+
+  _final_marker_fv=$("$IO_SCRIPT" json-get '.written_fix_version_id? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-8.json")
+  [ "$_final_marker_fv" = "30002" ] \
+    || { _fail "sy80_marker_fixver" "esperado written_fix_version_id=30002 no R6 PUT final do Epic, obtido: $_final_marker_fv"; return 1; }
+
+  # Task nunca gera corpo de escrita (idempotente, sem fixVersions).
+  [ -f "$TMPDIR_TEST/queue-curl-body-9.json" ] \
+    && { _fail "sy80_task_no_write" "Task 1.1 (idempotente) NAO deveria gerar corpo de escrita"; return 1; }
+
+  grep -q '^demo-r01	round	30001	DEMO	superseded$' "$(_milestone_file)" \
+    || { _fail "sy80_sidecar_superseded" "demo-r01 deveria estar superseded apos milestone ensure resolver demo-r02: $(cat "$(_milestone_file)")"; return 1; }
+  grep -q '^demo-r02	round	30002	DEMO	current$' "$(_milestone_file)" \
+    || { _fail "sy80_sidecar_current" "demo-r02 deveria estar current: $(cat "$(_milestone_file)")"; return 1; }
+  return 0
+}
+
+# SY-81 (16.4.6, plan.md SEC-10): written_fix_version_id do marker do Epic
+# (30001) NAO consta em jira-milestones.tsv (nem current nem superseded) —
+# divergencia -> ConflictRecord milestone_drift e ZERO chamadas de
+# update.fixVersions (nunca remocao forcada de um id que o sidecar da
+# feature nao reconhece).
+scenario_drain_reconcile_epic_milestone_drift_gera_conflito_sem_update() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  # Sidecar SEM nenhuma linha para o id 30001 (marker aponta um id que o
+  # sidecar da feature nunca registrou/ja esqueceu) — SEC-10 exige tratar
+  # como divergencia, nunca como "pode remover".
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n' \
+    > "$(_milestone_file)"
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1) idempotente por STATUS (To Do local == "Done" agregado? Nao
+  # — mantemos o alvo == atual para isolar a dimensao "marco" da dimensao
+  # "status": aggregada pass -> status_pass=Done, entao current=Done.
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\",\"written_fix_version_id\":\"30001\"}}"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[{"id":"30002","name":"demo-r02"}]'
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "4" ] \
+    || { _fail "sy81_calls_count" "esperado exatamente 4 chamadas (R3+R6GET+project+R13, ZERO update.fixVersions), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT ' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy81_no_put" "nenhuma chamada PUT deveria ocorrer (0 update.fixVersions, SEC-10)"; return 1; }
+
+  grep -q 'demo	demo	DEMO-1	milestone_drift	pending$' "$(_conflicts_file)" \
+    || { _fail "sy81_conflict_record" "ConflictRecord milestone_drift ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+
+  # Sidecar so ganhou a linha demo-r02 (via milestone ensure) — nenhuma
+  # linha para 30001 foi criada/alterada pela reconciliacao de marco.
+  grep -q '^demo-r02	round	30002	DEMO	current$' "$(_milestone_file)" \
+    || { _fail "sy81_sidecar_current" "demo-r02 deveria estar current: $(cat "$(_milestone_file)")"; return 1; }
+  grep -q '30001' "$(_milestone_file)" \
+    && { _fail "sy81_sidecar_no_30001" "sidecar nao deveria ter ganhado uma linha para 30001: $(cat "$(_milestone_file)")"; return 1; }
+  return 0
+}
+
 run_all_scenarios

@@ -527,4 +527,47 @@ scenario_mutation_16_3_7_milestone_put_current_downgrade() {
   return 0
 }
 
+# scenario_mutation_16_4_7_milestone_id_known_sec10 — r02 FASE 16 task 16.4.7
+# (plan.md SEC-10; jira-map.sh milestone-id-known, task 16.4.3): mira
+# DIRETAMENTE a guarda que `_js_reconcile_epic_milestone` consulta ANTES de
+# emitir `update.fixVersions` `remove` — "so remove se o id antigo AINDA
+# constar no sidecar (current/superseded)". Alvo sem rede (mesmo metodo de
+# 16.3.7): reverter essa guarda faz `milestone-id-known` responder "sim,
+# conhecido" para QUALQUER id, o que levaria `_js_reconcile_epic_milestone`
+# a remover uma versao que o sidecar da feature nunca reconheceu — exatamente
+# o cenario que SY-81 (scenario_drain_reconcile_epic_milestone_drift_gera_conflito_sem_update,
+# tests/cstk/test_jira-sync.sh) prova que NAO acontece no original.
+scenario_mutation_16_4_7_milestone_id_known_sec10() {
+  cd "$TMPDIR_TEST" || return 1
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  _mf="$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv"
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n' > "$_mf"
+  printf 'demo-r02\tround\t30002\tDEMO\tcurrent\n' >> "$_mf"
+
+  # -- controle: original NAO reconhece um id ausente do sidecar (30001
+  # nunca foi gravado) -> exit 1 (SEC-10 bloqueia o remove) --
+  assert_exit 1 "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" milestone-id-known \
+    --feature demo --project-key DEMO --version-id 30001 || return 1
+  # controle positivo: um id que DE FATO consta como current -> exit 0.
+  assert_exit 0 "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" milestone-id-known \
+    --feature demo --project-key DEMO --version-id 30002 || return 1
+
+  # -- mutante: neutraliza a condicao do awk (aceita qualquer id, ignora
+  # project_key/state) — equivalente a "remover sem checar o sidecar" --
+  _mp=$(_mut_copy_plugin)
+  _jm="$_mp/scripts/jira-map.sh"
+  grep -q 'NR > 1 && \$4 == pk && \$3 == vid && (\$5 == "current" || \$5 == "superseded") { f = 1; exit }' "$_jm" \
+    || { _fail "mutant_stale" "condicao de milestone-id-known nao encontrada — repo mudou"; return 1; }
+  sed 's/NR > 1 && \$4 == pk && \$3 == vid && (\$5 == "current" || \$5 == "superseded") { f = 1; exit }/NR > 1 { f = 1; exit }/' \
+    "$_jm" > "$_jm.mut" && mv "$_jm.mut" "$_jm"
+  grep -q 'NR > 1 { f = 1; exit }' "$_jm" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao"; return 1; }
+  chmod +x "$_jm"
+
+  capture "$_jm" milestone-id-known --feature demo --project-key DEMO --version-id 30001
+  [ "$_CAPTURED_EXIT" != "1" ] \
+    || { _fail "mutant_exit" "esperado exit != 1 (regressao: SEC-10 nunca bloqueia — removeria uma versao/id que o sidecar nao reconhece), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
 run_all_scenarios

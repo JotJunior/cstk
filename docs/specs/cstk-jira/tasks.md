@@ -2062,33 +2062,50 @@ Ref: research.md Decision R2-2; contracts/plugin-scripts.md `jira-sync.sh
 convert`/`drain`/`status` r02; data-model.md SyncMarker
 `written_fix_version_id`.
 
-- [ ] 16.4.1 `convert --feature F`: antes da 1a criacao, `milestone ensure`
+- [x] 16.4.1 `convert --feature F`: antes da 1a criacao, `milestone ensure`
       (se `milestone_mode=auto` e nome resolvido); Epic criado com
       `--fix-version-id` (R1 `fields.fixVersions`); Task/Sub-task criadas
       com `--fix-version-id` so se `fix_versions_on_subtask=on`
       (Sub-task) ou sempre (Task, "quando aplicavel" de FR-020); marco
       `blocked` => aborta a criacao de itens NOVOS com diagnostico, exit 7
-      (transicoes de issues ja mapeadas nao dependem do marco)
-- [ ] 16.4.2 `drain` (evento `reconcile`): reaplica o marco corrente ao
+      (transicoes de issues ja mapeadas nao dependem do marco) —
+      implementado em `jira-sync.sh` `_js_cmd_convert` (bloco de resolucao
+      de marco + `--fix-version-id` condicional por kind) e
+      `jira-io.sh` `_ji_cmd_json_build_issue --fix-version-id`
+- [x] 16.4.2 `drain` (evento `reconcile`): reaplica o marco corrente ao
       Epic via `update.fixVersions` `add`/`remove`, removendo SO a versao
       que o proprio SyncMarker registrou (`written_fix_version_id`) —
       NUNCA remove versao humana; toda regravacao do marker CARREGA
       ADIANTE `written_fix_version_id` (mesma disciplina de
-      `written_description_sha256`, tasks 13.2.1/14.2.1)
-- [ ] 16.4.3 SEC-10: `update.fixVersions` `remove` SO e emitido se
+      `written_description_sha256`, tasks 13.2.1/14.2.1) — implementado em
+      `jira-sync.sh` `_js_reconcile_epic_milestone` (chamada de
+      `_js_process_reconcile_event` so para `kind=epic`) e
+      `jira-io.sh` `_ji_cmd_json_build_issue_update
+      --add-fix-version-id/--remove-fix-version-id`
+- [x] 16.4.3 SEC-10: `update.fixVersions` `remove` SO e emitido se
       `written_fix_version_id` TAMBEM constar em `jira-milestones.tsv`
       (`current`/`superseded`); divergencia (marker aponta versao que
       sumiu do sidecar) => `ConflictRecord` `reason=milestone_drift`,
-      nunca remocao forcada
-- [ ] 16.4.4 `status`: linha grep-avel
-      `milestone=<nome|unresolved|off|blocked:nome>`
-- [ ] 16.4.5 Teste: Epic criado com marco A, reaberto com marco B =>
+      nunca remocao forcada — implementado via novo subcomando
+      `jira-map.sh milestone-id-known --feature F --project-key K
+      --version-id ID` (read-only), consultado por
+      `_js_reconcile_epic_milestone` ANTES de decidir `--remove-fix-version-id`
+- [x] 16.4.4 `status`: linha grep-avel
+      `milestone=<nome|unresolved|off|blocked:nome>` — implementado em
+      `_js_cmd_status` (so com `--feature`; sem rede: `milestone resolve` +
+      `jira-config.sh get project_key` + `jira-map.sh milestone-get`)
+- [x] 16.4.5 Teste: Epic criado com marco A, reaberto com marco B =>
       `update.fixVersions` remove A/add B (nunca acumula os dois); Task
-      criada no marco A permanece com A mesmo apos o Epic mudar para B
-- [ ] 16.4.6 Teste: `written_fix_version_id` divergente do sidecar =>
-      `ConflictRecord milestone_drift`, 0 chamadas de `update.fixVersions`
-- [ ] 16.4.7 Mutation test: reverter SEC-10 (remover sem checar o sidecar)
-      faz o teste de 16.4.6 falhar (removeria versao humana)
+      criada no marco A permanece com A mesmo apos o Epic mudar para B —
+      `tests/cstk/test_jira-sync.sh::scenario_drain_reconcile_epic_marco_a_para_b_update_add_remove` (SY-80)
+- [x] 16.4.6 Teste: `written_fix_version_id` divergente do sidecar =>
+      `ConflictRecord milestone_drift`, 0 chamadas de `update.fixVersions` —
+      `tests/cstk/test_jira-sync.sh::scenario_drain_reconcile_epic_milestone_drift_gera_conflito_sem_update` (SY-81)
+- [x] 16.4.7 Mutation test: reverter SEC-10 (remover sem checar o sidecar)
+      faz o teste de 16.4.6 falhar (removeria versao humana) —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_16_4_7_milestone_id_known_sec10`
+      (mira `jira-map.sh milestone-id-known` diretamente, sem rede, mesmo
+      metodo de 16.3.7)
 
 ---
 
