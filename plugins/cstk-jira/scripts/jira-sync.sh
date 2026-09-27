@@ -254,6 +254,23 @@ USO:
       `state=blocked` em jira-milestones.tsv (via jira-map.sh
       milestone-put) e sai exit 7 (nenhuma issue nova ate reconfiguracao).
 
+  jira-sync.sh links --feature F
+      r02 FASE 18.4 (FR-025, research.md Decision R2-6; contracts/jira-rest.md
+      R16/R17; plan.md SEC-12/SEC-13): reconcilia jira-links.tsv contra as
+      arestas de `## Matriz de Dependencias` (jira-tasks.sh phase-edges) e as
+      ancoras de jira-map.tsv (jira-map.sh anchor). Aresta ja `active` com o
+      MESMO par de ancoras -> 0 chamadas R17 (idempotente); cria o que falta
+      via R17 (bloqueador=outwardIssue, bloqueado=inwardIssue). `link_type_id`
+      vazio em ProjectConfig -> resolve via R16 desta MESMA execucao + regra
+      de candidato unico; 0/2+ candidatos -> unrepresentable (reason=
+      no_link_type/ambiguous_link_type). 404 em R16/R17 -> reason=
+      linking_disabled (cascata p/ todas as arestas pendentes); 413 em R17 ->
+      reason=limit (so a aresta). Ancora que mudou (reorganizacao de fase) ->
+      linha active antiga vira stale (nunca removida, FR-012), nova linha
+      active criada. Saida: linking=enabled|disabled, links_active=N,
+      links_unrepresentable=N. SEMPRE exit 0 (falha de rede/auth em uma
+      aresta nunca aborta as demais).
+
 Le <cwd>/docs/specs/F/tasks.md (+ spec.md) e <cwd>/docs/specs/F/jira-map.tsv.
 
 EXIT CODES:
@@ -1116,6 +1133,260 @@ _js_cmd_milestone_ensure() {
   _js_die "falha ao criar Fix Version \"$_jsme_name\" (jira-io.sh exit $_jsme_ec)" "$_jsme_ec"
 }
 
+# --- links (r02 FASE 18, FR-025) -------------------------------------------
+
+# _js_cmd_links --feature F — r02 FASE 18 task 18.4.1..18.4.5 (research.md
+# Decision R2-6; contracts/plugin-scripts.md `jira-sync.sh links`;
+# contracts/jira-rest.md R16/R17; data-model.md Entity IssueLink
+# state-diagram; plan.md SEC-12/SEC-13): reconcilia `jira-links.tsv` contra
+# as arestas de `## Matriz de Dependencias` (`jira-tasks.sh phase-edges`) e
+# as ancoras de `jira-map.tsv` (`jira-map.sh anchor`), criando via R17 o que
+# ainda falta. Idempotente: aresta ja `active` com o MESMO par de ancoras =>
+# 0 chamadas R17 (18.4.6). NUNCA remove linha (FR-012) — reorganizacao de
+# fase (ancora mudou) demove a linha antiga para `stale` e cria uma nova
+# `active` com as ancoras atuais.
+#
+# Saida (stdout, sempre 3 linhas — mesmo idioma de `milestone ensure`
+# name=/status=): `linking=enabled|disabled`, `links_active=N`,
+# `links_unrepresentable=N`. Exit sempre 0 (falha de rede/auth em UMA
+# aresta nunca aborta as demais nem o chamador — mesmo padrao de
+# `_js_process_reconcile_event`/FR-011: por item, nunca global).
+_js_cmd_links() {
+  _jsl_feature=$(_js_parse_feature_arg "$@")
+
+  _jsl_dir="$(_js_script_dir)"
+  _jsl_config="$_jsl_dir/jira-config.sh"
+  _jsl_io="$_jsl_dir/jira-io.sh"
+  _jsl_map="$_jsl_dir/jira-map.sh"
+  _jsl_tasks="$_jsl_dir/jira-tasks.sh"
+  _jsl_setup="$_jsl_dir/jira-setup.sh"
+
+  "$_jsl_config" validate
+
+  # data-model.md ProjectConfig `links_enabled` (default "on", FR-025).
+  _jsl_enabled=$("$_jsl_config" get links_enabled 2>/dev/null) || _jsl_enabled="on"
+  [ -n "$_jsl_enabled" ] || _jsl_enabled="on"
+  if [ "$_jsl_enabled" = "off" ]; then
+    printf 'linking=disabled\n'
+    printf 'links_active=0\n'
+    printf 'links_unrepresentable=0\n'
+    return 0
+  fi
+
+  _jsl_edges=$("$_jsl_tasks" phase-edges --feature "$_jsl_feature") \
+    || _js_die "jira-tasks.sh phase-edges falhou para a feature: $_jsl_feature" 1
+
+  _jsl_active_count=0
+  _jsl_unrep_count=0
+
+  if [ -z "$_jsl_edges" ]; then
+    printf 'linking=enabled\n'
+    printf 'links_active=0\n'
+    printf 'links_unrepresentable=0\n'
+    return 0
+  fi
+
+  "$_jsl_io" deps-check
+  "$_jsl_config" credential-check
+
+  # link_type_id: ProjectConfig override confirmado manualmente pelo
+  # operador (18.1, SEC-13: nunca substituido) — senao regra automatica de
+  # candidato unico (18.2) sobre R16 chamado NESTA MESMA execucao.
+  _jsl_type_id=$("$_jsl_config" get link_type_id 2>/dev/null) || _jsl_type_id=""
+  _jsl_linking_disabled="no"
+  _jsl_no_type_reason=""
+
+  if [ -z "$_jsl_type_id" ]; then
+    _jsl_r16_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r16err.XXXXXX") \
+      || _js_die "falha ao criar arquivo temporario" 1
+    if _jsl_r16_resp=$("$_jsl_io" request GET /rest/api/3/issueLinkType --op R16 2>"$_jsl_r16_err"); then
+      rm -f "$_jsl_r16_err"
+      _jsl_candidates=$(printf '%s' "$_jsl_r16_resp" \
+        | "$_jsl_io" json-get '.issueLinkTypes[] | [.id, .inward, .outward] | @tsv')
+      _jsl_rlt_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-rlterr.XXXXXX") \
+        || _js_die "falha ao criar arquivo temporario" 1
+      if _jsl_type_id=$(printf '%s\n' "$_jsl_candidates" | "$_jsl_setup" resolve-link-type 2>"$_jsl_rlt_err"); then
+        rm -f "$_jsl_rlt_err"
+      else
+        _jsl_type_id=""
+        if grep -q 'reason=ambiguous_link_type' "$_jsl_rlt_err" 2>/dev/null; then
+          _jsl_no_type_reason="ambiguous_link_type"
+        else
+          _jsl_no_type_reason="no_link_type"
+        fi
+        rm -f "$_jsl_rlt_err"
+      fi
+    else
+      _jsl_r16_ec=$?
+      if [ "$_jsl_r16_ec" -eq 7 ]; then
+        _jsl_linking_disabled="yes"
+      else
+        # falha generica de rede/auth (401/429/5xx-deferred, credencial
+        # invalida etc.): degrada SEM gravar nada — proxima chamada de
+        # `links` tenta de novo do zero (a causa nao e definitiva o
+        # bastante para marcar unrepresentable, mesmo padrao de
+        # `milestone ensure`/deferred).
+        printf '%s: R16 (listar tipos de link) indisponivel (jira-io.sh exit %s) — links adiados, proxima chamada tenta de novo\n' \
+          "$_JS_NAME" "$_jsl_r16_ec" >&2
+        rm -f "$_jsl_r16_err"
+        printf 'linking=enabled\n'
+        printf 'links_active=0\n'
+        printf 'links_unrepresentable=0\n'
+        return 0
+      fi
+      rm -f "$_jsl_r16_err"
+    fi
+  fi
+
+  _jsl_edges_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-links-edges.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s\n' "$_jsl_edges" > "$_jsl_edges_file"
+
+  # Loop sobre um ARQUIVO (nao um pipe) — mesmo motivo documentado em
+  # `_js_cmd_drain`/`_js_process_reconcile_event`: um `while read` num pipe
+  # roda em subshell POSIX, o que perderia `_jsl_active_count`/
+  # `_jsl_unrep_count`/`_jsl_linking_disabled` ao sair do loop.
+  while IFS= read -r _jsl_edge_line; do
+    [ -n "$_jsl_edge_line" ] || continue
+    _jsl_a=$(printf '%s' "$_jsl_edge_line" | cut -f1)
+    _jsl_b=$(printf '%s' "$_jsl_edge_line" | cut -f2)
+    [ -n "$_jsl_a" ] && [ -n "$_jsl_b" ] || continue
+
+    # Idempotencia (18.4.1/18.4.6): linha `active` ja existente para
+    # (a,b) com o MESMO par de ancoras atuais => 0 chamadas R17. Ancora
+    # diferente da gravada => reorganizacao de fase (18.4.4): a linha
+    # antiga vira `stale` (FR-012, nunca removida) e o fluxo cai para
+    # criar uma nova linha `active` com as ancoras atuais.
+    _jsl_existing_state=""
+    _jsl_existing_blocker=""
+    _jsl_existing_blocked=""
+    _jsl_existing_type=""
+    if _jsl_existing=$("$_jsl_map" link-get --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" 2>/dev/null); then
+      _jsl_existing_blocker=$(printf '%s' "$_jsl_existing" | cut -f3)
+      _jsl_existing_blocked=$(printf '%s' "$_jsl_existing" | cut -f4)
+      _jsl_existing_type=$(printf '%s' "$_jsl_existing" | cut -f5)
+      _jsl_existing_state=$(printf '%s' "$_jsl_existing" | cut -f6)
+    fi
+
+    # Causas que impedem QUALQUER tentativa de R17 nesta aresta (linking
+    # desligado no site OU tipo de link indisponivel) — gravadas como
+    # unrepresentable, mas NUNCA sobrescrevem uma linha `active` ja
+    # existente (a causa pode ser transitoria; o link real ja criado no
+    # Jira continua valendo ate uma reorganizacao de fase de fato).
+    if [ "$_jsl_linking_disabled" = "yes" ] || [ -n "$_jsl_no_type_reason" ]; then
+      if [ "$_jsl_existing_state" = "active" ]; then
+        _jsl_active_count=$((_jsl_active_count + 1))
+        continue
+      fi
+      _jsl_reason="$_jsl_no_type_reason"
+      [ "$_jsl_linking_disabled" = "yes" ] && _jsl_reason="linking_disabled"
+      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+        --state unrepresentable --reason "$_jsl_reason"
+      _jsl_unrep_count=$((_jsl_unrep_count + 1))
+      continue
+    fi
+
+    if ! _jsl_anchor_a=$("$_jsl_map" anchor --feature "$_jsl_feature" --phase "$_jsl_a" 2>/dev/null); then
+      if [ "$_jsl_existing_state" = "active" ]; then
+        _jsl_active_count=$((_jsl_active_count + 1))
+        continue
+      fi
+      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+        --state unrepresentable --reason no_anchor
+      _jsl_unrep_count=$((_jsl_unrep_count + 1))
+      continue
+    fi
+    if ! _jsl_anchor_b=$("$_jsl_map" anchor --feature "$_jsl_feature" --phase "$_jsl_b" 2>/dev/null); then
+      if [ "$_jsl_existing_state" = "active" ]; then
+        _jsl_active_count=$((_jsl_active_count + 1))
+        continue
+      fi
+      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+        --state unrepresentable --reason no_anchor
+      _jsl_unrep_count=$((_jsl_unrep_count + 1))
+      continue
+    fi
+
+    _jsl_blocker_key=$(printf '%s' "$_jsl_anchor_a" | cut -f2)
+    _jsl_blocked_key=$(printf '%s' "$_jsl_anchor_b" | cut -f2)
+
+    if [ "$_jsl_existing_state" = "active" ]; then
+      if [ "$_jsl_existing_blocker" = "$_jsl_blocker_key" ] \
+         && [ "$_jsl_existing_blocked" = "$_jsl_blocked_key" ]; then
+        # 18.4.1/18.4.6: mesma chave, mesmas ancoras — idempotente, 0 R17.
+        _jsl_active_count=$((_jsl_active_count + 1))
+        continue
+      fi
+      # 18.4.4: ancora mudou (reorganizacao de fase) — demove a linha
+      # ANTIGA (chave natural com as ancoras antigas) para `stale`, NUNCA
+      # remove (FR-012); segue abaixo para criar a nova com R17.
+      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+        --blocker-key "$_jsl_existing_blocker" --blocked-key "$_jsl_existing_blocked" \
+        --type-id "$_jsl_existing_type" --state stale --reason anchor_changed
+    fi
+
+    _jsl_body=$("$_jsl_io" json-build link --type-id "$_jsl_type_id" \
+      --outward-key "$_jsl_blocker_key" --inward-key "$_jsl_blocked_key")
+    _jsl_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r17body.XXXXXX") \
+      || _js_die "falha ao criar arquivo temporario" 1
+    printf '%s' "$_jsl_body" > "$_jsl_body_file"
+
+    _jsl_r17_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r17err.XXXXXX") \
+      || _js_die "falha ao criar arquivo temporario" 1
+    if "$_jsl_io" request POST /rest/api/3/issueLink \
+        --body-file "$_jsl_body_file" --op R17 >/dev/null 2>"$_jsl_r17_err"; then
+      _jsl_r17_ec=0
+    else
+      _jsl_r17_ec=$?
+    fi
+    rm -f "$_jsl_body_file"
+
+    if [ "$_jsl_r17_ec" -eq 0 ]; then
+      rm -f "$_jsl_r17_err"
+      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+        --blocker-key "$_jsl_blocker_key" --blocked-key "$_jsl_blocked_key" \
+        --type-id "$_jsl_type_id" --state active
+      _jsl_active_count=$((_jsl_active_count + 1))
+      continue
+    fi
+
+    if [ "$_jsl_r17_ec" -eq 7 ]; then
+      # 18.4.2: 404 em R17 (jira-io.sh classifica permission_denied) =>
+      # reason=linking_disabled de negocio, cascata para TODAS as demais
+      # arestas pendentes desta MESMA chamada (evita N-1 tentativas
+      # inuteis de R17 quando o site inteiro tem linking desligado); 413
+      # (classification=limit_exceeded) => reason=limit, so ESTA aresta.
+      if grep -q 'classification=limit_exceeded' "$_jsl_r17_err" 2>/dev/null; then
+        _jsl_reason="limit"
+      else
+        _jsl_reason="linking_disabled"
+        _jsl_linking_disabled="yes"
+      fi
+      rm -f "$_jsl_r17_err"
+      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+        --state unrepresentable --reason "$_jsl_reason"
+      _jsl_unrep_count=$((_jsl_unrep_count + 1))
+      continue
+    fi
+
+    # Falha generica (auth_failed exit4, deferred exit1, rede): nao grava
+    # NADA no sidecar — a proxima chamada de `links` tenta de novo (mesmo
+    # padrao de `milestone ensure`/`_js_process_reconcile_event`, FR-011:
+    # por item, nunca aborta as demais arestas).
+    rm -f "$_jsl_r17_err"
+  done < "$_jsl_edges_file"
+  rm -f "$_jsl_edges_file"
+
+  if [ "$_jsl_linking_disabled" = "yes" ]; then
+    printf 'linking=disabled\n'
+  else
+    printf 'linking=enabled\n'
+  fi
+  printf 'links_active=%s\n' "$_jsl_active_count"
+  printf 'links_unrepresentable=%s\n' "$_jsl_unrep_count"
+  return 0
+}
+
 # _js_reconcile_epic_milestone FEATURE EPIC_JKEY WRITTEN_FIX_VERSION_ID —
 # r02 FASE 16 task 16.4.2/16.4.3 (research.md Decision R2-2; plan.md SEC-10;
 # data-model.md SyncMarker `written_fix_version_id`): reaplica o marco
@@ -1976,6 +2247,16 @@ _js_cmd_convert() {
     _js_write_initial_marker "$_jsc_io" "$_jsc_feature" "$_jsc_key" "$_jsc_new_key" \
       "$_jsc_summary" "$_jsc_description" "$_jsc_marker_fixver" "$_jsc_apply_label"
   done
+
+  # r02 FASE 18 task 18.4.4 (contracts/plugin-scripts.md `convert`): apos
+  # criar as tasks, reconcilia issue links (SO se links_enabled=on) — mesma
+  # disciplina de nao abortar `convert` por falha aqui (`|| :`, best-effort;
+  # a proxima chamada de `links`/`drain` tenta de novo).
+  _jsc_links_enabled=$("$_jsc_config" get links_enabled 2>/dev/null) || _jsc_links_enabled="on"
+  [ -n "$_jsc_links_enabled" ] || _jsc_links_enabled="on"
+  if [ "$_jsc_links_enabled" = "on" ]; then
+    _js_cmd_links --feature "$_jsc_feature" >/dev/null 2>&1 || :
+  fi
 }
 
 # --- outcomes (FASE 12 tarefa 12.4.1) -------------------------------------
@@ -2477,6 +2758,20 @@ _js_process_reconcile_event() {
     fi
   done < "$_jspr_items_file"
   rm -f "$_jspr_items_file"
+
+  # r02 FASE 18 task 18.4.4 (contracts/plugin-scripts.md `drain` evento
+  # reconcile): apos reconciliar status/marco/label dos itens, roda `links`
+  # (SO se links_enabled=on e SE nao houve auth_failed acima — sem
+  # credencial valida, tentar `links` so repetiria o mesmo exit 4).
+  # `|| :` best-effort, mesma disciplina do resto desta funcao: falha aqui
+  # NUNCA impede o evento de fechar com o outcome ja calculado.
+  if [ "$_JSPE_BREAK" != "yes" ]; then
+    _jspr_links_enabled=$("$_jsd_config" get links_enabled 2>/dev/null) || _jspr_links_enabled="on"
+    [ -n "$_jspr_links_enabled" ] || _jspr_links_enabled="on"
+    if [ "$_jspr_links_enabled" = "on" ]; then
+      _js_cmd_links --feature "$_jsd_feature" >/dev/null 2>&1 || :
+    fi
+  fi
 
   if [ "$_JSPE_BREAK" = "yes" ]; then
     _js_set_event_status "$_jspr_eid" auth_failed "$((_jspr_attempts + 1))"
@@ -3000,6 +3295,23 @@ _js_cmd_status() {
   else
     printf '(nenhum)\n'
   fi
+
+  # r02 FASE 18 task 18.4.5 (contracts/plugin-scripts.md `status` r02):
+  # linhas grep-aveis `links_unrepresentable=N`/`links_stale=N` — SO com
+  # --feature (jira-links.tsv e por feature, mesma disciplina de
+  # `milestone=` acima). Inteiramente LOCAL/sem rede: so leitura de TSV.
+  if [ -n "$_jss_feature" ]; then
+    _jss_links_file="./docs/specs/$_jss_feature/jira-links.tsv"
+    if [ -f "$_jss_links_file" ]; then
+      _jss_links_unrep=$(awk -F '\t' 'NR>1 && $6=="unrepresentable" { c++ } END { print c+0 }' "$_jss_links_file")
+      _jss_links_stale=$(awk -F '\t' 'NR>1 && $6=="stale" { c++ } END { print c+0 }' "$_jss_links_file")
+    else
+      _jss_links_unrep=0
+      _jss_links_stale=0
+    fi
+    printf 'links_unrepresentable=%s\n' "$_jss_links_unrep"
+    printf 'links_stale=%s\n' "$_jss_links_stale"
+  fi
 }
 
 # --- resolve ---------------------------------------------------------------
@@ -3275,7 +3587,10 @@ case "$_js_sub" in
   milestone)
     _js_cmd_milestone "$@"
     ;;
+  links)
+    _js_cmd_links "$@"
+    ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, resolve-state-field, milestone)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: plan, convert, enqueue, drain, status, resolve, requeue-auth-failed, resolve-state-field, milestone, links)"
     ;;
 esac

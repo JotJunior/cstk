@@ -1739,4 +1739,130 @@ scenario_json_build_marker_sem_written_phase_label_chave_ausente() {
     || { _fail "json_build_marker_sem_written_phase_label" "chave nao deveria existir quando omitida"; return 1; }
 }
 
+# JI-97..JI-107 (r02 FASE 18 task 18.4.1/18.4.2/18.4.3, contracts/
+# jira-rest.md R16/R17, contracts/plugin-scripts.md `jira-io.sh` r02,
+# plan.md SEC-12): `json-build link` + `request --op R16`/`--op R17` +
+# teto de tamanho de corpo.
+#
+#   JI-97  json-build link: corpo completo -> {"type":{"id":...},
+#          "outwardIssue":{"key":...},"inwardIssue":{"key":...}}
+#   JI-98  json-build link: --type-id fora de [0-9] -> exit 2, SEM montar
+#          corpo (SEC-1)
+#   JI-99  json-build link: --outward-key fora da allowlist -> exit 2
+#   JI-100 json-build link: --inward-key fora da allowlist -> exit 2
+#   JI-101 json-build link: falta --type-id/--outward-key/--inward-key ->
+#          exit 2
+#   JI-102 request --op R16: 404 -> exit 7, classification=linking_disabled
+#   JI-103 request --op R17: 404 -> exit 7, classification=permission_denied
+#   JI-104 request --op R17: 413 -> exit 7, classification=limit_exceeded
+#   JI-105 request: corpo acima do teto (JIRA_IO_MAX_BODY_BYTES) -> exit 1,
+#          classification=deferred, corpo NUNCA impresso (nunca parse
+#          parcial)
+#   JI-106 request: corpo dentro do teto -> passthrough normal (sem
+#          regressao)
+
+scenario_json_build_link_corpo_completo() {
+  cd "$TMPDIR_TEST" || return 1
+  _body=$("$SCRIPT" json-build link --type-id 10000 \
+    --outward-key "SCRUM-5" --inward-key "SCRUM-6") \
+    || { _fail "json_build_link_corpo_completo_exit" "falhou"; return 1; }
+  printf '%s' "$_body" | "$SCRIPT" json-get . >/dev/null \
+    || { _fail "json_build_link_corpo_completo_json" "corpo nao e JSON valido"; return 1; }
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.type.id')" = "10000" ] \
+    || { _fail "json_build_link_type_id" "type.id incorreto"; return 1; }
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.outwardIssue.key')" = "SCRUM-5" ] \
+    || { _fail "json_build_link_outward" "outwardIssue.key incorreto"; return 1; }
+  [ "$(printf '%s' "$_body" | "$SCRIPT" json-get '.inwardIssue.key')" = "SCRUM-6" ] \
+    || { _fail "json_build_link_inward" "inwardIssue.key incorreto"; return 1; }
+  _has_comment=$(printf '%s' "$_body" | "$SCRIPT" json-get 'has("comment")')
+  [ "$_has_comment" = "false" ] \
+    || { _fail "json_build_link_sem_comment" "comment nunca deveria existir"; return 1; }
+  _has_type_name=$(printf '%s' "$_body" | "$SCRIPT" json-get '.type | has("name")')
+  [ "$_has_type_name" = "false" ] \
+    || { _fail "json_build_link_sem_type_name" "type.name nunca deveria existir"; return 1; }
+}
+
+scenario_json_build_link_type_id_nao_digitos_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build link --type-id "abc" \
+    --outward-key "SCRUM-5" --inward-key "SCRUM-6" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  assert_stdout_not_contains "outwardIssue" || return 1
+}
+
+scenario_json_build_link_outward_key_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build link --type-id 10000 \
+    --outward-key 'SCRUM-5" OR 1=1' --inward-key "SCRUM-6" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+  assert_stdout_not_contains "inwardIssue" || return 1
+}
+
+scenario_json_build_link_inward_key_invalido_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build link --type-id 10000 \
+    --outward-key "SCRUM-5" --inward-key "SCRUM 6" || return 1
+  assert_stderr_contains "SEC-1" || return 1
+}
+
+scenario_json_build_link_falta_argumentos_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  assert_exit 2 "$SCRIPT" json-build link --outward-key "SCRUM-5" --inward-key "SCRUM-6" || return 1
+  assert_exit 2 "$SCRIPT" json-build link --type-id 10000 --inward-key "SCRUM-6" || return 1
+  assert_exit 2 "$SCRIPT" json-build link --type-id 10000 --outward-key "SCRUM-5" || return 1
+}
+
+scenario_request_op_r16_404_linking_disabled() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issueLinkType|404|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request GET /rest/api/3/issueLinkType --op R16 || return 1
+  assert_stderr_contains "classification=linking_disabled" || return 1
+}
+
+scenario_request_op_r17_404_permission_denied() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issueLink|404|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issueLink --op R17 || return 1
+  assert_stderr_contains "classification=permission_denied" || return 1
+}
+
+scenario_request_op_r17_413_limit_exceeded() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issueLink|413|{}')
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$SCRIPT" request POST /rest/api/3/issueLink --op R17 || return 1
+  assert_stderr_contains "classification=limit_exceeded" || return 1
+}
+
+scenario_request_body_acima_do_teto_deferred() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  # corpo de 100 bytes, teto artificialmente baixo (10 bytes) para o
+  # cenario disparar sem precisar gerar payload gigante.
+  _body100=$(_ji_test_repeat_char x 100)
+  _bin=$(_make_curl_stub "https://example.atlassian.net/rest/api/3/issueLinkType|200|${_body100}")
+  assert_exit 1 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    JIRA_IO_MAX_BODY_BYTES=10 "$SCRIPT" request GET /rest/api/3/issueLinkType --op R16 || return 1
+  assert_stderr_contains "classification=deferred" || return 1
+  assert_stdout_not_contains "x" || return 1
+}
+
+scenario_request_body_dentro_do_teto_passthrough() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_site_host_config "example.atlassian.net"
+  _write_credential
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issueLinkType|200|{"issueLinkTypes":[]}')
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    JIRA_IO_MAX_BODY_BYTES=10485760 "$SCRIPT" request GET /rest/api/3/issueLinkType --op R16 || return 1
+}
+
 run_all_scenarios

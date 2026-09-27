@@ -3441,4 +3441,220 @@ EOF
   return 0
 }
 
+# ==== links (r02 FASE 18 task 18.4, FR-025, research.md Decision R2-6) =====
+#
+#   SY-86 links: links_enabled=off -> linking=disabled, ZERO chamadas de
+#         rede (nem R16 nem R17)
+#   SY-87 links: idempotencia 10x (18.4.6) — link_type_id ja confirmado em
+#         ProjectConfig (sem R16): 1a chamada cria via R17 (links_active=1),
+#         as 9 seguintes SAO idempotentes (0 R17 adicional)
+#   SY-88 links: link_type_id vazio + R16 com 2 candidatos ambiguos (nenhum
+#         bate "block") -> unrepresentable reason=ambiguous_link_type, ZERO
+#         chamadas R17
+#   SY-89 links: 404 em R17 (linking_disabled de negocio) cascata para a
+#         2a aresta pendente SEM tentar R17 de novo (so 1 R17 na fila)
+#   SY-90 links: 413 em R17 -> unrepresentable reason=limit (so a aresta),
+#         linking permanece "enabled"
+
+_links_file() {
+  printf '%s\n' "$TMPDIR_TEST/docs/specs/demo/jira-links.tsv"
+}
+
+# _write_two_phase_deps: tasks.md com FASE 1 -> FASE 2 (Matriz de
+# Dependencias) + 1 task ativa mapeada em cada fase (ancoras resolviveis
+# por `jira-map.sh anchor`).
+_write_two_phase_deps() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Primeira `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [x] 1.1.1 Sub um
+
+## FASE 2 - Segunda `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 Sub dois
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Primeira]
+    F2[FASE 2 - Segunda]
+    F1 --> F2
+```
+EOF
+  _write_map_row "1.1" "task" "10010" "DEMO-10" "active"
+  _write_map_row "2.1" "task" "10020" "DEMO-20" "active"
+}
+
+scenario_links_disabled_zero_chamadas() {
+  _write_full_config
+  _append_config_line "links_enabled=off"
+  _write_credential
+  _write_two_phase_deps
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy86_exit" "links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "linking=disabled" \
+    || { _fail "sy86_linking" "esperado linking=disabled, obtido: $_out"; return 1; }
+  [ "$(_queue_calls_count)" = "0" ] \
+    || { _fail "sy86_zero_calls" "esperado 0 chamadas de rede, obtido $(_queue_calls_count)"; return 1; }
+}
+
+scenario_links_idempotente_10x_zero_r17_apos_primeira() {
+  _write_full_config
+  _append_config_line "link_type_id=10000"
+  _write_credential
+  _write_two_phase_deps
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 201 ''
+
+  _i=1
+  while [ "$_i" -le 10 ]; do
+    _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+      || { _fail "sy87_exit_$_i" "links deveria sair exit 0 na chamada $_i"; return 1; }
+    printf '%s\n' "$_out" | grep -qx "links_active=1" \
+      || { _fail "sy87_active_$_i" "esperado links_active=1 na chamada $_i, obtido: $_out"; return 1; }
+    _i=$((_i + 1))
+  done
+
+  _r17_calls=$(grep -c 'POST .*api/3/issueLink$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r17_calls=0
+  [ "$_r17_calls" = "1" ] \
+    || { _fail "sy87_r17_once" "esperado exatamente 1 R17 em 10 chamadas, obtido $_r17_calls"; return 1; }
+
+  grep -q '^1	2	DEMO-10	DEMO-20	10000	active	$' "$(_links_file)" \
+    || { _fail "sy87_row" "linha active ausente/incorreta em jira-links.tsv: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+}
+
+scenario_links_ambiguous_link_type_zero_r17() {
+  _write_full_config
+  _write_credential
+  _write_two_phase_deps
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"issueLinkTypes":[{"id":"10000","name":"Blocks","inward":"is blocked by","outward":"blocks"},{"id":"10005","name":"BlockedAlt","inward":"is blocked alt by","outward":"blocks alt"}]}'
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy88_exit" "links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=1" \
+    || { _fail "sy88_unrep" "esperado links_unrepresentable=1 (ambiguous_link_type), obtido: $_out"; return 1; }
+  awk -F '\t' 'NR>1 && $7=="ambiguous_link_type" { f=1 } END { exit(f?0:1) }' "$(_links_file)" \
+    || { _fail "sy88_row" "reason ambiguous_link_type ausente em jira-links.tsv: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+  _r17_calls=$(grep -c 'POST .*api/3/issueLink$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r17_calls=0
+  [ "$_r17_calls" = "0" ] \
+    || { _fail "sy88_zero_r17" "ambiguidade de tipo NUNCA deveria tentar R17, obtido $_r17_calls"; return 1; }
+}
+
+scenario_links_404_r17_linking_disabled_cascata() {
+  _write_full_config
+  _append_config_line "link_type_id=10000"
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Primeira `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [x] 1.1.1 Sub um
+
+## FASE 2 - Segunda `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 Sub dois
+
+## FASE 3 - Terceira `[A]`
+
+### 3.1 Tarefa tres `[A]`
+
+- [ ] 3.1.1 Sub tres
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Primeira]
+    F2[FASE 2 - Segunda]
+    F3[FASE 3 - Terceira]
+    F1 --> F2
+    F1 --> F3
+```
+EOF
+  _write_map_row "1.1" "task" "10010" "DEMO-10" "active"
+  _write_map_row "2.1" "task" "10020" "DEMO-20" "active"
+  _write_map_row "3.1" "task" "10030" "DEMO-30" "active"
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 404 '{}'
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy89_exit" "links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "linking=disabled" \
+    || { _fail "sy89_linking" "esperado linking=disabled apos 404 em R17, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=2" \
+    || { _fail "sy89_unrep" "esperado links_unrepresentable=2 (cascata p/ ambas arestas), obtido: $_out"; return 1; }
+  _r17_calls=$(grep -c 'POST .*api/3/issueLink$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r17_calls=0
+  [ "$_r17_calls" = "1" ] \
+    || { _fail "sy89_r17_once" "cascata deveria evitar a 2a tentativa de R17, obtido $_r17_calls"; return 1; }
+  _nlinking=$(awk -F '\t' 'NR>1 && $7=="linking_disabled"' "$(_links_file)" | wc -l | tr -d ' ')
+  [ "$_nlinking" = "2" ] \
+    || { _fail "sy89_reasons" "esperado 2 linhas reason=linking_disabled, obtido $_nlinking: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+}
+
+scenario_links_413_r17_reason_limit() {
+  _write_full_config
+  _append_config_line "link_type_id=10000"
+  _write_credential
+  _write_two_phase_deps
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 413 '{}'
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy90_exit" "links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "linking=enabled" \
+    || { _fail "sy90_linking" "413 e por-aresta, linking deveria seguir enabled, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=1" \
+    || { _fail "sy90_unrep" "esperado links_unrepresentable=1, obtido: $_out"; return 1; }
+  awk -F '\t' 'NR>1 && $7=="limit" { f=1 } END { exit(f?0:1) }' "$(_links_file)" \
+    || { _fail "sy90_row" "reason=limit ausente em jira-links.tsv: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+}
+
+# SY-91 links: 404 simulado em R16 (link_type_id vazio) -> TODAS as
+# dependencias da feature ficam unrepresentable reason=linking_disabled,
+# ZERO chamadas R17 (nem sequer tentadas — jira-io.sh ja classifica exit 7
+# linking_disabled direto na propria R16).
+scenario_links_404_r16_linking_disabled_sem_link_type() {
+  _write_full_config
+  _write_credential
+  _write_two_phase_deps
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 404 '{}'
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy91_exit" "links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "linking=disabled" \
+    || { _fail "sy91_linking" "esperado linking=disabled apos 404 em R16, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=1" \
+    || { _fail "sy91_unrep" "esperado links_unrepresentable=1, obtido: $_out"; return 1; }
+  awk -F '\t' 'NR>1 && $7=="linking_disabled" { f=1 } END { exit(f?0:1) }' "$(_links_file)" \
+    || { _fail "sy91_row" "reason=linking_disabled ausente em jira-links.tsv: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+  _r17_calls=$(grep -c 'POST .*api/3/issueLink$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r17_calls=0
+  [ "$_r17_calls" = "0" ] \
+    || { _fail "sy91_zero_r17" "404 em R16 NUNCA deveria tentar R17, obtido $_r17_calls"; return 1; }
+}
+
 run_all_scenarios

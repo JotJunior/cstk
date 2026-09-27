@@ -232,7 +232,7 @@
 #     `classification=deferred` (429; 5xx/rede/timeout apos ate 3
 #     tentativas; 400/409 em `--op R4`) — candidato a retry pelo chamador
 #   2 uso incorreto (METHOD fora da allowlist, PATH sem `/rest/`, PATH/
-#     segmento fora da allowlist SEC-1, `--op` fora de R1..R13, args,
+#     segmento fora da allowlist SEC-1, `--op` fora de R1..R13/R16/R17, args,
 #     `json-get` com filtro/entrada invalidos, `json-build` com segmento
 #     fora da allowlist SEC-1 ou campo obrigatorio ausente)
 #   3 ProjectConfig ausente/inacessivel (propagado de jira-config.sh get)
@@ -273,9 +273,11 @@ USO:
       e nao pode conter .. // \ @ # espaco CR/LF/controle (SEC-1).
       Autenticacao Basic (email + API token de Credential) enviada via
       arquivo de config temporario do cliente HTTP (SEC-4) — nunca em argv.
-      --op OP (opcional, R1..R13) informa a operacao para classificar 403
-      (permission_denied em R1/R2, auth_failed nas demais/omitido) e 400/409
-      (deferred em R4). 401/429/5xx/rede/timeout tambem sao classificados
+      --op OP (opcional, R1..R13/R16/R17) informa a operacao para
+      classificar 403 (permission_denied em R1/R2, auth_failed nas
+      demais/omitido), 400/409 (deferred em R4), 404 (linking_disabled em
+      R16, permission_denied em R12/R17) e 413 (limit_exceeded em R17).
+      401/429/5xx/rede/timeout tambem sao classificados
       (classification=<token> em stderr) — ver cabecalho do script.
 
   jira-io.sh validate-segment VALUE [VALUE...]
@@ -375,6 +377,14 @@ USO:
       string); --description e texto FIXO do plugin (nunca lido do
       Jira), opcional.
 
+  jira-io.sh json-build link --type-id ID --outward-key K --inward-key K
+      Monta o corpo de R17 (criar issue link):
+      {"type":{"id":ID},"outwardIssue":{"key":K},"inwardIssue":{"key":K}}.
+      ID (id numerico de R16) MUST ser so digitos; K (outward/inward)
+      MUST casar a allowlist [A-Za-z0-9_-] (SEC-1). Bloqueador =
+      outwardIssue, bloqueado = inwardIssue (direcao confirmada por
+      roundtrip, contracts/jira-rest.md R17). Nunca `comment`/`type.name`.
+
   jira-io.sh sha256-stdin
       Le stdin, imprime o SHA-256 hex (sha256sum ou shasum -a 256, o que
       estiver no PATH). Usado pelo motor (jira-sync.sh, FASE 4.2.3) para
@@ -386,7 +396,10 @@ USO:
 EXIT CODES:
   0 sucesso   1 erro geral/requisicao/deferred   2 uso incorreto
   3 ProjectConfig ausente   4 credencial ausente/incompleta/auth_failed
-  5 dependencia ausente   7 permission_denied (403 em R1/R2)
+  5 dependencia ausente
+  7 exit "nao permitido/nao possivel, nao repetir" — classification=
+    distingue: permission_denied (403 em R1/R2/R12; 404 em R12/R17);
+    linking_disabled (404 em R16); limit_exceeded (413 em R17)
 HELP
 }
 
@@ -470,11 +483,15 @@ _ji_cred_cleanup() {
 }
 
 # _ji_op_allowed OP — allowlist FECHADA da flag `--op` (3.4, dec-073); r02
-# FASE 16 task 16.1.3 estende para R12/R13 (contracts/jira-rest.md). OP
-# MUST ser uma das operacoes R1-R13 documentadas em contracts/jira-rest.md.
+# FASE 16 task 16.1.3 estende para R12/R13; r02 FASE 18 task 18.4.1/18.4.2
+# estende para R16/R17 (contracts/jira-rest.md). R14/R15 NUNCA aparecem
+# aqui — sao extensoes de corpo de R1/R2/R3 (contracts/jira-rest.md),
+# nunca chamadas de rede proprias com `--op` distinto (nenhum chamador do
+# motor passa `--op R14`/`--op R15`). OP MUST ser uma das operacoes
+# R1-R13/R16-R17 documentadas em contracts/jira-rest.md.
 _ji_op_allowed() {
   case "$1" in
-    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11|R12|R13) return 0 ;;
+    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11|R12|R13|R16|R17) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -653,7 +670,7 @@ _ji_cmd_request() {
   # (deferred em R4). Fora da allowlist fechada => uso incorreto (exit 2).
   if [ -n "$_jir_op" ]; then
     _ji_op_allowed "$_jir_op" || _ji_die_usage \
-      "--op invalido: $_jir_op (permitido: R1..R13 — contracts/jira-rest.md)"
+      "--op invalido: $_jir_op (permitido: R1..R13, R16, R17 — contracts/jira-rest.md)"
   fi
 
   _ji_method_allowed "$_jir_method" || _ji_die_usage \
@@ -841,6 +858,35 @@ _ji_cmd_request() {
       if [ "$_jir_op" = "R12" ]; then
         _ji_fail_status "$_jir_status" permission_denied 7 \
           "resposta 404 em R12 (permission_denied — falta Administer Jira/Administer Projects; documentado no OpenAPI junto com 'projeto nao encontrado', mas o project_key ja foi resolvido nesta execucao, R2-4): $_jir_method $_jir_path"
+      elif [ "$_jir_op" = "R16" ]; then
+        # r02 FASE 18 task 18.4.2/18.4.3 (contracts/jira-rest.md R16 "404 —
+        # Returned if issue linking is disabled"): classificacao PROPRIA
+        # (nunca auth_failed/permission_denied) — o chamador (jira-sync.sh
+        # links) usa isto para marcar TODAS as dependencias pendentes da
+        # feature como unrepresentable reason=linking_disabled, sem sequer
+        # tentar R17.
+        _ji_fail_status "$_jir_status" linking_disabled 7 \
+          "resposta 404 em R16 (linking_disabled) — issue linking desligado no site (documentado no OpenAPI): $_jir_method $_jir_path"
+      elif [ "$_jir_op" = "R17" ]; then
+        # contracts/plugin-scripts.md `jira-io.sh` r02 ("404 em --op R17 |
+        # exit 7, classification=permission_denied"): o OpenAPI de R17
+        # documenta 404 tanto para "issue linking is disabled" quanto para
+        # "user does not have permission to view one of the issues"
+        # (ambiguo aqui, sem forma de distinguir so pelo status HTTP) —
+        # classificacao conservadora, NUNCA reconfigurar credencial. E o
+        # chamador (jira-sync.sh links) quem decide o `--reason` de
+        # negocio (linking_disabled) ao ver este exit 7 vindo de R17.
+        _ji_fail_status "$_jir_status" permission_denied 7 \
+          "resposta 404 em R17 (permission_denied) — issue linking desligado no site OU usuario sem visibilidade de uma das issues (ambiguo no OpenAPI), NUNCA reconfigurar credencial: $_jir_method $_jir_path"
+      fi
+      ;;
+    413)
+      if [ "$_jir_op" = "R17" ]; then
+        # contracts/jira-rest.md R17 ("413 — per-issue limit for issue
+        # links has been breached"): a aresta especifica vira
+        # unrepresentable reason=limit no chamador, NUNCA retry (FR-012).
+        _ji_fail_status "$_jir_status" limit_exceeded 7 \
+          "resposta 413 em R17 (limit_exceeded) — limite de issue links por issue atingido, nunca retry: $_jir_method $_jir_path"
       fi
       ;;
     429)
@@ -859,6 +905,24 @@ _ji_cmd_request() {
       fi
       ;;
   esac
+
+  # SEC-12 (r02 FASE 18 task 18.4.3, plan.md SEC-12): teto de tamanho de
+  # corpo aplicado a QUALQUER resposta que chegue ate aqui (2xx e os
+  # demais codigos em passthrough) — cobre em particular R16/R13 (listas
+  # NAO-paginadas, que podem crescer sem limite documentado pelo OpenAPI),
+  # mas nao se restringe a elas (plan.md: "se o r01 nao tiver teto, a
+  # tarefa o introduz para TODAS as operacoes"). Corpo acima do teto =>
+  # `deferred` com diagnostico, NUNCA parse parcial (o corpo nunca chega a
+  # ser impresso truncado). `JIRA_IO_MAX_BODY_BYTES` permite ajuste/teste
+  # (default 5 MiB — nenhuma resposta real do plugin, todas de listas
+  # pequenas de configuracao, deveria sequer chegar perto disso; e um
+  # default de engenharia, nao um limite documentado pelo Jira).
+  _jir_max_body_bytes="${JIRA_IO_MAX_BODY_BYTES:-5242880}"
+  _jir_body_bytes=$(wc -c < "$_jir_tmp_out" | tr -d ' ')
+  if [ "$_jir_body_bytes" -gt "$_jir_max_body_bytes" ]; then
+    _ji_fail_status "$_jir_status" deferred 1 \
+      "corpo da resposta ($_jir_body_bytes bytes) excede o teto de tamanho ($_jir_max_body_bytes bytes, SEC-12) — deferred, nunca parse parcial: $_jir_method $_jir_path"
+  fi
 
   printf 'http_status=%s\n' "$_jir_status" >&2
   cat -- "$_jir_tmp_out"
@@ -951,11 +1015,14 @@ _ji_cmd_json_build() {
     version)
       _ji_cmd_json_build_version "$@"
       ;;
+    link)
+      _ji_cmd_json_build_link "$@"
+      ;;
     '')
-      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update, version)"
+      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update, version, link)"
       ;;
     *)
-      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update, version)"
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update, version, link)"
       ;;
   esac
 }
@@ -1552,6 +1619,62 @@ _ji_cmd_json_build_version() {
     --argjson have_description "$_jbv_have_description_json" \
     '{name: $name, projectId: $project_id}
      | if $have_description then .description = $description else . end'
+}
+
+# _ji_cmd_json_build_link --type-id ID --outward-key K --inward-key K —
+# r02 FASE 18 task 18.4.1 (contracts/jira-rest.md R17
+# `POST /rest/api/3/issueLink`, contracts/plugin-scripts.md `json-build
+# link`): monta o corpo {"type":{"id":ID},"outwardIssue":{"key":K},
+# "inwardIssue":{"key":K}} — NUNCA `comment`, NUNCA `type.name` (o motor
+# sempre envia `type.id`, resolvido por R16/`jira-setup.sh
+# check-link-type`/`resolve-link-type`, FR-025: nada hardcoded).
+# `--type-id` MUST ser SOMENTE digitos (`_ji_digits_ok`, mesma disciplina
+# de `--fix-version-id`/`--filter-id` — os ids de R16 sao sempre numericos
+# no site real, ex. "10000"); `--outward-key`/`--inward-key` MUST casar a
+# allowlist [A-Za-z0-9_-] (SEC-1, mesma de `validate-segment` — issue keys
+# como "SCRUM-5"). Direcao CONFIRMADA por roundtrip (onda-006, contracts/
+# jira-rest.md R17): bloqueador = outwardIssue, bloqueado = inwardIssue.
+_ji_cmd_json_build_link() {
+  _jbl_type_id=""
+  _jbl_outward_key=""
+  _jbl_inward_key=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --type-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--type-id requer argumento"
+        _jbl_type_id="$2"; shift 2 ;;
+      --outward-key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--outward-key requer argumento"
+        _jbl_outward_key="$2"; shift 2 ;;
+      --inward-key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--inward-key requer argumento"
+        _jbl_inward_key="$2"; shift 2 ;;
+      *)
+        _ji_die_usage "json-build link: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$_jbl_type_id" ] || _ji_die_usage "json-build link requer --type-id"
+  [ -n "$_jbl_outward_key" ] || _ji_die_usage "json-build link requer --outward-key"
+  [ -n "$_jbl_inward_key" ] || _ji_die_usage "json-build link requer --inward-key"
+
+  # SEC-1: falha SEM montar corpo algum (nenhuma chamada a jq), mesma
+  # disciplina de `json-build issue`/`json-build board`.
+  _ji_digits_ok "$_jbl_type_id" \
+    || _ji_die_usage "--type-id fora da allowlist [0-9] (SEC-1) — deve ser o id numerico devolvido por R16"
+  _ji_charset_ok "$_jbl_outward_key" \
+    || _ji_die_usage "--outward-key fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+  _ji_charset_ok "$_jbl_inward_key" \
+    || _ji_die_usage "--inward-key fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+
+  _ji_require_jq
+  jq -n \
+    --arg type_id "$_jbl_type_id" \
+    --arg outward_key "$_jbl_outward_key" \
+    --arg inward_key "$_jbl_inward_key" \
+    '{type: {id: $type_id}, outwardIssue: {key: $outward_key}, inwardIssue: {key: $inward_key}}'
 }
 
 # --- dispatcher ---------------------------------------------------------

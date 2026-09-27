@@ -802,4 +802,79 @@ scenario_mutation_18_3_5_link_put_stale_never_disappears() {
   return 0
 }
 
+# scenario_mutation_18_4_7_links_idempotency_skips_active — r02 FASE 18
+# tarefa 18.4.7: mira a guarda de idempotencia de `jira-sync.sh links`
+# (18.4.1) que so tenta R17 quando NAO existe uma linha `active` casando as
+# ancoras atuais em `jira-links.tsv`. Reverter essa guarda (nunca checar
+# `active` antes de chamar R17) faz o teste de idempotencia de 18.4.6
+# (scenario_links_idempotente_10x_zero_r17_apos_primeira,
+# tests/cstk/test_jira-sync.sh) falhar — uma 2a chamada de `links` sobre a
+# MESMA aresta ja `active` voltaria a chamar R17.
+scenario_mutation_18_4_7_links_idempotency_skips_active() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  printf 'link_type_id=10000\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Primeira `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [x] 1.1.1 Sub um
+
+## FASE 2 - Segunda `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 Sub dois
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Primeira]
+    F2[FASE 2 - Segunda]
+    F1 --> F2
+```
+EOF
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" put --feature demo --local-key 1.1 \
+    --kind task --jira-id 10010 --jira-key DEMO-10 >/dev/null || return 1
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" put --feature demo --local-key 2.1 \
+    --kind task --jira-id 10020 --jira-key DEMO-20 >/dev/null || return 1
+  "$ORIG_PLUGIN_DIR/scripts/jira-map.sh" link-put --feature demo --from 1 --to 2 \
+    --blocker-key DEMO-10 --blocked-key DEMO-20 --type-id 10000 --state active \
+    >/dev/null || return 1
+
+  # -- controle: original NUNCA chama R17 (aresta ja active com as MESMAS
+  # ancoras atuais) --
+  _bin=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issueLink|201|{}')
+  _out=$(PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" links --feature demo) \
+    || { _fail "control_exit" "links deveria sair exit 0 no original"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_active=1" \
+    || { _fail "control_active" "esperado links_active=1 no original, obtido: $_out"; return 1; }
+  [ "$(_curl_call_count)" = "0" ] \
+    || { _fail "control_zero_calls" "original NUNCA deveria chamar R17 (aresta ja active), obtido $(_curl_call_count) chamada(s)"; return 1; }
+
+  # -- mutante: reverte 18.4.1 para NUNCA considerar uma linha existente
+  # `active` (sempre tenta criar via R17 de novo) --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF 'if [ "$_jsl_existing_state" = "active" ]; then' "$_sy" \
+    || { _fail "mutant_stale" "guarda de idempotencia de links nao encontrada — repo mudou"; return 1; }
+  sed 's/if \[ "\$_jsl_existing_state" = "active" \]; then/if false; then/' \
+    "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF 'if [ "$_jsl_existing_state" = "active" ]; then' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de links"; return 1; }
+  chmod +x "$_sy"
+
+  _bin2=$(_make_curl_stub 'https://example.atlassian.net/rest/api/3/issueLink|201|{}')
+  PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$_sy" links --feature demo >/dev/null 2>&1
+  [ "$(_curl_call_count)" != "0" ] \
+    || { _fail "mutant_zero_calls" "esperado >=1 chamada R17 (regressao: idempotencia perdida), obtido 0"; return 1; }
+  return 0
+}
+
 run_all_scenarios

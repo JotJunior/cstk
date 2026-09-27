@@ -2395,30 +2395,63 @@ Ref: contracts/plugin-scripts.md `jira-sync.sh links`;
 contracts/jira-rest.md R17; data-model.md IssueLink state-diagram;
 plan.md SEC-12 (teto de corpo em R16, lista nao-paginada).
 
-- [ ] 18.4.1 `links --feature F`: reconcilia `jira-links.tsv` contra
+- [x] 18.4.1 `links --feature F`: reconcilia `jira-links.tsv` contra
       `phase-edges` + ancoras do `jira-map.tsv` + `link_type_id`
       (18.1/18.2); linha `active` para a chave => 0 chamadas R17
       (idempotencia); cria o que falta via `json-build link` (bloqueador
       = `outwardIssue`, bloqueado = `inwardIssue`, direcao confirmada em
-      15.3.2)
-- [ ] 18.4.2 `404` em R17 => `linking_disabled` (todas as dependencias da
+      15.3.2) — implementado em `_js_cmd_links` (`jira-sync.sh`, novo
+      subcomando `links`), pre-requisito `jira-io.sh json-build link
+      --type-id ID --outward-key K --inward-key K` (corpo de R17) + `--op
+      R16`/`--op R17` no `request` (classificacao dedicada). Ancora via
+      `jira-map.sh anchor`, tipo via `link_type_id` de ProjectConfig ou
+      R16+`jira-setup.sh resolve-link-type` (SEC-13, mesma execucao).
+- [x] 18.4.2 `404` em R17 => `linking_disabled` (todas as dependencias da
       feature ficam `unrepresentable`); `413` => `limit_exceeded`, aresta
-      especifica vira `unrepresentable reason=limit` (nunca retry)
-- [ ] 18.4.3 SEC-12: resposta de R16 (lista nao-paginada) passa pelo
+      especifica vira `unrepresentable reason=limit` (nunca retry) —
+      `jira-io.sh request --op R17`: 404 classifica `permission_denied`
+      (exit 7, contracts/plugin-scripts.md), 413 classifica
+      `limit_exceeded` (exit 7); `_js_cmd_links` interpreta exit7-de-R17
+      como `reason=linking_disabled` de negocio (cascata para as demais
+      arestas pendentes desta chamada) ou `reason=limit` (so a aresta,
+      via `classification=limit_exceeded` em stderr).
+- [x] 18.4.3 SEC-12: resposta de R16 (lista nao-paginada) passa pelo
       mesmo teto de tamanho de corpo do `jira-io.sh request`; corpo acima
-      do teto => `deferred` com diagnostico, nunca parse parcial
-- [ ] 18.4.4 `convert`/`drain`: `links` roda apos a criacao de Tasks (se
+      do teto => `deferred` com diagnostico, nunca parse parcial —
+      introduzido teto GENERICO (`JIRA_IO_MAX_BODY_BYTES`, default 5 MiB)
+      aplicado a QUALQUER resposta de `request` antes do passthrough
+      (cobre R16 e demais operacoes, plan.md "para TODAS as operacoes").
+- [x] 18.4.4 `convert`/`drain`: `links` roda apos a criacao de Tasks (se
       `links_enabled=on`); ancora que mudou (reorganizacao de fase) =>
-      linha `active` antiga vira `stale` (link NUNCA removido, FR-012)
-- [ ] 18.4.5 `status`: linhas grep-aveis `links_unrepresentable=N`,
-      `links_stale=N`
-- [ ] 18.4.6 Teste: 10 chamadas seguidas de `links` sobre a mesma Matriz
+      linha `active` antiga vira `stale` (link NUNCA removido, FR-012) —
+      `_js_cmd_convert` chama `_js_cmd_links` apos o loop de criacao;
+      `_js_process_reconcile_event` (evento `reconcile` de `drain`) chama
+      apos reconciliar status/marco/label (so se `_JSPE_BREAK != yes`);
+      ambos best-effort (`|| :`). Reorganizacao de fase implementada em
+      `_js_cmd_links`: ancora divergente da linha `active` existente ->
+      `link-put --state stale --reason anchor_changed` (chave antiga) +
+      tentativa de nova criacao com as ancoras atuais.
+- [x] 18.4.5 `status`: linhas grep-aveis `links_unrepresentable=N`,
+      `links_stale=N` — acrescentado ao final de `_js_cmd_status`, SO com
+      `--feature` (jira-links.tsv e por feature), leitura local via awk.
+- [x] 18.4.6 Teste: 10 chamadas seguidas de `links` sobre a mesma Matriz
       de Dependencias => 0 R17 apos a 1a; `link_type_id` vazio +
       candidato ambiguo => todas as arestas `unrepresentable`, sem
       chamada R17; `404` simulado em R16 => todas `unrepresentable
-      reason=linking_disabled`
-- [ ] 18.4.7 Mutation test: reverter 18.4.1 para nao checar `active`
-      antes de chamar R17 faz o teste de idempotencia de 18.4.6 falhar
+      reason=linking_disabled` — `tests/cstk/test_jira-sync.sh`
+      `scenario_links_idempotente_10x_zero_r17_apos_primeira`/
+      `scenario_links_ambiguous_link_type_zero_r17`/
+      `scenario_links_404_r16_linking_disabled_sem_link_type`/
+      `scenario_links_404_r17_linking_disabled_cascata`/
+      `scenario_links_413_r17_reason_limit`/
+      `scenario_links_disabled_zero_chamadas` (95/95 em
+      `sh tests/cstk/test_jira-sync.sh`); `jira-io.sh` novos cenarios JI-97..
+      JI-106 em `tests/cstk/test_jira-io.sh` (122/122). `shellcheck -s sh`
+      limpo em `jira-io.sh`/`jira-sync.sh`/os 2 arquivos de teste.
+- [x] 18.4.7 Mutation test: reverter 18.4.1 para nao checar `active`
+      antes de chamar R17 faz o teste de idempotencia de 18.4.6 falhar —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_18_4_7_links_idempotency_skips_active`
+      (15/15 verdes em `sh tests/cstk/test_jira-mutation.sh`).
 
 ---
 
