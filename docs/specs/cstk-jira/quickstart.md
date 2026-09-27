@@ -124,3 +124,129 @@ suposicao.
 **Expected**: passo 1 => exit 5 + diagnostico com instrucao de instalacao,
 eventos preservados no outbox, execucao 00c inalterada; passo 2 => conversao
 concluida pelo caminho MCP + scripts POSIX.
+
+## Round r02 (2026-09-26) — cenarios do incremento FR-020..FR-025
+
+Mesmo formato dos cenarios 1-7. Todos os automatizados rodam com o cliente
+HTTP substituido por stub (nenhum teste toca rede); o cenario 12 e o unico
+roundtrip real.
+
+## Cenario 8 — Marco (Fix Version) por round e por release (FR-020, FR-021)
+
+1. Feature SEM `.previous_round` e `CHANGELOG.md` com heading mais alto
+   `## [X.Y.Z]` => `jira-sync.sh milestone resolve` imprime `name=X.Y.Z`,
+   `kind=release`.
+2. Mesma feature com `.previous_round.round=r01` e 1 diretorio
+   `rounds/r01` => `name=<feature>-r02`, `kind=round`.
+3. `convert` com stub de R13 vazio => 1 chamada R12 com `name`/`projectId`
+   (numero) e depois Epic/Tasks com `fields.fixVersions=[{"id":...}]`.
+4. Repetir `convert` 10 vezes (stub de R13 agora devolve a versao).
+
+**Expected**: passo 3 => exatamente 1 R12 e `jira-milestones.tsv` com 1 linha
+`current`; passo 4 => 0 chamadas R12 (FR-021, SC-002 estendido).
+
+**Error case 8a** (heading mais alto `[Unreleased]`, sem
+`milestone_release`): `name=`, `status=unresolved`; itens criados sem
+`fixVersions`; `status`/`hook.log` mostram `milestone=unresolved`.
+
+**Error case 8b** (R2-4): stub devolve `404` (e, em outra rodada, `403`) em
+R12 => exit 7, `jira-milestones.tsv` `state=blocked`, NENHUM Epic/Task novo
+criado, transicoes de issues ja mapeadas continuam, nenhuma nova tentativa de
+R12 ate `write-config`.
+
+**Error case 8c** (corrida FR-023): R12 devolve `400` e o R13 seguinte ja
+traz o nome exato => reusa o `id`, 0 novas R12.
+
+**Troca de marco (R2-2)**: Epic com `written_fix_version_id` do marco antigo
+=> reconcile envia `update.fixVersions` com `remove` do id antigo e `add` do
+novo; nenhuma versao nao-gravada-pelo-plugin aparece em `remove`; tasks antigas
+nao recebem escrita.
+
+## Cenario 9 — Label de FASE (FR-022)
+
+1. `convert` de feature com tasks em `FASE 2` e `FASE 5`.
+2. Mover no `tasks.md` uma task da FASE 2 para a FASE 5 e disparar
+   `close_wave` (reconcile).
+
+**Expected**: passo 1 => Task/Sub-task com `fields.labels=["phase-2"]`/
+`["phase-5"]`, Epic sem label; passo 2 => 1 edicao com
+`update.labels=[{"remove":"phase-2"},{"add":"phase-5"}]`, SyncMarker com
+`written_phase_label=phase-5`; label humano pre-existente nunca aparece em
+`remove`.
+
+**Error case 9a**: `labels_enabled=off` => nenhum `labels` em corpo algum.
+**Error case 9b**: FASE com numero fora de SEC-1 (impossivel no template, mas
+fixture forjada) => item sem label + diagnostico, nunca corpo com valor nao
+validado.
+
+## Cenario 10 — Dependencias como links (FR-025)
+
+1. Feature com Matriz `F1 --> F2`, `F1 --> F3`; stub de R16 com exatamente um
+   tipo cujas frases contem `block` (e outros sem).
+2. `jira-sync.sh links`.
+3. Repetir `links`.
+
+**Expected**: passo 2 => 2 chamadas R17, `type.id` = id do candidato (nunca
+`type.name`), bloqueador (ancora de F1) em `outwardIssue`; `jira-links.tsv`
+com 2 linhas `active`; passo 3 => 0 chamadas R17.
+
+**Error case 10a**: R16 com 2 candidatos e sem `link_type_id` => 0 R17, 2
+linhas `unrepresentable` `reason=ambiguous_link_type`, `status` mostra
+`links_unrepresentable=2`.
+**Error case 10b**: R16 `404` => todas `linking_disabled`, sem erro fatal.
+**Error case 10c**: renumerar a ancora de F2 => linha antiga `stale`, link novo
+criado; nenhuma requisicao `DELETE` no log do stub.
+
+## Cenario 11 — Criacao de projeto sob gate humano (FR-024)
+
+1. Interativo, sem projeto: `jira-setup` lista projetos (`searchProjects`),
+   oferece criar; operador informa nome/key/template.
+2. Rodar `create-project` SEM `--confirm-key`; depois com `--confirm-key`
+   diferente da key; depois correto.
+3. Autonomo (execucao 00c ativa no cwd): `create-project --confirm-key K`.
+4. Autonomo com `--consent-block block-NNN` de bloqueio `pendente`; depois
+   `respondido`.
+5. Com plugin configurado e execucao ativa, chamar a tool
+   `createJiraProject` pela sessao.
+
+**Expected**: passo 2 => as duas primeiras recusadas (exit 2) sem nenhuma
+requisicao; a terceira faz `getProject` (404) e R18 com `leadAccountId` vindo
+de `/myself`; passo 3 => exit 2 sem requisicao (confirm-key nao vale em
+contexto autonomo); passo 4 => pendente recusado sem requisicao, respondido
+segue para R18; passo 5 => guarda `PreToolUse` exit 2.
+
+**Error case 11a**: R18 `403` => exit 7 + texto "crie o projeto pela UI do
+Jira ou peca a um admin" — nenhuma sugestao de trocar o token.
+**Error case 11b**: `getProject` `200` para a key => "projeto ja existe,
+reuse", 0 R18.
+
+## Cenario 12 — Roundtrip real do round r02 (conferencia de contrato, BLOQUEANTE)
+
+Contra o site de teste da whitelist (mesma credencial do r01, nunca
+impressa), num projeto de teste JA existente (R18 fica FORA deste roundtrip:
+criar projeto real exige gate humano proprio):
+
+1. R13; R12 com nome de teste; R12 de novo com o MESMO nome (registrar o
+   status real de duplicata).
+2. R1 com `fields.fixVersions` e `fields.labels`; R3 com
+   `?fields=labels,fixVersions,issuelinks` (registrar nome/shape real).
+3. R2 com `update.fixVersions` add/remove e `update.labels` add/remove.
+4. R16; R17 entre duas issues de teste; R3 `issuelinks` nas DUAS pontas
+   (confirmar direcao inward/outward); R17 repetido (confirmar duplicata).
+
+**Expected**: cada item "a confirmar por roundtrip" de `contracts/jira-rest.md`
+§"Continua fora do contrato apos o plan r02" e fechado com evidencia literal
+ou CORRIGIDO no contrato antes do codigo (Principio VI). Nenhum `DELETE`;
+issues/versoes de teste ficam para arquivamento manual (mesma nota 0.1.6 do
+r01).
+
+## Cenario 13 — Execucoes paralelas do roadmap (FR-023)
+
+1. Duas worktrees (`<repo>-<A>`, `<repo>-<B>`) de um projeto com
+   ProjectConfig so na worktree principal.
+2. Cada uma roda `feature-00c` e fecha uma onda.
+
+**Expected**: cada worktree resolve o config da principal (somente leitura),
+mantem `runtime/` proprio e sincroniza SO o proprio Epic; o marco de release
+compartilhado e criado uma vez (a segunda execucao reusa via R13, ou via
+releitura apos `400`).

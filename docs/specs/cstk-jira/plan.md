@@ -112,7 +112,7 @@ Fluxos:
    filtro + board kanban do projeto (US2 cenario 2: reuso, sem duplicar).
    Projeto Jira: reusa um existente; criacao so via tool `createJiraProject`
    do Rovo MCP ou pela UI do Jira (path REST v3 de criacao de projeto =
-   `NAO ENCONTRADO`, research Decision 3).
+   `NAO ENCONTRADO`, research Decision 3 — SUPERADO no round r02: R18 `createProject` com gate humano, ver fluxo 7).
 2. **Convert (US1, FR-001/003/013/014)** — `jira-convert`: pre-checagens
    completas antes da 1a escrita; cria Epic, Tasks filhas (`parent`) e
    Sub-tasks; grava `jira-map.tsv` item a item; grava SyncMarker. Reexecucao
@@ -242,3 +242,192 @@ credencial `0600`/`0700` fora do repo e fora de argv/log, metodos fechados em
 R1/R2 => `permission_denied`, distinto — ver Test Strategy "Falha"),
 `429` => `deferred` com `Retry-After`, hooks no-op sem config e sem
 imprimir `session_id`.
+
+## Round r02 (2026-09-26) — incremento FR-020..FR-025
+
+**Escopo**: cobrir "um projeto completo" no Jira — marco (Fix Version) acima
+do Epic, label de FASE, um Epic por feature do roadmap, criacao do projeto
+Jira sob gate humano e dependencias como issue links. Tudo ADITIVO ao r01
+(nenhum contrato, coluna ou comportamento do r01 muda sem flag/chave nova).
+Decisoes: `research.md` §"Round r02" (R2-1..R2-9); forma do Jira:
+`contracts/jira-rest.md` R12-R18 (OpenAPI oficial, sha256 identico ao do
+r01); interface do plugin: `contracts/plugin-scripts.md` e `contracts/hooks.md`
+§r02; entidades: `data-model.md` §r02; cenarios: `quickstart.md` 8-13.
+
+### Technical Context (delta)
+
+Sem mudanca de linguagem, dependencia, storage de base, plataforma ou tipo de
+projeto. Acrescimos: 2 sidecars versionados por feature
+(`jira-milestones.tsv`, `jira-links.tsv`), 7 chaves opcionais em
+ProjectConfig, 2 chaves opcionais no SyncMarker; 7 operacoes REST novas
+(R12-R18), todas via `jira-io.sh`. Constraint nova: `createVersion` exige
+*Administer Projects* (ou *Administer Jira*) e `createProject` exige
+*Administer Jira* — permissoes que o token de sync comum pode nao ter (ver
+Riscos).
+
+### Constitution Check (round r02)
+
+*Re-checado apos o design r02 (abaixo) — mesmo resultado.*
+
+| Principio | Status | Notas |
+|-----------|--------|-------|
+| I. SDD recursivo | PASS | delta na spec (FR-020..FR-025 + Clarifications 2026-09-26) -> plan r02 -> checklist -> tasks; plugin muda de comportamento => CHANGELOG + bump no release (lockstep MP-5) |
+| II. POSIX sh, zero dep | PASS (carve-out 1.1.0 inalterado) | nenhuma dependencia nova: `jq` + cliente HTTP continuam SO em `jira-io.sh`; os sidecars e `phase-edges`/`check-*`/`resolve-path` sao POSIX puro (`awk`/`sed`); `git` so e usado de forma opcional em `resolve-path` (sem `git` => so o cwd, nunca erro) e ja e ferramenta do ambiente de qualquer projeto-alvo com worktree; a conferencia de bloqueio humano (`--consent-block`) DELEGA ao `bloqueios.sh` do `agente-00c-runtime`, mesmo padrao do r01 13.1.1 — o plugin NUNCA chama `sqlite3` |
+| III. Formato canonico de skill | PASS | `jira-setup`/`jira-convert`/`jira-sync` ganham passos e Gotchas (gate de projeto, label/marco/link), sem skill nova |
+| IV. Zero coleta remota | PASS | rede continua so para `site_host` do proprio usuario; nenhuma chamada nova fora dele |
+| V. Profundidade | PASS | escopo fechado nos 6 FRs; nada de sprints, componentes, versoes liberadas pelo plugin ou multi-projeto |
+| VI. Zero fabricacao | PASS condicionado | toda operacao nova cita metodo/path/operationId/path JSON do OpenAPI; 6 pontos que o OpenAPI nao determina ficam "a confirmar por roundtrip no execute-task" (contrato §"Continua fora do contrato apos o plan r02") e viram tarefa BLOQUEANTE (quickstart cenario 12) antes do codigo depender deles; divergencia spec x OpenAPI (403 vs 404 em `createVersion`) registrada, nao escondida; nome do marco de release NUNCA calculado (R2-1) |
+
+### Fluxos novos
+
+5. **Convert com marco + labels + links (US1 estendida)** — `jira-sync.sh
+   convert`: pre-checagens do r01 -> `milestone resolve` (sem rede) ->
+   `milestone ensure` (R13; R12 so se o nome exato nao existir; `400` =>
+   reler R13) -> Epic (R1 com `fixVersions`) -> Tasks/Sub-tasks (R1 com
+   `fixVersions` quando aplicavel e `labels:["phase-<N>"]`) -> `links`
+   (R16 uma vez por execucao, R17 por aresta sem linha `active`). Marco
+   `blocked` interrompe ANTES da 1a criacao nova (R2-4).
+6. **Reconcile idempotente (close_wave)** — o evento `reconcile` do r01 passa
+   a: (a) garantir o marco corrente no Epic, trocando SO a versao que o
+   plugin gravou (`update.fixVersions` remove/add, R2-2); (b) ajustar
+   `phase-<N>` de tasks que mudaram de fase (`update.labels` remove/add,
+   R2-5); (c) rodar `links`. Cada escrita e precedida de leitura (R3/R15) e
+   pulada se o estado ja bate — 10 reconciles seguidos => 0 escritas apos o
+   1o (SC-002 estendido). Transicoes de status continuam independentes do
+   marco (SC-003 nao regride).
+7. **Setup com oferta de projeto (US4 estendida, FR-024)** — reusar sempre
+   primeiro (`getProject`/`searchProjects`); sem projeto e com
+   `project_create=gated`, oferecer criacao. *Interativo*: confirmacao
+   explicita de nome/key/tipo/template, repetindo a key
+   (`create-project --confirm-key`). *Autonomo*: a skill nao cria; devolve ao
+   orquestrador um pedido de gate, que registra `register_human_block`
+   (Bash: `bloqueios.sh register`) ou usa `ask_operator` (`kind=confirm`,
+   default = nao criar) e encerra a onda; na onda seguinte, com o bloqueio
+   `respondido`, `create-project --consent-block block-NNN`. `403` => orientar
+   criacao manual. Depois do projeto: tipos (R8, agora conferindo tambem se
+   `labels`/`fixVersions` estao na tela de criacao), tipo de link (R16 +
+   confirmacao do operador -> `link_type_id`), status e board como no r01.
+8. **Execucoes paralelas (FR-023)** — cada worktree do roadmap sincroniza o
+   proprio Epic; ProjectConfig resolvido do cwd ou, ausente, da worktree
+   principal (somente leitura); `runtime/` por worktree; marco de release
+   compartilhado protegido pela releitura de R13 (R2-3).
+
+```mermaid
+flowchart TD
+    C[convert / reconcile] --> MR{milestone resolve}
+    MR -->|off / unresolved| I[issues sem fixVersions + sinal]
+    MR -->|nome| ME[milestone ensure: R13 -> R12]
+    ME -->|exit 7| B[state=blocked: sem criacao nova]
+    ME -->|id| I2[R1/R2 com fixVersions + phase-N]
+    I --> L[links: R16 + R17 por aresta]
+    I2 --> L
+    L --> S[(jira-map / jira-milestones / jira-links)]
+```
+
+### Project Structure (delta)
+
+```text
+plugins/cstk-jira/scripts/jira-io.sh        # ALTERADO: --op R12..R18, json-build version|link|project, validate-version-name|project-key
+plugins/cstk-jira/scripts/jira-config.sh    # ALTERADO: chaves novas + resolve-path
+plugins/cstk-jira/scripts/jira-tasks.sh     # ALTERADO: phase-edges
+plugins/cstk-jira/scripts/jira-map.sh       # ALTERADO: milestone-*/link-* (sidecars)
+plugins/cstk-jira/scripts/jira-sync.sh      # ALTERADO: milestone resolve|ensure, links, convert/drain/status/plan
+plugins/cstk-jira/scripts/jira-setup.sh     # ALTERADO: check-field-support, check-link-type, create-project
+plugins/cstk-jira/hooks/hooks.json          # ALTERADO: matcher createJiraProject
+plugins/cstk-jira/hooks/pretooluse-jira-deny-destructive.sh  # ALTERADO: modo project-create
+plugins/cstk-jira/hooks/posttooluse-jira-sync.sh             # ALTERADO: resolve-path + resumo
+plugins/cstk-jira/skills/{jira-setup,jira-convert,jira-sync}/  # ALTERADOS: passos + Gotchas r02
+tests/cstk/test_jira-*.sh                   # ALTERADOS/NOVOS (cenarios 8-13 com stub)
+docs/specs/<feature>/jira-milestones.tsv    # NOVO por feature convertida (gerado em runtime)
+docs/specs/<feature>/jira-links.tsv         # NOVO por feature convertida (gerado em runtime)
+```
+
+Nenhum arquivo fora de `plugins/cstk-jira/` e `tests/cstk/` muda (o
+marketplace ja tem o 3o plugin desde o r01; so o bump de versao no release).
+
+### Convencoes de Borda (delta)
+
+| Camada | Case style | Validacao | Fonte da verdade |
+|--------|------------|-----------|------------------|
+| Chaves novas de ProjectConfig/SyncMarker, colunas dos sidecars | snake_case | `jira-config.sh validate`, cabecalho TSV | `data-model.md` §r02 |
+| Label de fase | `phase-<N>` (kebab) | SEC-1 | Clarification r02 |
+| Nome de Fix Version | `<feature>-rNN` ou SemVer | SEC-6 | research R2-1/R2-9 |
+| Payload R12-R18 | camelCase da Atlassian (`projectId`, `fixVersions`, `outwardIssue`, `leadAccountId`, ...) | nomes so do contrato | `contracts/jira-rest.md` R12-R18 |
+
+Mapper layer inalterado: so `jira-io.sh json-build` monta JSON.
+
+### Seguranca (SEC-1..5 estendidos + SEC-6..8)
+
+| ID | Extensao / requisito novo |
+|----|---------------------------|
+| SEC-1 | + aplica-se a `phase-<N>`, `link_type_id`, `jira_version_id`, `blocker_key`/`blocked_key` e `project_key` proposto no gate (este tambem pela regra do OpenAPI de R18) |
+| SEC-2 | + nomes de tipo de link (`name`/`inward`/`outward` de R16), nomes de versao e de projeto lidos do Jira sao DADO: exibidos rotulados ao operador; a escolha automatica de tipo de link so compara frases com a raiz fixa `block` e nunca executa/obedece texto delas |
+| SEC-3 | + nenhuma JQL nova: marco (R13) e links (R15/R16) sao lidos por rota + casamento local, nunca por busca JQL; nome de versao/label NUNCA em JQL |
+| SEC-4/SEC-5 | inalterados, valem para todas as operacoes novas (mesmo `request`) |
+| SEC-6 (novo) | nome de Fix Version: allowlist `^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`; nunca em PATH/querystring/JQL, so no corpo via `jq --arg` |
+| SEC-7 (novo, ASI02/LLM06 — excessive agency) | criacao de projeto so com consentimento verificavel (`--confirm-key` fora de execucao autonoma; `--consent-block` com bloqueio `respondido` dentro dela); guarda `PreToolUse` nega `createJiraProject` em execucao 00c ativa; o hook de sync nunca cria projeto |
+| SEC-8 (novo, FR-012) | operacoes destrutivas do Jira presentes no OpenAPI (`DELETE`, `removeAndSwap`, `mergeto`, `project/.../delete`) ficam fora do contrato; `update.*` com `remove` so remove valores gravados pelo proprio plugin (SyncMarker `written_*`), nunca valores humanos |
+
+### Riscos e degradacoes
+
+| Risco | Degradacao (nunca para a execucao da feature) |
+|-------|-----------------------------------------------|
+| Token sem *Administer Projects* => `createVersion` negado (documentado como `404`) | `milestone=blocked:<nome>`, criacao de issues novas suspensa (Clarification r02), transicoes seguem; instrucao: conceder permissao ou `milestone_mode=off` |
+| Nome da release inexistente (`[Unreleased]`) | `milestone=unresolved`, itens sem marco, anexados na reconciliacao seguinte quando `milestone_release` for definido ou a versao aparecer |
+| Versao duplicada por corrida entre worktrees | releitura de R13 apos `400`, reuso do id |
+| Tipo de link ausente/ambiguo, linking desligado, `413` | `unrepresentable` por aresta, visivel em `status`/`hook.log` |
+| `update.fixVersions` reprovado no roundtrip | troca de marco do Epic vira sinal `milestone_drift` sem escrita (nunca clobber) |
+| Direcao inward/outward invertida | corrigida no contrato apos o roundtrip, antes do codigo |
+| Tela de criacao sem `labels`/`fixVersions` | setup grava `labels_enabled=off`/`fix_versions_on_subtask=off` com aviso |
+| Token sem *Administer Jira* no gate de projeto | exit 7 + orientacao de criacao manual (FR-024) |
+| Worktree sem `git` no PATH | so o config do cwd; sem config => no-op (FR-017) |
+
+### Impacto em hooks e skills existentes
+
+- `posttooluse-jira-sync.sh`: `resolve-path`, reconcile mais rico, resumo com
+  sinais novos; mesmo fail-open e nao-exfiltracao.
+- `pretooluse-jira-deny-destructive.sh`: 1 modo novo (`project-create`); a
+  deny-list de exclusao do r01 nao muda.
+- `jira-setup` (skill): passos novos (oferta de projeto com gate, conferencia
+  de campos R8, escolha confirmada de `link_type_id`, `milestone_mode`/
+  `milestone_release`); Gotcha: "nunca criar projeto em contexto autonomo".
+- `jira-convert` (skill): caminho MCP nao cobre marco/links (sem tool citada,
+  `rovo-mcp.md` r02) — usa o helper REST para eles; sem deps, sinaliza.
+- `jira-sync` (skill): `status` mostra marco/links; `resolve` aceita os
+  `reason` novos (`milestone_drift`/`label_drift`).
+- Orquestradores do toolkit: NENHUMA mudanca (o gate de projeto usa as
+  primitivas ja existentes de bloqueio humano).
+
+### Test Strategy (delta)
+
+| Nivel | O que cobre |
+|-------|-------------|
+| Unit | `milestone resolve` (round/release/unresolved/off, divergencia de contagem de rounds), `phase-edges`, SEC-6, `validate-project-key`, invariante "1 `current`" do sidecar |
+| Contrato | corpos de R12/R14/R17/R18 batem com `jira-rest.md` (stub grava a requisicao); nenhum `type.name`, nenhum `fields`+`update` do mesmo campo |
+| Idempotencia | 10x convert/reconcile => 0 R12/R17/edicoes apos a 1a passada |
+| Falha | cenarios 8a-8c, 9a-9b, 10a-10c, 11a-11b |
+| Gate | `create-project` sem consentimento => 0 requisicoes; guarda `createJiraProject` exit 2 com execucao ativa |
+| Mutation | quebrar de proposito: SEC-6, gate de consentimento, "remove so o proprio valor", guarda `createJiraProject` — o teste MUST falhar |
+| E2E manual | quickstart cenario 12 (BLOQUEANTE antes do codigo depender dos 6 itens "a confirmar") |
+
+### Complexity Tracking (r02)
+
+Nenhuma violacao nova de principio MUST. Tensao registrada: o marco de
+release depende de o projeto-alvo nomear a proxima versao (override
+`milestone_release`), porque inferi-la seria fabricacao — aceita como
+degradacao `unresolved`, nao como violacao.
+
+### Requisitos derivados do gate owasp-security (plan r02, onda-003)
+
+Gate sobre o DESENHO r02 (sem codigo novo): 0 critical / 0 high / 2 medium /
+3 low / 1 info. Os medium/low viram requisitos que `create-tasks` MUST
+converter em tarefas com teste (inclusive mutation). Nenhum dado factual novo.
+
+| ID | Sev. | Categoria | Requisito |
+|----|------|-----------|-----------|
+| SEC-9 | medium | ASI03/confused deputy | `--consent-block block-NNN` so vale se o bloqueio (a) esta `respondido`, (b) tem na `pergunta` o marcador literal `cstk-jira:create-project key=<K> name-sha256=<H> template=<T>` gerado pelo proprio plugin para AQUELE pedido (K/T/H iguais aos argumentos da chamada), (c) a resposta e a opcao afirmativa fixa `criar-projeto`, e (d) nunca foi consumido antes — o consumo e registrado em `runtime/consumed-consents.tsv` (append, nao versionado) e um 2o uso do mesmo `block-NNN` sai exit 2 sem requisicao. Bloqueio respondido de OUTRO assunto nunca autoriza criacao |
+| SEC-10 | medium | A08/integridade (entity property e editavel no Jira) | o SyncMarker vive no Jira e qualquer usuario com edicao da issue pode altera-lo: `update.fixVersions` `remove` so e emitido se `written_fix_version_id` TAMBEM consta em `jira-milestones.tsv` da feature (`current`/`superseded`); `update.labels` `remove` so se o valor casa `^phase-[0-9]+$`. Divergencia marker x sidecar => `ConflictRecord` (`milestone_drift`/`label_drift`), nunca remocao |
+| SEC-11 | low | A05 | o token de round lido do state MUST casar `^r[0-9]{2,}$` e o heading do CHANGELOG MUST casar SemVer (`^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$`) ANTES de compor o nome do marco; alem disso SEC-6 no nome final |
+| SEC-12 | low | API4 | respostas de R13/R16 (listas nao-paginadas) passam pelo mesmo teto de tamanho de corpo do `jira-io.sh request` (se o r01 nao tiver teto, a tarefa o introduz para TODAS as operacoes); corpo acima do teto => `deferred` com diagnostico, nunca parse parcial |
+| SEC-13 | low | ASI01/LLM01 | a escolha automatica de tipo de link (R2-6) so considera `id`s devolvidos por R16 NA MESMA execucao e nunca vale quando o operador ja confirmou `link_type_id`; o nome/frases do tipo escolhido sao exibidos rotulados como conteudo externo em `status`/`plan` |
+| — | info | A01 | fallback de ProjectConfig para a worktree principal nao amplia superficie: credencial continua resolvida por `site_host` (r01) e o config do cwd continua tendo precedencia, como no r01 |

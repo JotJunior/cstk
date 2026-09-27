@@ -34,7 +34,7 @@ Hierarquia (R1): campo `parent` liga filho ao Epic; Epic Link
 
 **Fora do contrato (`NAO ENCONTRADO` em research)**: endpoint de changelog da
 issue; citacao literal do campo `updated`; citacao de que Sub-task usa
-`parent`; path v3 de criacao de projeto.
+`parent`; path v3 de criacao de projeto (SUPERADO no plan r02 — ver R18).
 
 **Metodos proibidos**: qualquer `DELETE` (FR-012). `jira-io.sh` aceita so
 `GET`/`POST`/`PUT`.
@@ -376,3 +376,210 @@ roundtrip onda-011, ainda nao arquivada — ver nota 0.1.6 acima).
   `cstk-jira.sync` permanece gravada em `SCRUM-5` — mesmo criterio de risco
   aceito da nota 0.1.6 (issue de teste vazia, sem dados reais, em projeto de
   sandbox).
+
+## Operacoes do round r02 (R12-R18) a partir do OpenAPI oficial (plan r02, onda-003)
+
+**Fonte unica desta secao**: o MESMO OpenAPI oficial do Jira Cloud REST v3 ja
+citado na secao onda-005 (`https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json`,
+host na whitelist por block-005), re-baixado em 2026-09-26 pela onda-001 do
+round r02 e reconferido nesta onda: sha256
+`6ecc461bb85e92a46331a4316b6c63c91c16ed6baf5f06b03ab616da3f1ab3d7` (IDENTICO
+ao das ondas 005/029 do r01), `openapi: 3.0.1`, `info.version:
+1001.0.0-SNAPSHOT-44cdd07c042959317ed5591bf79dbcd9369f3610`, 423 paths.
+Abreviacoes `P:`/`S:` como na secao onda-005. Nenhuma linha abaixo foi
+exercitada contra um site real nesta onda (sem roundtrip no plan): o que o
+schema/exemplo nao determina esta marcado **a confirmar por roundtrip no
+execute-task** e MUST NOT ser tratado como fato pelo motor antes disso
+(quickstart cenario 12).
+
+| ID | Operacao | Metodo + path | operationId | Requisito |
+|----|----------|---------------|-------------|-----------|
+| R12 | criar Fix Version | `POST /rest/api/3/version` | `createVersion` | FR-020 |
+| R13 | listar versoes do projeto (idempotencia) | `GET /rest/api/3/project/{projectIdOrKey}/versions` | `getProjectVersions` | FR-021 |
+| R14 | `fixVersions`/`labels` na criacao/edicao | extensao do corpo de R1/R2 | `createIssue`/`editIssue` | FR-020, FR-022 |
+| R15 | ler `labels`/`fixVersions`/`issuelinks` de issue mapeada | extensao de R3 (`?fields=...`) | `getIssue` | FR-021, FR-022, FR-025 |
+| R16 | listar tipos de link | `GET /rest/api/3/issueLinkType` | `getIssueLinkTypes` | FR-025 |
+| R17 | criar link entre issues | `POST /rest/api/3/issueLink` | `linkIssues` | FR-025 |
+| R18 | criar projeto (SO com gate humano) | `POST /rest/api/3/project` | `createProject` | FR-024 |
+
+Todas com `deprecated: false` no arquivo. Metodos continuam fechados em
+`GET`/`POST`/`PUT`: as operacoes `DELETE` e as de remocao/troca de versao
+(`POST /rest/api/3/version/{id}/removeAndSwap`, `deleteAndReplaceVersion`;
+`PUT /rest/api/3/version/{id}/mergeto/{moveIssuesTo}`, `mergeVersions`) e de
+exclusao de projeto (`POST /rest/api/3/project/{projectIdOrKey}/delete`,
+`deleteProjectAsynchronously`) existem no arquivo e ficam **fora do
+contrato** por FR-012 (nunca apagar/fundir artefato do Jira).
+
+### R12 — criar Fix Version: `POST /rest/api/3/version` (operationId `createVersion`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| corpo | schema `Version` (`$ref`); o schema NAO tem lista `required` — obrigatoriedade vem das descricoes dos campos | `P:./rest/api/3/version.post.requestBody.content.application/json.schema` → `S:.Version` |
+| `name` | string — "The unique name of the version. Required when creating a version. Optional when updating a version. The maximum length is 255 characters." | `S:.Version.properties.name.description` |
+| `projectId` | integer — "The ID of the project to which this version is attached. Required when creating a version." (o motor converte o `id` string de `getProject` para numero JSON, validando so digitos, mesmo padrao de `filterId` em R10) | `S:.Version.properties.projectId` |
+| `description` | string opcional, "maximum size is 16,384 bytes" — o motor envia texto FIXO do plugin (ex.: rotulo do marco), nunca texto lido do Jira | `S:.Version.properties.description` |
+| `released`/`archived`/`releaseDate`/`startDate` | opcionais — o motor NAO os envia (versao nasce nao-liberada; liberar e decisao humana na UI) | `S:.Version.properties` |
+| `project` | "Deprecated. Use `projectId`." — NUNCA enviado | `S:.Version.properties.project.description` |
+| exemplo oficial | `{"archived":false,"description":"An excellent version","name":"New Version 1","projectId":10000,"releaseDate":"2010-07-06","released":true}` | `...requestBody.content.application/json.example` |
+| sucesso | `201` → `Version` (`id` string readOnly, `name`, `self` string readOnly, ...) | `P:./rest/api/3/version.post.responses.201`; `S:.Version.properties.id` |
+| erros | `400` "request is invalid"; `401` credencial; `404` "the project is not found" **ou** "the user does not have the required permissions"; `422` `LimitExceededResponseBean` | `P:./rest/api/3/version.post.responses` |
+| permissao | "*Administer Jira* global permission or *Administer Projects* project permission for the project the version is added to." | `P:./rest/api/3/version.post.description` |
+
+**Divergencia com a Clarification r02 (Principio VI)**: a spec fala em
+"HTTP 403" para permissao insuficiente na criacao da Fix Version, mas o
+OpenAPI de `createVersion` NAO documenta `403` — a falta de permissao aparece
+como `404` (junto com "projeto nao encontrado"). Tratamento de desenho
+(plan.md r02, Decisao R2-4): `--op R12` classifica `403` (se vier, nao
+documentado) E `404` como `permission_denied` (exit 7), porque o
+`project_key` ja foi resolvido por `getProject` na mesma execucao (o ramo
+"projeto nao encontrado" ja teria falhado antes); o motor suspende a
+sincronizacao daquele marco (FR-020). O status real devolvido por falta de
+permissao e **a confirmar por roundtrip no execute-task**.
+
+**Nome duplicado (corrida entre execucoes paralelas, FR-023)**: o schema diz
+que `name` e "unique", mas o status HTTP de uma tentativa com nome ja
+existente NAO esta documentado (so ha `400` generico). Tratamento: apos
+qualquer `400` em R12 o motor refaz R13 e, se achar nome EXATO, reusa o `id`
+encontrado (nunca repete R12). Status real **a confirmar por roundtrip no
+execute-task**.
+
+### R13 — listar versoes: `GET /rest/api/3/project/{projectIdOrKey}/versions` (operationId `getProjectVersions`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| path | `projectIdOrKey` — "The project ID or project key (case sensitive)." (SEC-1: `project_key` passa por `validate-segment`) | `...versions.get.parameters[name=projectIdOrKey]` |
+| query | so `expand` (opcional; o motor NAO usa) | `...versions.get.parameters` |
+| paginacao | NENHUMA — "Returns all versions in a project. The response is not paginated." | `...versions.get.description` |
+| sucesso | `200` → array de `Version` (`id`, `name`, `released`, `archived`, ...) | `...versions.get.responses.200.content.application/json.schema` |
+| erros | `404` | `...versions.get.responses` |
+
+**Por que esta rota e nao a paginada**: `GET /rest/api/3/project/{projectIdOrKey}/version`
+(operationId `getProjectVersionsPaginated`, `PageBeanVersion`: `isLast`,
+`maxResults`, `nextPage`, `startAt`, `total`, `values`) aceita `query`
+("Versions with matching `name` or `description` are returned (case
+insensitive)") — casamento aproximado e case-insensitive, que NAO serve como
+teste de identidade, e exigiria interpolar o nome do marco numa querystring.
+A rota nao-paginada devolve tudo e o motor casa o `name` por IGUALDADE EXATA
+(byte a byte) localmente via `jira-io.sh json-get` — nenhum texto do marco
+entra em URL. Projeto com volume de versoes que torne isso caro e cenario nao
+observado; reabrir via `/clarify` se aparecer.
+
+### R14 — `fixVersions` e `labels` no corpo de R1/R2
+
+| Elemento | Valor | Situacao | Path JSON |
+|----------|-------|----------|-----------|
+| criar com versao | `fields.fixVersions`: array de `{"id": "<id da versao>"}` (exemplo oficial `"fixVersions":[{"id":"10001"}]`) | citado (exemplo) | `P:./rest/api/3/issue.post.requestBody.content.application/json.example.fields.fixVersions` |
+| criar com label | `fields.labels`: array de string (exemplo oficial `"labels":["bugfix","blitz_test"]`) | citado (exemplo) | `...example.fields.labels` |
+| editar label sem clobber | `update.labels`: lista de operacoes `{"add": "<label>"}` / `{"remove": "<label>"}` (exemplo oficial `"labels":[{"add":"triaged"},{"remove":"blocker"}]`) | citado (exemplo de `editIssue`) | `P:./rest/api/3/issue/{issueIdOrKey}.put.requestBody.content.application/json.example.update.labels` |
+| editar versao sem clobber | `update.fixVersions` com `{"add": {"id": "<id>"}}` / `{"remove": {"id": "<id>"}}` | **a confirmar por roundtrip no execute-task** — o OpenAPI so documenta `update` genericamente ("A Map containing the field field name and a list of operations to perform on the issue screen field"), sem exemplo para `fixVersions` | `S:.IssueUpdateDetails.properties.update.description` |
+| exclusividade `fields` x `update` | "Fields included in here cannot be included in `update`." / "Note that fields included in here cannot be included in `fields`." — o motor NUNCA manda o mesmo campo nos dois | citado | `S:.IssueUpdateDetails.properties.fields.description`, `...update.description` |
+| operacoes suportadas por campo | `FieldCreateMetadata.operations` (obrigatorio no schema) em R8 `GET .../issuetypes/{issueTypeId}` — o setup confere, POR TIPO de issue, se `fixVersions`/`labels` estao na tela de criacao e quais operacoes aceitam | citado (R8) | `S:.FieldCreateMetadata.required` |
+
+Por que `update` (add/remove) e nao `fields.labels`/`fields.fixVersions` na
+edicao: `fields` SUBSTITUI a lista inteira e apagaria labels/versoes postas a
+mao por humanos no Jira — o plugin so remove o valor que ELE PROPRIO gravou
+(rastreado no SyncMarker, `data-model.md`). Na CRIACAO (R1) nao ha valor
+humano a preservar, entao `fields.*` e usado. Se o roundtrip reprovar
+`update.fixVersions`, a edicao de marco numa issue existente degrada para
+"sinalizar e nao escrever" (nunca para `fields.fixVersions` com clobber).
+
+### R15 — ler `labels`/`fixVersions`/`issuelinks` (extensao de R3)
+
+`GET /rest/api/3/issue/{issueIdOrKey}?fields=labels,fixVersions,issuelinks`
+(parametro `fields` ja citado em R3: "accepts a comma-separated list").
+
+| Campo | Fonte | Situacao |
+|-------|-------|----------|
+| `issuelinks` | exemplo de `200` de `getIssue`: elemento `{"id":"10001","outwardIssue":{"id":...,"key":"PR-2","self":...,"fields":{...}},"type":{"id":"10000","inward":"depends on","name":"Dependent","outward":"is depended by"}}`; schema `S:.IssueLink` (`required`: `inwardIssue`, `outwardIssue`, `type`; props `id`, `self`) | citado (exemplo + schema) |
+| `labels`, `fixVersions` | nomes como id de campo so no exemplo de CRIACAO (R14); NAO aparecem em `S:.Fields` nem no exemplo de `200` de `getIssue` | **a confirmar por roundtrip no execute-task** (nome e shape na RESPOSTA) |
+
+Uso: conferir, antes de escrever, se a versao/label/link que o plugin
+pretende aplicar ja esta la (idempotencia FR-021/FR-022/FR-025) e achar o
+`id` de um link recem-criado (R17 nao devolve corpo).
+
+### R16 — tipos de link: `GET /rest/api/3/issueLinkType` (operationId `getIssueLinkTypes`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| sucesso | `200` → `IssueLinkTypes` com `issueLinkTypes` (array readOnly de `IssueLinkType`) | `...issueLinkType.get.responses.200` → `S:.IssueLinkTypes.properties` |
+| elemento | `id` (string), `name` (string), `inward` (string, "description of the issue link type inward link"), `outward` (string), `self` (string) | `S:.IssueLinkType.properties` |
+| exemplo oficial | `{"issueLinkTypes":[{"id":"1000","inward":"Duplicated by","name":"Duplicate","outward":"Duplicates",...},{"id":"1010","inward":"Blocked by","name":"Blocks","outward":"Blocks",...}]}` | `...responses.200.content.application/json.example` |
+| erros | `401`; `404` "Returned if issue linking is disabled." | `...issueLinkType.get.responses` |
+
+`404` aqui = linking desligado no site => TODAS as dependencias da feature
+ficam `unrepresentable` (FR-025), sem erro fatal. Os valores `name`/`inward`/
+`outward` do exemplo sao ILUSTRATIVOS (sao dados configurados por site): a
+escolha do tipo segue a regra dinamica de `data-model.md` §IssueLink, nunca um
+literal destes exemplos.
+
+### R17 — criar link: `POST /rest/api/3/issueLink` (operationId `linkIssues`)
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| corpo | `LinkIssueRequestJsonBean`, `additionalProperties: false`, `required`: `inwardIssue`, `outwardIssue`, `type`; `comment` opcional (o motor NUNCA envia) | `S:.LinkIssueRequestJsonBean` |
+| `inwardIssue`/`outwardIssue` | `LinkedIssue`: `key` ("Required if `id` isn't provided") ou `id` | `S:.LinkedIssue.properties` |
+| `type` | `IssueLinkType`: `id` ("Required on create when `name` isn't provided") ou `name` — o motor envia SEMPRE `{"id": "<link_type_id>"}`, nunca `name` (FR-025: nada hardcoded) | `S:.IssueLinkType.properties.id.description` |
+| exemplo oficial | `{"inwardIssue":{"key":"HSP-1"},"outwardIssue":{"key":"MKY-1"},"type":{"name":"Duplicate"},"comment":{...}}` | `...issueLink.post.requestBody.content.application/json.example` |
+| sucesso | `201`, SEM corpo util: "This resource returns nothing on the creation of an issue link. To obtain the ID of the issue link, use `.../rest/api/3/issue/[linked issue key]?fields=issuelinks`." | `...issueLink.post.description`; `...responses.201` |
+| duplicata | "If the link request duplicates a link, the response indicates that the issue link was created." — reenviar o mesmo link e seguro (base da idempotencia de FR-025 junto com o sidecar local) | `...issueLink.post.description` |
+| erros | `400` (comentario nao criado), `401`, `404` ("issue linking is disabled" ou usuario sem ver uma das issues), `413` "per-issue limit for issue links has been breached" | `...issueLink.post.responses` |
+| permissao | *Browse project* nos projetos das duas issues + *Link issues* "on the project containing the from (outward) issue" | `...issueLink.post.description` |
+
+**Direcao (a confirmar por roundtrip no execute-task)**: o OpenAPI chama o
+`outwardIssue` de issue "from" (comentario e permissao *Link issues* vao para
+ela), mas NAO afirma qual frase (`inward`/`outward`) se le a partir de qual
+issue. O desenho envia o BLOQUEADOR como `outwardIssue` e o BLOQUEADO como
+`inwardIssue`; o roundtrip MUST criar 1 link e ler R15 das duas pontas para
+confirmar que o bloqueador exibe a frase `outward` e o bloqueado a `inward`.
+Se o roundtrip contradizer, inverte-se a atribuicao NO CONTRATO antes do
+codigo (Principio VI).
+
+`413`: classificado como `permission_denied`-like por item (o link vira
+`unrepresentable` com motivo `limit`), nunca retry.
+
+### R18 — criar projeto: `POST /rest/api/3/project` (operationId `createProject`) — SO com gate humano (FR-024)
+
+SUPERA o `NAO ENCONTRADO` "path v3 de criacao de projeto" de research.md
+Decision 3 e da secao "Continua fora do contrato apos a onda-005".
+
+| Elemento | Valor | Path JSON |
+|----------|-------|-----------|
+| corpo | `CreateProjectDetails`, `required`: `key`, `name` | `S:.CreateProjectDetails.required` |
+| `key` | "Project keys must be unique and start with an uppercase letter followed by one or more uppercase alphanumeric characters. The maximum length is 10 characters." | `S:.CreateProjectDetails.properties.key.description` |
+| `name` | "The name of the project." | `...properties.name` |
+| `leadAccountId` | "Either `lead` or `leadAccountId` must be set when creating a project. Cannot be provided with `lead`." — `lead` e deprecated; o motor usa `leadAccountId` = `accountId` do usuario autenticado (`GET /rest/api/3/myself`, schema `User`, campo `accountId` — presente na resposta real do roundtrip onda-011) | `...properties.leadAccountId.description`; `S:.User.properties.accountId` |
+| `projectTypeKey` | enum `software`, `service_desk`, `business`, `customer_service` — "If you don't specify the project template you have to specify the project type." O plugin usa `software` (o board kanban de US2 e da Agile API do Jira Software, R10) | `...properties.projectTypeKey` |
+| `projectTemplateKey` | enum; "The type of the `projectTemplateKey` must match with the type of the `projectTypeKey`." Para `software` a tabela da descricao lista `com.pyxis.greenhopper.jira:gh-simplified-agility-kanban`, `...:gh-simplified-agility-scrum`, `...:gh-simplified-basic`, `...:gh-simplified-kanban-classic`, `...:gh-simplified-scrum-classic` | `...properties.projectTemplateKey`; `P:./rest/api/3/project.post.description` |
+| outros | `assigneeType` (enum `PROJECT_LEAD`/`UNASSIGNED`), `description`, `avatarId`, `categoryId`, esquemas (`permissionScheme`, `workflowScheme`, ...) — o motor NAO envia (defaults do template) | `S:.CreateProjectDetails.properties` |
+| sucesso | `201` → `ProjectIdentifiers` (`additionalProperties: false`, `required`: `id` integer int64, `key` string, `self` string uri) | `...project.post.responses.201` → `S:.ProjectIdentifiers` |
+| erros | `400` "request is not valid and the project could not be created"; `401`; `403` "the user does not have permission to create projects" | `...project.post.responses` |
+| permissao | "*Administer Jira* global permission" | `P:./rest/api/3/project.post.description` |
+
+**Template padrao proposto**: `com.pyxis.greenhopper.jira:gh-simplified-agility-kanban`
+(kanban, alinhado a US2) — a lista vem do OpenAPI, mas a ESCOLHA e do
+operador no gate (confirmacao explicita de `name`/`key`/tipo/template); o
+default e so a opcao pre-selecionada. Se o template ja cria um board
+kanban, o reuso de R11 (`projectKeyOrId`+`type=kanban`) o encontra e o setup
+NAO cria um segundo — se cria ou nao e **a confirmar por roundtrip no
+execute-task** (o OpenAPI nao diz).
+
+`403` em R18 => `permission_denied` (exit 7) e o setup cai no ramo "orientar
+criacao manual" de FR-024 (UI do Jira ou tool `createJiraProject` do Rovo MCP
+por um admin) — NUNCA e tratado como credencial invalida (a credencial e
+valida; falta *Administer Jira*).
+
+**Checagem previa de existencia**: `GET /rest/api/3/project/{projectIdOrKey}`
+(`getProject`, ja citado em R1 "Resolucao do project.id") com a `key`
+proposta — `200` => projeto ja existe, reusar (nunca criar); `404` => livre
+para o gate. `GET /rest/api/3/project/search` (`searchProjects`, query
+`keys`, `query`, ...) continua disponivel para LISTAR projetos ao operador
+(rota ja exercitada no roundtrip onda-011).
+
+### Continua fora do contrato apos o plan r02
+
+Status HTTP de nome de versao duplicado em R12; status real de falta de
+permissao em R12 (documentado como `404`, spec fala em `403`); forma
+`update.fixVersions` (add/remove); nome/shape de `labels`/`fixVersions` na
+RESPOSTA de R3; direcao inward/outward de R17; se o template de R18 cria
+board. Todos entram na tarefa bloqueante de roundtrip do round r02
+(quickstart cenario 12) antes de o codigo depender deles.

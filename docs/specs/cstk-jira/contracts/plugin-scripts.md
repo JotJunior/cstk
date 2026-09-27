@@ -144,3 +144,93 @@ da condicao (a) do carve-out 1.1.0: sem `jq`/cliente HTTP a conversao e a
 sincronizacao continuam possiveis pela sessao interativa; o que degrada e o
 sync AUTONOMO, que sai com exit 5 + diagnostico e mantem os eventos no outbox
 para o proximo `jira-sync` interativo.
+
+## Round r02 (2026-09-26) — subcomandos e flags novos (FR-020..FR-025)
+
+`[PROPOSTA — a validar na implementacao]`: interface NOVA do plugin (nao e
+contrato de sistema externo). Tudo e ADITIVO — nenhum subcomando/flag do r01
+muda de semantica; sem as flags novas o comportamento e byte-a-byte o do r01.
+Os pontos que tocam o Jira remetem a `jira-rest.md` R12-R18. `jq`/cliente
+HTTP continuam SO em `jira-io.sh` (carve-out 1.1.0 b); nenhum `sqlite3`.
+
+### `jira-io.sh`
+
+| Subcomando / flag | Descricao |
+|-------------------|-----------|
+| `request ... --op OP` | `OP` passa a aceitar `R12`..`R18`. Metodos continuam `GET`/`POST`/`PUT` |
+| `validate-version-name NAME` | SEC-6: `^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`; exit 2 se falhar; sem `jq`/HTTP |
+| `validate-project-key KEY` | regra do OpenAPI de R18 (`^[A-Z][A-Z0-9]{1,9}$`) E SEC-1; exit 2 se falhar |
+| `json-build issue ... [--fix-version-id ID] [--label LABEL]` | acrescenta `fields.fixVersions:[{"id":ID}]` e/ou `fields.labels:[LABEL]` (R14); ID por SEC-1, LABEL por SEC-1; omitidas => corpo identico ao r01 |
+| `json-build issue-update ... [--add-label L] [--remove-label L] [--add-fix-version-id ID] [--remove-fix-version-id ID]` | acrescenta `update.labels`/`update.fixVersions` com operacoes `add`/`remove` (R14); NUNCA emite o mesmo campo em `fields` e `update`; `--summary` passa a ser opcional quando so ha operacoes de `update` (edicao so de label/versao) |
+| `json-build version --name N --project-id DIGITS --description TEXT` | corpo de R12: `{"name":N,"projectId":<numero>,"description":TEXT}`; N por SEC-6; `--project-id` so digitos, emitido como numero JSON; `description` texto FIXO passado pelo motor |
+| `json-build link --type-id ID --outward-key K --inward-key K` | corpo de R17: `{"type":{"id":ID},"outwardIssue":{"key":K},"inwardIssue":{"key":K}}`; tudo por SEC-1; nunca `comment`, nunca `type.name` |
+| `json-build project --name N --key K --template T --lead-account-id A` | corpo de R18: `{"key":K,"name":N,"projectTypeKey":"software","projectTemplateKey":T,"leadAccountId":A}`; K por `validate-project-key`; T MUST estar na lista de templates `software` do contrato R18; A por SEC-1 |
+
+Classificacao de status (acrescimo a tabela do r01; demais linhas inalteradas):
+
+| Resposta | Tratamento |
+|----------|-----------|
+| `403` ou `404` em `--op R12` | exit 7, `classification=permission_denied` (research R2-4: `404` e o documentado para falta de permissao; o projeto ja foi resolvido antes) |
+| `400` em `--op R12` | exit 1, `classification=version_conflict_or_invalid` — o chamador refaz R13 antes de qualquer outra coisa (R2-3) |
+| `404` em `--op R16` | exit 7, `classification=linking_disabled` |
+| `404` em `--op R17` | exit 7, `classification=permission_denied` |
+| `413` em `--op R17` | exit 7, `classification=limit_exceeded` |
+| `403` em `--op R18` | exit 7, `classification=permission_denied` (orientar criacao manual, FR-024 — nunca reconfiguracao de credencial) |
+
+### `jira-config.sh`
+
+| Subcomando | Descricao |
+|------------|-----------|
+| `get KEY` | aceita as chaves novas; chave nova ausente => imprime o DEFAULT de `data-model.md` §"ProjectConfig — chaves novas" (exit 0) |
+| `validate` | + enums (`milestone_mode`, `labels_enabled`, `fix_versions_on_subtask`, `links_enabled`, `project_create`), SEC-6 em `milestone_release`, SEC-1 em `link_type_id` |
+| `resolve-path` | NOVO: imprime o caminho efetivo do ProjectConfig — cwd, senao worktree principal (FR-023, somente leitura); exit 3 se nenhum existir |
+
+### `jira-tasks.sh`
+
+| Subcomando | Descricao |
+|------------|-----------|
+| `phase-edges --feature F` | NOVO: uma linha `A<TAB>B` por aresta `FA --> FB` da `## Matriz de Dependencias` (mesmo parser de `phase-deps`); sem secao/arestas => stdout vazio, exit 0 |
+| `items` | inalterado (a coluna `phase` do r01 ja carrega `FASE N`; `phase_number` e derivado por quem consome) |
+
+### `jira-map.sh` (sidecars versionados)
+
+| Subcomando | Descricao |
+|------------|-----------|
+| `milestone-get --feature F [--state current]` | le `jira-milestones.tsv` |
+| `milestone-put --feature F --name N --kind round\|release --version-id ID --project-key K --state current\|superseded\|blocked` | upsert atomico por `(project_key, milestone_name)`; ao gravar `current`, rebaixa a `current` anterior para `superseded` no MESMO write (invariante: no maximo 1 `current`) |
+| `link-get --feature F --from A --to B` | le `jira-links.tsv` |
+| `link-put --feature F --from A --to B --blocker-key K --blocked-key K --type-id ID --state S [--reason R]` | upsert atomico pela chave natural; nunca remove linha (`stale` em vez de apagar) |
+
+### `jira-sync.sh`
+
+| Subcomando | Descricao |
+|------------|-----------|
+| `milestone resolve --feature F` | NOVO, sem rede: imprime `name=<N>`/`kind=<round\|release>` ou `name=` + `status=unresolved`/`off` (research R2-1) |
+| `milestone ensure --feature F` | NOVO: R13 + casamento exato, senao R12; `400` => refaz R13 (R2-3); grava `jira-milestones.tsv`; exit 7 => grava `state=blocked` e suspende criacao de issues novas da feature (R2-4) |
+| `links --feature F` | NOVO: reconcilia `jira-links.tsv` contra `phase-edges` + ancoras do `jira-map.tsv` + tipo (R16/`link_type_id`, R2-6); cria o que falta (R17), marca `stale`/`unrepresentable`; nunca remove |
+| `convert --feature F` | + antes da 1a criacao: `milestone ensure` (se `milestone_mode=auto` e nome resolvido); Epic/Task/Sub-task criados com `--fix-version-id` (Sub-task so se `fix_versions_on_subtask=on`) e Task/Sub-task com `--label phase-<N>` (se `labels_enabled=on`); apos criar as tasks, `links` (se `links_enabled=on`). Marco `blocked` => aborta a criacao de itens novos com diagnostico, exit 7 |
+| `drain` (evento `reconcile`) | + reaplica marco corrente ao Epic (troca so a versao gravada pelo plugin, R2-2), ajusta `phase-<N>` de tasks que mudaram de fase (R2-5), roda `links`. Transicoes de status de issues ja mapeadas NAO dependem do marco |
+| `status` | + linhas grep-aveis `milestone=<nome\|unresolved\|off\|blocked:nome>`, `links_unrepresentable=N`, `links_stale=N` |
+| `plan --feature F` | + lista marco a criar/reusar, labels a aplicar/trocar e links a criar (dry-run, so leituras) |
+
+### `jira-setup.sh`
+
+| Subcomando | Descricao |
+|------------|-----------|
+| `check-field-support FIELD_ID [FIELD_ID...]` | NOVO, POSIX puro: recebe (stdin) a lista de `fieldId` de um tipo (extraida pela skill de R8 via `jira-io.sh json-get`) e imprime `FIELD_ID=on\|off` — alimenta `labels_enabled`/`fix_versions_on_subtask` |
+| `check-link-type ID CANDIDATE_ID...` | NOVO: aceita `ID` so se estiver entre os ids REALMENTE devolvidos por R16 (nunca digitado de memoria); exit 1 com a lista se nao estiver |
+| `create-project --name N --key K --template T (--confirm-key K \| --consent-block block-NNN)` | NOVO (FR-024): (1) `validate-project-key`; (2) `getProject` com K — `200` => exit 1 "projeto ja existe, reuse" (nunca cria); (3) consentimento: `--confirm-key` so e aceito FORA de execucao 00c ativa e MUST repetir K exatamente; com execucao 00c ativa so `--consent-block` e aceito, conferido via `bloqueios.sh list --status respondido` do `agente-00c-runtime` (delegado, como `state-rw.sh` no r01 13.1.1) — bloqueio inexistente/nao respondido => exit 2 SEM requisicao; (4) `leadAccountId` de `GET /rest/api/3/myself`; (5) R18. `403` => exit 7 + texto de criacao manual. Sucesso => `write-config project_key=K` (o resto do setup segue: tipos, status, board) |
+
+Exit codes: nenhum novo (`7` ja cobria "nao permitido/nao possivel, nao
+repetir"); `classification=` em stderr distingue os casos.
+
+**Refinamentos do gate owasp-security r02 (plan.md SEC-9..SEC-13)**:
+`create-project --consent-block` aplica as 4 condicoes de SEC-9 (bloqueio
+`respondido`, marcador literal `cstk-jira:create-project key=<K>
+name-sha256=<H> template=<T>` na pergunta, resposta `criar-projeto`,
+uso unico via `runtime/consumed-consents.tsv`); o pedido de gate que a skill
+devolve ao orquestrador e gerado por um subcomando novo
+`jira-setup.sh consent-question --name N --key K --template T` (imprime a
+pergunta com o marcador — o orquestrador nao a redige a mao).
+`jira-sync.sh` so emite `remove` sob SEC-10 e compoe nomes de marco sob
+SEC-11.

@@ -288,3 +288,267 @@ as respostas.
   `cli/lib/http.sh`.
 - FR-017: hooks do plugin devem ser no-op total quando nao ha configuracao
   Jira no projeto.
+
+## Round r02 (2026-09-26) — decisoes do incremento FR-020..FR-025
+
+Phase 0 do `/plan` do round r02 (onda-003 do round). Fonte factual unica das
+operacoes novas: OpenAPI oficial do Jira Cloud REST v3 (mesmo arquivo e mesmo
+sha256 das ondas 005/029 do r01 — ver `contracts/jira-rest.md` §"Operacoes do
+round r02 (R12-R18)"). Nenhum roundtrip real nesta onda: o que o OpenAPI nao
+determina esta marcado "a confirmar por roundtrip no execute-task" no contrato
+e entra numa tarefa bloqueante (quickstart cenario 12).
+
+**Classe estrutural**: nenhuma decisao abaixo reabre um dos 6 eixos fechados.
+Arquitetura continua A1 (skills + hooks + helper REST; sem MCP dedicado),
+runtime B1 (POSIX sh + `jq`/cliente HTTP so em `jira-io.sh`), persistencia C1
+(arquivos texto versionados em `docs/specs/<feature>/` — os sidecars novos sao
+mais arquivos do MESMO modelo, nao troca de mecanismo), ambiente D1 (so Jira
+Cloud). Por isso sao Decisoes operacionais (score 2/3), sem bloqueio humano; a
+unica politica que a spec exige humana (criacao de projeto) ja foi decidida na
+Clarification r02 e aqui so ganha mecanismo.
+
+### Decision R2-1: granularidade e nome do marco (FR-020)
+
+**Decision**: o marco de uma sincronizacao e resolvido, nesta ordem (a
+primeira regra que produzir nome vence; nunca combinadas):
+
+1. `milestone_mode=off` em ProjectConfig => sem marco (plugin nao cria nem
+   aplica Fix Version).
+2. **Round ativo** — o state da feature (`.claude/feature-00c-state/<feature>/`,
+   lido READ-ONLY pelo mesmo `resolve-state-field` do r01) tem
+   `.previous_round.round` = `rNN` => marco = round corrente = `rNN+1`
+   (conferido contra `1 + numero de diretorios rounds/r[0-9][0-9]`;
+   divergencia => nome nao resolvido, nunca chute). Nome da Fix Version:
+   `<feature>-r<NN>` (ex.: `cstk-jira-r02`).
+3. **Release** (sem round ativo): `milestone_release` de ProjectConfig quando
+   o operador o definir; senao o PRIMEIRO heading `## [X.Y.Z]` do
+   `CHANGELOG.md` da raiz do projeto-alvo SE esse for o heading mais alto
+   (se o mais alto for `[Unreleased]`, a versao-alvo ainda nao tem nome).
+   Nome da Fix Version: a string SemVer tal-e-qual (ex.: `10.8.0`).
+4. Nada resolvido => marco `unresolved`: os itens sao sincronizados SEM
+   `fixVersions`, `jira-sync.sh status`/`hook.log` exibem
+   `milestone=unresolved` com a instrucao (definir `milestone_release` ou
+   `milestone_mode=off`), e a reconciliacao seguinte anexa o marco quando o
+   nome passar a ser resolvivel.
+
+**Rationale**: a Clarification r02 fixou "round se houver `.previous_round`,
+senao release SemVer do CHANGELOG, nunca os dois no mesmo Epic". Fix Versions
+sao do PROJETO Jira, compartilhado pelas features do projeto-alvo: um round
+`r02` e por FEATURE (duas features reabertas teriam `r02` colidindo), dai o
+prefixo `<feature>-`; uma release agrupa varias features de proposito, dai o
+nome SemVer puro, compartilhado. `[Unreleased]` no topo (convencao Keep a
+Changelog, adotada pelo proprio `CHANGELOG.md` deste repo) significa que o
+numero da proxima versao NAO existe em nenhuma fonte — inventa-lo violaria o
+Principio VI; o override `milestone_release` e a fonte explicita do operador.
+
+**Alternatives considered**: (a) usar a ultima versao ja liberada do
+CHANGELOG — rejeitada: rotula trabalho novo com a release anterior; (b)
+calcular "proxima versao" por bump — rejeitada: dado inventado (Principio VI);
+(c) bloquear a sincronizacao inteira enquanto o marco estiver `unresolved` —
+rejeitada: o caso mais comum (primeira execucao com `[Unreleased]`) travaria
+todo projeto que nao configurasse um override; a Clarification so proibe
+itens sem marco no caso de FALHA de criacao (R2-4), nao no de nome ainda
+inexistente; (d) nome de round sem prefixo de feature — rejeitada pela
+colisao descrita acima.
+
+### Decision R2-2: onde o marco se prende e como troca (FR-020, "nunca os dois")
+
+**Decision**: o **Epic** carrega exatamente UM marco aplicado pelo plugin — o
+CORRENTE; ao mudar (ex.: feature liberada em `10.7.0` e reaberta no round
+`r02`), a edicao remove SO a versao que o proprio plugin gravou (rastreada no
+SyncMarker, `written_fix_version_id`) e adiciona a nova, via `update.fixVersions`
+add/remove (`contracts/jira-rest.md` R14). **Tasks/Sub-tasks** recebem o marco
+vigente NA CRIACAO (R1, `fields.fixVersions`) e nao sao remarcadas depois — o
+historico "esta task foi feita no round X / release Y" fica nas tasks. Versao
+posta a mao por humano nunca e removida. Sub-task so recebe `fixVersions` se o
+campo existir na tela de criacao do tipo Sub-task (R8 `FieldCreateMetadata`,
+conferido no setup) — e o "quando aplicavel" de FR-020.
+
+**Rationale**: satisfaz "nunca os dois simultaneamente para o mesmo Epic" sem
+apagar historia; `update` add/remove evita o clobber de `fields.fixVersions`
+(substitui a lista inteira).
+
+**Alternatives considered**: (a) acumular marcos no Epic — viola a
+Clarification; (b) `fields.fixVersions` na edicao — apagaria versoes humanas;
+(c) remarcar todas as tasks antigas no reopen — reescreve historia e multiplica
+escritas (rate limit por issue).
+
+**Risco**: a forma `update.fixVersions` nao tem exemplo no OpenAPI. Se o
+roundtrip reprovar, a troca de marco do Epic degrada para "sinalizar
+`milestone_drift` e nao escrever" (nunca para clobber).
+
+### Decision R2-3: criacao automatica e idempotencia do marco (FR-020, FR-021, FR-023)
+
+**Decision**: antes de criar, `R13` (`getProjectVersions`, nao-paginada) e
+casamento de `name` por IGUALDADE EXATA local; achou => reusa o `id`. Nao
+achou => `R12` (`createVersion`) com `name`, `projectId` (numero) e
+`description` fixa do plugin. Qualquer `400` em R12 => refaz R13 e reusa se o
+nome exato apareceu (corrida entre execucoes paralelas em worktrees distintas,
+FR-023); senao `deferred`. O par `(project_key, name) -> version_id` e
+gravado no sidecar versionado `jira-milestones.tsv` da feature (rastreabilidade
+SC-005 + cache), mas a AUTORIDADE de idempotencia e a lista remota (a versao e
+compartilhada entre features; o sidecar de uma feature nao ve o de outra).
+
+**Rationale**: `name` e "unique" no schema, mas o status de duplicata nao e
+documentado — reler e o unico comportamento seguro sem supor codigo HTTP.
+Rota nao-paginada = nenhum nome em querystring (SEC-3/SEC-6).
+
+**Alternatives considered**: `getProjectVersionsPaginated` com `query` —
+casamento aproximado case-insensitive, exige interpolar o nome em URL;
+sidecar local como autoridade — cego para versoes criadas por outra feature/
+worktree ou a mao.
+
+### Decision R2-4: falha de permissao ao criar o marco (FR-020 + FR-016)
+
+**Decision**: `jira-io.sh request --op R12` classifica `403` (se vier) e
+`404` como `permission_denied` (exit 7). O motor entao: grava
+`milestone=blocked:<nome>` no status/`hook.log` com diagnostico ("a
+credencial precisa de Administer Projects no projeto — ou defina
+`milestone_mode=off`"); SUSPENDE a criacao de issues NOVAS desta feature
+(nenhum Epic/Task orfao sem marco — Clarification r02); continua as
+transicoes de status de issues JA mapeadas (nao sao orfas, e SC-003 segue
+valendo); nao repete R12 ate o operador reconfigurar (mesmo gate de
+`requeue-auth-failed`: `jira-setup.sh write-config` limpa o bloqueio).
+
+**Rationale**: OpenAPI de `createVersion` documenta a falta de permissao como
+`404` (nao `403`) e a permissao exigida (*Administer Jira* ou *Administer
+Projects*); o `project_key` ja foi resolvido por `getProject` na mesma
+execucao, entao `404` aqui nao e "projeto inexistente". A divergencia com o
+texto da spec ("HTTP 403") esta registrada no contrato e vai ao roundtrip.
+
+**Alternatives considered**: tratar como `auth_failed` (exit 4) — faria o
+operador trocar um token valido; seguir criando issues sem marco —
+proibido pela Clarification.
+
+### Decision R2-5: label de FASE (FR-022)
+
+**Decision**: label `phase-<N>` (N = numero do heading `### FASE N` que
+contem a task; Sub-task herda a FASE da task-pai; Epic sem label). Validado
+pela allowlist de SEC-1 (`[A-Za-z0-9_-]`) antes de montar o corpo — nenhuma
+allowlist nova. Criacao: `fields.labels: ["phase-<N>"]` (R14). Mudanca de
+fase num round posterior (edge case da spec): `update.labels`
+`[{"remove":"<label gravado antes>"},{"add":"phase-<M>"}]` — remove SO o label
+que o plugin gravou (SyncMarker `written_phase_label`), preservando labels
+humanos. `labels_enabled=off` desliga; o setup confere via R8 se `labels` esta
+na tela de criacao de Task e Sub-task e, se nao estiver, grava `off` com
+aviso. Labels NAO entram na deteccao de conflito (FR-011 continua olhando
+titulo/status/descricao): label humano extra nao e conflito.
+
+**Rationale**: forma `{"add":...}`/`{"remove":...}` tem exemplo oficial em
+`editIssue`; a Clarification fixou formato e allowlist.
+
+**Alternatives considered**: `fields.labels` na edicao (clobber de labels
+humanos); label por nome completo da FASE (espacos/acentos falham SEC-1);
+componente em vez de label (exige criar componente no projeto — escrita
+administrativa a mais, fora do pedido).
+
+### Decision R2-6: dependencias como issue links (FR-025)
+
+**Decision**:
+
+- **Granularidade** — a Matriz de Dependencias do template e FASE-a-FASE
+  (`jira-tasks.sh phase-deps`, unica fonte real) e FASE nao e issue no Jira
+  (e label, R2-5). Cada aresta `FASE A --> FASE B` vira **exatamente 1 link**
+  entre as **ancoras** das duas fases: ancora = a Task de menor `local_key`
+  (`N.M`) da FASE com linha `active` no `jira-map.tsv`. FASE sem task mapeada
+  => aresta `unrepresentable` (motivo `no_anchor`).
+- **Tipo** — (1) `link_type_id` em ProjectConfig, gravado no setup APOS o
+  operador confirmar, sobre a lista de R16, qual tipo significa "bloqueia /
+  e bloqueado por" (mesmo padrao da confirmacao de `issue_type_*` do r01);
+  (2) sem `link_type_id` (sessao autonoma, setup antigo): candidato unico cujas
+  frases `inward` E `outward` contem, case-insensitive, a raiz `block` (a raiz
+  vem das frases do exemplo oficial de R16, e e aplicada as frases que o
+  PROPRIO site devolve — nunca ao `name`); zero ou 2+ candidatos =>
+  `unrepresentable` (motivo `no_link_type`/`ambiguous_link_type`), sem escolher
+  arbitrariamente (Clarification r02). `404` em R16 (linking desligado) =>
+  todas `unrepresentable` (motivo `linking_disabled`).
+- **Direcao** — bloqueador (ancora de A) em `outwardIssue`, bloqueado (ancora
+  de B) em `inwardIssue`; confirmacao por roundtrip obrigatoria (contrato R17).
+- **Idempotencia** — sidecar versionado `jira-links.tsv` (1 linha por aresta);
+  linha `active` => nao chama R17; alem disso o OpenAPI garante que reenviar
+  um link duplicado nao cria outro. `413` => `unrepresentable` (`limit`).
+- **Ancora que muda** (renumeracao/reorganizacao) => link antigo marcado
+  `stale` e sinalizado; NUNCA removido (sem `DELETE`, FR-012); o link novo e
+  criado para a ancora nova.
+
+**Rationale**: "cada dependencia declarada = um link" (1:1 com as arestas),
+minimo de escritas (rate limit por issue, limite de links por issue do `413`)
+e deterministico. `links_enabled=off` desliga tudo.
+
+**Alternatives considered**: (a) produto cartesiano tasks(A) x tasks(B) —
+explode o numero de links e, sem `DELETE`, seria irreversivel pelo plugin;
+(b) link Epic->Epic — so ha 1 Epic por feature, as arestas sao internas a
+ela; (c) criar uma issue por FASE para servir de no — adiciona um nivel de
+hierarquia que o r01 recusou (FASE = prefixo de titulo/label); (d) tipo por
+`name` literal (ex.: "Blocks") — vedado pela Clarification.
+
+### Decision R2-7: criacao de projeto com gate humano (FR-024)
+
+**Decision**: o path REST agora tem fonte (R18, `createProject`) e SUPERA o
+`NAO ENCONTRADO` da Decision 3. Fluxo:
+
+- `jira-setup` SEMPRE tenta reusar primeiro (`getProject` pela key proposta,
+  `searchProjects` para listar). So oferece criar quando nao ha projeto.
+- **Gate**: o operador confirma explicitamente `name`, `key` (regra do
+  OpenAPI: maiuscula inicial, alfanumerico maiusculo, <= 10 chars — validada
+  localmente tambem por SEC-1), `projectTypeKey=software` e o template
+  (default pre-selecionado `gh-simplified-agility-kanban`, lista do OpenAPI).
+  `leadAccountId` = `accountId` de `GET /rest/api/3/myself`.
+- **Interativo**: confirmacao explicita na propria sessao, repetindo a key
+  (`jira-setup.sh create-project --confirm-key KEY` recusa sem ela).
+- **Autonomo** (execucao 00c ativa): a skill NUNCA chama R18 nem a tool
+  `createJiraProject`; devolve ao orquestrador um pedido de gate e o
+  orquestrador registra bloqueio humano (`register_human_block`/`bloqueios.sh
+  register`; ou `ask_operator` com `kind=confirm` e `default_value` = nao
+  criar — timeout/recusa nunca cria). So na onda seguinte, com o bloqueio
+  `respondido`, `create-project` roda com `--consent-block block-NNN`, e o
+  script confere o bloqueio via runtime (`bloqueios.sh list --status
+  respondido`, delegacao ao `agente-00c-runtime` como no r01 13.1.1).
+- `403` => `permission_denied` => orientar criacao manual (UI do Jira ou
+  `createJiraProject` por admin) — ramo "mecanismo nao suporta" de FR-024.
+- Guarda mecanica: o hook `PreToolUse` do plugin passa a negar (exit 2)
+  `mcp__.*__createJiraProject` quando ha execucao 00c ativa no cwd e o plugin
+  esta configurado (`contracts/hooks.md`).
+
+**Rationale**: Clarification r02 (gate obrigatorio, nunca autonomo); o
+consentimento vira artefato auditavel (bloqueio respondido), nao uma flag
+que o proprio agente poderia passar.
+
+**Alternatives considered**: flag `--yes` (o agente se autoaprovaria);
+criar via Rovo MCP no caminho autonomo (mesmo problema, e o allowlist dos
+orquestradores e fechado); nao oferecer criacao (viola FR-024).
+
+### Decision R2-8: um Epic por feature do roadmap (FR-023)
+
+**Decision**: nenhuma mudanca no motor — cada execucao `feature-00c` ja
+sincroniza SO a propria `short_name` (1 feature = 1 Epic, FR-001), e o
+lancamento paralelo do roadmap roda cada feature numa worktree dedicada
+(`parallel-launch.sh`, `<pai-do-repo>/<nome-do-repo>-<SHORT>`). O unico gap e
+de CONFIGURACAO: numa worktree nova o `.claude/cstk-jira/config` pode nao
+existir (arquivo de versionamento opcional) e o hook ficaria inativo. O hook e
+os scripts passam a resolver ProjectConfig primeiro no cwd e, ausente, na
+worktree principal (`git rev-parse --git-common-dir`, normalizado para
+absoluto — o valor pode vir relativo ou absoluto conforme a versao do git),
+somente leitura. `runtime/` (outbox, conflitos, lock de drain) continua POR
+worktree. A corrida de criacao de Fix Version compartilhada e tratada em R2-3.
+
+**Rationale**: a Clarification r02 fixou FR-023 como comportamento agregado
+de execucoes independentes; sem roadmap, caso base FR-001.
+
+**Alternatives considered**: um motor "multi-feature" numa execucao — nao
+existe execucao que conheca N features (Clarification); outbox compartilhado
+entre worktrees — lock cross-worktree sem necessidade.
+
+### Decision R2-9: nomes de versao e SEC
+
+**Decision**: nomes de Fix Version passam por uma allowlist propria
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$` (SEC-6 no plan): SEC-1 + o ponto do
+SemVer, teto de 255 do OpenAPI. O nome NUNCA entra em PATH, querystring ou
+JQL (R13 lista tudo; o casamento e local); entra so no corpo JSON via
+`jq --arg`. Labels usam SEC-1 sem mudanca.
+
+**Rationale**: SemVer precisa de `.`, que SEC-1 recusa; afrouxar SEC-1 para
+todos os segmentos de PATH seria regressao de seguranca.
+
+**Alternatives considered**: trocar `.` por `-` no nome (`10-8-0`) — o marco
+deixaria de ser reconhecivel como a release; afrouxar SEC-1 globalmente.

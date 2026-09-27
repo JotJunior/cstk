@@ -70,3 +70,18 @@ Pesquisa dirigida da onda-004 (acesso 2026-09-24):
 
 Regra mantida: a skill monta a chamada a partir do `inputSchema` exibido na
 sessao; os exemplos acima servem de orientacao, nao de contrato.
+
+## Round r02 (2026-09-26) — escopo MCP do incremento FR-020..FR-025
+
+- Nenhuma tool nova entra na allowlist: este contrato NAO cita (e o plan r02
+  nao pesquisou) tool do Rovo MCP para Fix Version, labels ou issue links.
+  Marco (R12/R13), labels em edicao (R14) e links (R16/R17) usam SEMPRE o
+  helper REST (`jira-io.sh`), inclusive no caminho interativo. Sem
+  `jq`/cliente HTTP, a conversao interativa via MCP segue criando Epic/Task/
+  Sub-task e o `status` sinaliza `milestone=off`/links nao reconciliados
+  (degradacao declarada, carve-out 1.1.0 condicao a) — nunca parametro de
+  tool suposto.
+- `createJiraProject` (ja na allowlist do r01 para "board/filtro/projeto")
+  passa a ser usavel SO depois da confirmacao explicita do gate de FR-024 na
+  sessao interativa, e e negada pela guarda `PreToolUse` quando ha execucao
+  00c ativa (`hooks.md` r02).

@@ -90,3 +90,42 @@ FR-012 e `exit 2`. Sem `<cwd>/.claude/cstk-jira/config` a guarda e no-op
 (exit 0): quem instalou o plugin mas nunca o configurou pode estar usando o
 Rovo MCP para outros fins, e bloquear exclusao ali seria mudanca de
 comportamento vedada por FR-017/SC-006.
+
+## Round r02 (2026-09-26) — mudancas (FR-023, FR-024, FR-020..FR-025)
+
+`[PROPOSTA — a validar na implementacao]`, ADITIVO ao desenho acima.
+
+**`hooks.json` — entrada nova**
+
+| Evento | matcher (regex) | Script | async | Papel |
+|--------|-----------------|--------|-------|-------|
+| `PreToolUse` | `mcp__.*__createJiraProject` | `hooks/pretooluse-jira-deny-destructive.sh` (modo `project-create`) | nao | FR-024: nega (exit 2) criacao de projeto via Rovo MCP quando ha execucao 00c ATIVA no cwd (mesma deteccao de `.lock` do passo 2 abaixo) E o plugin esta configurado. Sessao interativa sem execucao ativa: nao interfere (o prompt de permissao do proprio Claude Code + a confirmacao da skill `jira-setup` sao o gate) |
+
+Limite honesto: sem ProjectConfig a guarda segue no-op (FR-017/SC-006 — o
+plugin nao pode mudar o comportamento de quem nunca o configurou), entao o
+PRIMEIRO setup dentro de uma execucao autonoma depende da regra da skill
+(`jira-setup` nunca cria em contexto autonomo, devolve o pedido de gate ao
+orquestrador) e do `create-project` exigir `--consent-block`.
+
+**`posttooluse-jira-sync.sh` — passos alterados**
+
+- **Passo 1 (inatividade)**: o teste de existencia usa
+  `jira-config.sh resolve-path` (cwd, senao worktree principal — FR-023).
+  Sem `git` no PATH, so o cwd e considerado (sem fallback, sem erro).
+- **Passo 2 (execucao ativa)**: inalterado. FR-023 NAO exige branch novo:
+  cada execucao paralela do roadmap roda na propria worktree, com 1 `.lock`
+  no proprio cwd => resolve a propria `short_name` => sincroniza o proprio
+  Epic. Sem roadmap, caso base FR-001.
+- **Passo 4 (modo `wave`)**: o evento `reconcile` tambem executa, no drain,
+  a reaplicacao do marco corrente ao Epic, o ajuste de `phase-<N>` e
+  `jira-sync.sh links` (`plugin-scripts.md` r02). Modo `task`/`bash`:
+  inalterado (so transicao de status — nada de marco/label/link por task,
+  para nao multiplicar escritas por `record_task`).
+- **Passo 5.bis (resumo)**: a linha de resumo passa a incluir
+  `milestone=` quando `unresolved`/`blocked:*` e `links_unrepresentable=`/
+  `links_stale=` quando > 0 — mesma regra de omissao no caminho feliz.
+
+Inalterados: fail-open absoluto (passo 6), nao-exfiltracao de `session_id`
+(passo 7), nenhuma escrita no state da execucao, o hook NUNCA cria projeto
+nem responde gate humano (so enfileira/drena sync dentro de projeto ja
+configurado).

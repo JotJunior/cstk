@@ -351,3 +351,152 @@ ja gravados localmente. NAO versionado (`runtime/.gitignore` = `*`).
 Nao persistida pelo plugin alem do mapeamento: `id`, `key`, titulo, status e
 tipo sao lidos do Jira conforme `contracts/jira-rest.md`. Nenhum campo e
 suposto: os nomes exatos de request/response vem exclusivamente do contrato.
+
+## Round r02 (2026-09-26) — extensoes para FR-020..FR-025
+
+Tudo abaixo e ADITIVO: nenhuma coluna/chave do r01 muda de nome, tipo ou
+semantica; arquivos do r01 sem as chaves novas continuam validos (defaults).
+Decisoes em `research.md` §"Round r02"; formas do Jira em
+`contracts/jira-rest.md` R12-R18.
+
+```mermaid
+erDiagram
+    ProjectConfig ||--o{ Milestone : "resolve nome de"
+    Milestone ||--o{ SyncMapping : "aplicado a (epic corrente / task na criacao)"
+    SyncMapping ||--o{ IssueLink : "ancora de fase"
+    ProjectConfig ||--o| ProjectCreateRequest : "gate humano (FR-024)"
+```
+
+| Entidade/arquivo novo | Onde vive | Versionado? | Contem segredo? |
+|-----------------------|-----------|-------------|-----------------|
+| Milestone | `docs/specs/<feature>/jira-milestones.tsv` | SIM | NAO |
+| IssueLink | `docs/specs/<feature>/jira-links.tsv` | SIM | NAO |
+| ProjectCreateRequest | transiente (argumentos de `jira-setup.sh create-project`) | NAO | NAO |
+
+### ProjectConfig — chaves novas (todas opcionais; `config_version` continua `1`)
+
+| Campo | Tipo | Default (ausente) | Descricao |
+|-------|------|-------------------|-----------|
+| `milestone_mode` | `auto`/`off` | `auto` | `auto` = regra de resolucao de research R2-1; `off` = nenhum marco |
+| `milestone_release` | string (SEC-6) | vazio | nome SemVer da release-alvo definido pelo operador; usado so quando nao ha round ativo (R2-1 regra 3) |
+| `labels_enabled` | `on`/`off` | `on` | aplica `phase-<N>` (FR-022); o setup grava `off` se `labels` nao estiver na tela de criacao de Task/Sub-task (R8) |
+| `fix_versions_on_subtask` | `on`/`off` | `off` | gravado pelo setup: `on` so se `fixVersions` estiver na tela de criacao do tipo Sub-task (R8) |
+| `links_enabled` | `on`/`off` | `on` | cria links de dependencia (FR-025) |
+| `link_type_id` | string (SEC-1) | vazio | id do tipo de link confirmado pelo operador no setup (R16); vazio => regra de candidato unico (R2-6) |
+| `project_create` | `gated`/`never` | `gated` | politica da oferta de criacao de projeto no setup (FR-024). NAO existe valor que dispense o gate humano |
+
+**Validation rules (novas)**: valores de enum fora da lista => `validate`
+falha (exit 1) com a chave no diagnostico; `milestone_release` fora de SEC-6
+=> falha; `link_type_id` fora de SEC-1 => falha. `jira-setup.sh write-config`
+tambem limpa o bloqueio de marco (R2-4) apos reconfiguracao.
+
+**Resolucao do arquivo (FR-023)**: `<cwd>/.claude/cstk-jira/config`; ausente
+=> `<worktree principal>/.claude/cstk-jira/config` (via `git rev-parse
+--git-common-dir`, somente leitura); ausente nos dois => plugin inativo
+(FR-017). `runtime/` segue sempre relativo ao cwd.
+
+### LocalWorkItem — campos derivados novos (nao persistidos)
+
+| Campo | Tipo | Origem |
+|-------|------|--------|
+| `phase_number` | int | numero `N` do heading `### FASE N` que contem a task; Sub-task herda da task-pai; Epic: vazio |
+| `phase_label` | string | `phase-<phase_number>` (SEC-1); vazio para Epic ou `labels_enabled=off` |
+| `milestone` | string | nome resolvido pela regra R2-1 (`<feature>-rNN`, SemVer, ou vazio/`unresolved`) — igual para todos os itens da mesma execucao |
+
+A coluna `phase` do r01 (`FASE N - <nome>`) permanece; `phase_number` e
+extraido dela (2a palavra), a mesma regra ja usada por `phase-deps`.
+
+### SyncMarker — chaves novas (opcionais, ausentes = sem baseline)
+
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| `written_phase_label` | string | label de fase que o plugin gravou por ultimo; na troca, SO este e removido (`update.labels` remove) |
+| `written_fix_version_id` | string | id da Fix Version que o plugin aplicou por ultimo (so no Epic, R2-2); na troca, SO este e removido |
+
+Mesma disciplina do `written_description_sha256` (task 13.2.1): todo R6 PUT
+que regrava o marker CARREGA ADIANTE estas chaves quando presentes (o PUT
+substitui o valor inteiro). Nenhuma delas entra na deteccao de conflito
+(FR-011): label/versao humana extra nao e edicao conflitante; se o valor
+gravado pelo plugin sumiu da issue (R15), o plugin NAO o recoloca a forca —
+registra `ConflictRecord` com `reason=milestone_drift`/`label_drift` e
+aguarda decisao (`resolve`).
+
+### Entity: Milestone (`jira-milestones.tsv`)
+
+TAB-separado, cabecalho na 1a linha, gravacao atomica (tmp + `mv`), versionado.
+
+| Coluna | Tipo | Descricao |
+|--------|------|-----------|
+| `milestone_name` | string (SEC-6) | nome exato da Fix Version |
+| `milestone_kind` | `round`/`release` | regra R2-1 que produziu o nome |
+| `jira_version_id` | string (SEC-1) | `id` devolvido por R12 ou achado em R13 |
+| `project_key` | string (SEC-1) | projeto em que a versao existe |
+| `state` | `current`/`superseded`/`blocked` | `current` = marco aplicado ao Epic hoje; `superseded` = marco anterior do Epic (tasks criadas nele o mantem); `blocked` = R12 negado (R2-4) |
+
+Chave natural: `(project_key, milestone_name)`. A AUTORIDADE de idempotencia
+e R13 (lista remota, compartilhada entre features); este arquivo e
+rastreabilidade (SC-005) + cache. No maximo UMA linha `current` por arquivo
+(por feature) — invariante que implementa "nunca os dois no mesmo Epic".
+
+```mermaid
+stateDiagram-v2
+    [*] --> current: R13 achou nome exato OU R12 criou
+    [*] --> blocked: R12 negado (403/404, R2-4)
+    blocked --> current: operador reconfigura (write-config) + nova tentativa OK
+    current --> superseded: marco novo resolvido (ex.: reopen rNN)
+    superseded --> [*]: nunca removido do arquivo
+```
+
+### Entity: IssueLink (`jira-links.tsv`)
+
+TAB-separado, cabecalho, gravacao atomica, versionado. Uma linha por aresta da
+Matriz de Dependencias (`FASE A --> FASE B`).
+
+| Coluna | Tipo | Descricao |
+|--------|------|-----------|
+| `from_phase` | int | `A` (fase bloqueadora) |
+| `to_phase` | int | `B` (fase bloqueada) |
+| `blocker_key` | string (SEC-1) | `jira_key` da ancora de A (vazio se `unrepresentable`) |
+| `blocked_key` | string (SEC-1) | `jira_key` da ancora de B (idem) |
+| `link_type_id` | string (SEC-1) | tipo usado (vazio se `unrepresentable`) |
+| `state` | `active`/`stale`/`unrepresentable` | ver transicoes |
+| `reason` | enum | vazio para `active`; `no_anchor`/`no_link_type`/`ambiguous_link_type`/`linking_disabled`/`limit`/`anchor_changed` |
+
+Chave natural: `(from_phase, to_phase, blocker_key, blocked_key)`. Ancora =
+Task de menor `local_key` da fase com linha `active` no `jira-map.tsv`
+(research R2-6). Idempotencia: linha `active` para a chave => nenhuma chamada
+R17; R17 reenviado e seguro (duplicata nao cria outro link, OpenAPI).
+
+```mermaid
+stateDiagram-v2
+    [*] --> active: R17 201 (tipo resolvido, ancoras mapeadas)
+    [*] --> unrepresentable: sem tipo compativel / sem ancora / linking off / 413
+    unrepresentable --> active: causa removida (ex.: operador define link_type_id) + R17 201
+    active --> stale: ancora de A ou B mudou (reorganizacao) — link NUNCA removido (FR-012)
+    stale --> [*]: operador decide no Jira
+```
+
+`unrepresentable` e `stale` aparecem em `jira-sync.sh status`
+(`links_unrepresentable=N`, `links_stale=N`) e no resumo do `hook.log`;
+nunca sao erro fatal.
+
+### Entity: ProjectCreateRequest (transiente, FR-024)
+
+| Campo | Tipo | Origem |
+|-------|------|--------|
+| `name` | string | digitado/confirmado pelo operador |
+| `key` | string | confirmado pelo operador; regra do OpenAPI (`^[A-Z][A-Z0-9]{1,9}$` — maiuscula inicial, 1+ alfanumericos maiusculos, <= 10) + SEC-1 |
+| `project_type_key` | `software` | fixo do plugin (board kanban e Jira Software) |
+| `project_template_key` | enum do OpenAPI para `software` | escolhido pelo operador; default pre-selecionado `com.pyxis.greenhopper.jira:gh-simplified-agility-kanban` |
+| `lead_account_id` | string | `accountId` de `GET /rest/api/3/myself` (nunca digitado) |
+| `consent` | `interactive-confirm-key` / `block-NNN` | prova do gate: repeticao da key na sessao interativa, ou bloqueio humano `respondido` (autonomo) |
+
+Nunca persistido (so o resultado: `project_key` gravado em ProjectConfig apos
+`201`). Sem `consent` valido, `create-project` sai com exit 2 SEM requisicao.
+
+### ConflictRecord — valores novos de `reason`
+
+`milestone_drift` (versao aplicada pelo plugin sumiu do Epic), `label_drift`
+(label de fase aplicado pelo plugin sumiu). Resolucao continua humana
+(`jira-sync resolve`): `keep_jira` rebaselineia (apaga a chave
+`written_*` correspondente do marker), `overwrite` reaplica.
