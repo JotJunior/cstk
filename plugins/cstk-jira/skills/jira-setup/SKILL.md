@@ -137,10 +137,22 @@ skill, so o `GET` direto por key acima.)
 - `200` => o projeto ja existe: informar "projeto `$PROJECT_KEY` encontrado,
   reusando" e seguir direto para a ETAPA 3 (nenhuma criacao, nenhuma
   pergunta adicional).
-- `404` => nenhum projeto com essa key. Perguntar ao operador o **nome**
-  (`--name`) do projeto a criar e confirmar o **template**
-  (`--template`, `projectTemplateKey` — enum fixo aceito por
-  `jira-setup.sh create-project`, ex.:
+- `404` => nenhum projeto com essa key. **r02 FASE 21 tarefa 21.6.1
+  (FR-024) — antes de oferecer qualquer criacao, checar a politica**:
+  ```sh
+  jira-config.sh get project_create 2>/dev/null || echo gated
+  ```
+  `project_create=never` => **pular a oferta inteira** — nunca perguntar
+  nome/template ao operador, nunca chamar `consent-question`/
+  `create-project` (ambos recusariam mesmo assim, exit 2, mas a skill nao
+  MUST sequer tentar). Informar diretamente: "projeto `$PROJECT_KEY` nao
+  encontrado e `project_create=never` no ProjectConfig — crie manualmente
+  na UI do Jira e reexecute esta skill (que vai REUSAR via `getProject`)"
+  e ENCERRAR a skill aqui (setup incompleto ate o projeto existir).
+  Ausente OU `gated` (default, `data-model.md`) => comportamento normal:
+  perguntar ao operador o **nome** (`--name`) do projeto a criar e
+  confirmar o **template** (`--template`, `projectTemplateKey` — enum
+  fixo aceito por `jira-setup.sh create-project`, ex.:
   `com.pyxis.greenhopper.jira:gh-simplified-agility-kanban` para Kanban).
   So depois, seguir para um dos dois fluxos abaixo — a `key` que vai para
   `--key` e sempre a mesma `$PROJECT_KEY` da ETAPA 1 (nunca outra).
@@ -241,6 +253,55 @@ que corresponde a Epic e confirmado em apenas UM site testado
 divergir (tasks.md 6.1.3, api CHK006). So gravar `issue_type_*` apos
 resposta explicita.
 
+## ETAPA 5.bis: Deteccao de suporte a labels/Fix Versions (r02 FASE 21 tarefa 21.5)
+
+Ref: `plan.md` Project Structure (delta) `jira-setup.sh check-field-support`
++ Fluxo 7 + Riscos ("Tela de criacao sem labels/fixVersions");
+`data-model.md` ProjectConfig `labels_enabled`/`fix_versions_on_subtask`;
+`contracts/jira-rest.md` R8 "campos de um tipo".
+
+Com `issue_type_task`/`issue_type_subtask` JA confirmados (ETAPA 5), confere
+se os campos `labels`/`fixVersions` REALMENTE aparecem nas telas de criacao
+ANTES de assumir os defaults do `data-model.md` (`labels_enabled=on`,
+`fix_versions_on_subtask=off`) — telas de criacao customizadas podem nao
+ter um dos dois campos:
+
+```sh
+jira-io.sh request GET "/rest/api/3/issue/createmeta/$PROJECT_KEY/issuetypes/$TASK_ID" --op R8 \
+  | jira-io.sh json-get '(.fields // .results)[].fieldId' \
+  | jira-setup.sh check-field-support labels
+# -> "labels=on" ou "labels=off" (tela de criacao de Task)
+
+jira-io.sh request GET "/rest/api/3/issue/createmeta/$PROJECT_KEY/issuetypes/$SUBTASK_ID" --op R8 \
+  | jira-io.sh json-get '(.fields // .results)[].fieldId' \
+  | jira-setup.sh check-field-support labels fixVersions
+# -> "labels=on|off" e "fixVersions=on|off" (tela de criacao de Sub-task)
+```
+
+`$PROJECT_KEY` passa por `jira-io.sh validate-segment` antes de interpolar
+o path (mesma disciplina da ETAPA 3/`references/api-discovery.md` §1);
+`.fields`/`.results` cobrem a mesma ambiguidade de schema ja documentada em
+`contracts/jira-rest.md` R8 para `issueTypes`/`createMetaIssueType` — usar
+a chave que vier nao-vazia.
+
+Regras de agregacao (data-model.md ProjectConfig):
+
+- `labels_enabled=on` SO se AMBAS as chamadas acima devolverem `labels=on`
+  (Task E Sub-task) — qualquer uma reportando `labels=off` => grava `off`
+  ("o setup grava `off` se `labels` nao estiver na tela de criacao de
+  Task/Sub-task").
+- `fix_versions_on_subtask=on` SO se a chamada da tela de Sub-task devolver
+  `fixVersions=on` — o campo so se aplica a Sub-task (Task nunca recebe Fix
+  Version por este mecanismo; Epic usa `--fix-version-id` direto na
+  criacao, fora deste subcomando).
+
+Quando qualquer um sair `off`, avisar o operador explicitamente ANTES da
+ETAPA 8 (ex.: "aviso: campo `labels` nao encontrado na tela de criacao de
+Sub-task deste projeto — `labels_enabled` sera gravado como `off`") — a
+degradacao nunca fica silenciosa (plan.md Riscos). Os dois valores
+resultantes (`$LABELS_ENABLED`/`$FIX_VERSIONS_ON_SUBTASK`) vao para
+`write-config` na ETAPA 8.
+
 ## ETAPA 6: Filtro + Board (US2)
 
 Detalhe completo (comandos exatos, decisao de reuso por projeto+tipo em vez
@@ -301,12 +362,17 @@ So agora, com TODOS os campos coletados/confirmados/validados, gravar:
 jira-setup.sh write-config config_version=1 site_host=... project_key=... \
   board_id=... issue_type_epic=... issue_type_task=... issue_type_subtask=... \
   status_pending=... status_in_progress=... status_pass=... status_fail=... \
-  sync_autonomous=on [link_type_id=...]
+  sync_autonomous=on labels_enabled=$LABELS_ENABLED \
+  fix_versions_on_subtask=$FIX_VERSIONS_ON_SUBTASK [link_type_id=...]
 ```
 
-`link_type_id` e OPCIONAL — omitido (ou vazio) quando o operador pulou a
-ETAPA 7; `jira-config.sh validate` ja aceita a chave ausente (default vazio,
-`data-model.md` "ProjectConfig — chaves novas").
+`labels_enabled`/`fix_versions_on_subtask` vem da ETAPA 5.bis (r02 FASE 21
+tarefa 21.5) — SEMPRE gravados explicitamente (nunca deixados para o
+default silencioso de `jira-sync.sh`), refletindo o que a tela de criacao
+REAL do projeto suporta. `link_type_id` e OPCIONAL — omitido (ou vazio)
+quando o operador pulou a ETAPA 7; `jira-config.sh validate` ja aceita a
+chave ausente (default vazio, `data-model.md` "ProjectConfig — chaves
+novas").
 
 `write-config` valida (delega a `jira-config.sh validate`) e SO grava se
 tudo passar — qualquer falha (campo faltando, `status_fail == status_pass`)

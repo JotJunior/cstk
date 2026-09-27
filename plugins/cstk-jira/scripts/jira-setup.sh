@@ -27,6 +27,26 @@
 #         status disponiveis descobertos no mesmo fluxo (ux CHK004) e
 #         exit 1. Sucesso => exit 0, sem stdout.
 #
+#   jira-setup.sh check-field-support FIELD_ID [FIELD_ID...]
+#       — r02 FASE 21 tarefa 21.5.1 (plan.md Project Structure (delta)
+#         `jira-setup.sh` check-field-support + fluxo 7; data-model.md
+#         ProjectConfig `labels_enabled`/`fix_versions_on_subtask`;
+#         contracts/jira-rest.md R8 "campos de um tipo" — `GET
+#         .../issuetypes/{issueTypeId}` -> `fields`/`results`, array de
+#         `FieldCreateMetadata` com `fieldId` obrigatorio). Le de STDIN,
+#         um `fieldId` por linha, a lista de campos REALMENTE presentes na
+#         tela de criacao do tipo (extraida pela skill de R8 via
+#         `jira-io.sh json-get` — a rede/jq ficam na skill, este script e
+#         puro/deterministico, mesma divisao de `check-status-mapping`/R5 e
+#         `check-link-type`/R16). Para cada FIELD_ID pedido no argv,
+#         imprime `FIELD_ID=on` (presente na lista de stdin) ou
+#         `FIELD_ID=off` (ausente) em stdout, um por linha, exit 0 sempre
+#         (nunca falha por campo ausente — ausencia e um resultado valido,
+#         nao um erro; a skill decide o que fazer com `off`). Sem
+#         `jq`/cliente HTTP; nao valida IDs de campo contra allowlist
+#         alguma (fieldId e o vocabulario do proprio Jira, ecoado de volta
+#         tal como veio).
+#
 #   jira-setup.sh check-link-type ID CANDIDATE_ID...
 #       — r02 FASE 18 tarefa 18.1.1 (contracts/plugin-scripts.md
 #         `jira-setup.sh check-link-type`; research.md Decision R2-6;
@@ -142,6 +162,11 @@ USO:
       Valida o mapeamento local -> status Jira contra a lista de status
       REALMENTE descoberta (R5). Rejeita FAIL == PASS e qualquer valor fora
       da lista descoberta, listando os status disponiveis no diagnostico.
+
+  jira-setup.sh check-field-support FIELD_ID [FIELD_ID...]
+      Le de stdin um fieldId por linha (campos REALMENTE presentes na tela
+      de criacao do tipo, extraidos pela skill de R8). Para cada FIELD_ID
+      pedido, imprime FIELD_ID=on|off. Sempre exit 0.
 
   jira-setup.sh check-link-type ID CANDIDATE_ID...
       Valida que ID (link_type_id confirmado pelo operador) esta entre os
@@ -346,6 +371,40 @@ _js_cmd_check_status_mapping() {
   return 0
 }
 
+# _js_cmd_check_field_support FIELD_ID [FIELD_ID...] — r02 FASE 21 tarefa
+# 21.5.1 (ver cabecalho do arquivo). Le de stdin um fieldId REALMENTE
+# presente na tela de criacao do tipo por linha (linhas vazias ignoradas);
+# para cada FIELD_ID pedido no argv, imprime `FIELD_ID=on`/`FIELD_ID=off`.
+# Nunca falha por ausencia — a ausencia de um campo e um resultado valido
+# (a skill grava `off` no ProjectConfig), nao um erro de uso.
+_js_cmd_check_field_support() {
+  [ "$#" -ge 1 ] || _js_die_usage \
+    "check-field-support requer ao menos 1 FIELD_ID"
+
+  _jscfs_present=""
+  while IFS= read -r _jscfs_line || [ -n "$_jscfs_line" ]; do
+    [ -n "$_jscfs_line" ] || continue
+    _jscfs_present="$_jscfs_present
+$_jscfs_line"
+  done
+
+  for _jscfs_id in "$@"; do
+    _jscfs_status="off"
+    _jscfs_old_ifs=$IFS
+    IFS='
+'
+    for _jscfs_candidate in $_jscfs_present; do
+      [ -n "$_jscfs_candidate" ] || continue
+      if [ "$_jscfs_candidate" = "$_jscfs_id" ]; then
+        _jscfs_status="on"
+      fi
+    done
+    IFS=$_jscfs_old_ifs
+    printf '%s=%s\n' "$_jscfs_id" "$_jscfs_status"
+  done
+  return 0
+}
+
 # _js_cmd_check_link_type ID CANDIDATE_ID... — r02 FASE 18 tarefa 18.1.1
 # (SEC-13): membership PURA (mesmo idioma de _js_cmd_check_status_mapping
 # com R5) — ID so e aceito se estiver entre os CANDIDATE_ID... que a skill
@@ -502,6 +561,18 @@ _js_validate_project_key() {
   "$_JS_JIRA_IO_SCRIPT" validate-project-key "$1"
 }
 
+# _js_project_create_policy -> imprime a politica efetiva de
+# `project_create` (`gated`/`never`) — r02 FASE 21 tarefa 21.6.1
+# (data-model.md ProjectConfig `project_create`, default `gated`).
+# `jira-config.sh get` sem config (exit 3, plugin inativo) ou sem a chave
+# (exit 1) sao tratados IGUALMENTE como ausencia => default `gated` (NAO
+# desabilita a oferta) — so o valor LITERAL `never` bloqueia.
+_js_project_create_policy() {
+  _jspcp_val=$("$_JS_JIRA_CONFIG_SCRIPT" get project_create 2>/dev/null) || _jspcp_val=""
+  [ -n "$_jspcp_val" ] || _jspcp_val="gated"
+  printf '%s\n' "$_jspcp_val"
+}
+
 # _js_cmd_consent_question --name N --key K --template T — r02 FASE 19
 # tarefa 19.1.6 (plan.md SEC-9): imprime a pergunta de gate humano JA COM
 # o marcador literal exigido por SEC-9 embutido — o orquestrador consome
@@ -532,6 +603,12 @@ _js_cmd_consent_question() {
   [ -n "$_jscq_name" ] || _js_die_usage "consent-question requer --name"
   [ -n "$_jscq_key" ] || _js_die_usage "consent-question requer --key"
   [ -n "$_jscq_template" ] || _js_die_usage "consent-question requer --template"
+
+  # r02 FASE 21 tarefa 21.6.1 (FR-024): project_create=never desabilita a
+  # oferta inteira — nem a pergunta de gate e gerada. Sem requisicao (a
+  # leitura de ProjectConfig e local).
+  [ "$(_js_project_create_policy)" != "never" ] \
+    || _js_die_usage "consent-question: project_create=never no ProjectConfig — criacao de projeto desabilitada por politica (FR-024); oriente criacao manual na UI do Jira"
 
   _js_validate_project_key "$_jscq_key"
 
@@ -586,6 +663,12 @@ _js_cmd_create_project() {
   if [ "$_jscp_have_confirm" = "no" ] && [ "$_jscp_have_consent" = "no" ]; then
     _js_die_usage "create-project requer --confirm-key K OU --consent-block block-NNN"
   fi
+
+  # (0) r02 FASE 21 tarefa 21.6.1 (FR-024): project_create=never desabilita
+  # a criacao inteira — recusa ANTES de qualquer validacao/requisicao,
+  # mesmo com --confirm-key/--consent-block validos.
+  [ "$(_js_project_create_policy)" != "never" ] \
+    || _js_die_usage "create-project: project_create=never no ProjectConfig — criacao de projeto desabilitada por politica (FR-024); oriente criacao manual na UI do Jira"
 
   # (1) validate-project-key
   _js_validate_project_key "$_jscp_key"
@@ -750,6 +833,9 @@ case "$_js_sub" in
   check-status-mapping)
     _js_cmd_check_status_mapping "$@"
     ;;
+  check-field-support)
+    _js_cmd_check_field_support "$@"
+    ;;
   check-link-type)
     _js_cmd_check_link_type "$@"
     ;;
@@ -766,6 +852,6 @@ case "$_js_sub" in
     _js_cmd_create_project "$@"
     ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: check-status-mapping, check-link-type, resolve-link-type, write-config, consent-question, create-project — validate-project-key vive em jira-io.sh)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: check-status-mapping, check-field-support, check-link-type, resolve-link-type, write-config, consent-question, create-project — validate-project-key vive em jira-io.sh)"
     ;;
 esac

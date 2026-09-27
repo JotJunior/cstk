@@ -107,6 +107,79 @@ scenario_check_status_mapping_uso_incorreto_exit2() {
   assert_exit 2 "$SCRIPT" check-status-mapping "To Do" "In Progress" || return 1
 }
 
+# ==== check-field-support (r02 FASE 21 tarefa 21.5) ====
+#
+#   JS-32 campo presente na lista de stdin -> FIELD_ID=on
+#   JS-33 campo ausente da lista de stdin -> FIELD_ID=off
+#   JS-34 multiplos FIELD_ID no mesmo argv -> uma linha por campo, ordem
+#         do argv preservada
+#   JS-35 stdin vazio -> todos os campos pedidos saem =off, exit 0 (nao e
+#         erro — projeto sem createmeta ainda e um resultado valido)
+#   JS-36 uso incorreto (0 FIELD_ID) -> exit 2
+
+scenario_check_field_support_campo_presente_on() {
+  capture sh -c "printf 'summary\nlabels\nfixVersions\n' | \"$SCRIPT\" check-field-support labels"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js32_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "labels=on" ] \
+    || { _fail "js32_stdout" "esperado 'labels=on', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_check_field_support_campo_ausente_off() {
+  capture sh -c "printf 'summary\ndescription\n' | \"$SCRIPT\" check-field-support fixVersions"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js33_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "fixVersions=off" ] \
+    || { _fail "js33_stdout" "esperado 'fixVersions=off', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_check_field_support_multiplos_campos_ordem_preservada() {
+  capture sh -c "printf 'summary\nlabels\n' | \"$SCRIPT\" check-field-support labels fixVersions summary"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js34_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _expected="labels=on
+fixVersions=off
+summary=on"
+  [ "$_CAPTURED_STDOUT" = "$_expected" ] \
+    || { _fail "js34_stdout" "esperado '$_expected', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_check_field_support_stdin_vazio_tudo_off() {
+  capture sh -c "printf '' | \"$SCRIPT\" check-field-support labels fixVersions"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js35_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _expected="labels=off
+fixVersions=off"
+  [ "$_CAPTURED_STDOUT" = "$_expected" ] \
+    || { _fail "js35_stdout" "esperado '$_expected', obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_check_field_support_uso_incorreto_exit2() {
+  capture sh -c "printf '' | \"$SCRIPT\" check-field-support"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "js36_exit" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# JS-37 mutation 21.5.3: reverter check-field-support para SEMPRE imprimir
+# =on (ignorar a lista de stdin) MUST fazer este teste falhar.
+scenario_mutation_21_5_3_check_field_support_ignora_stdin() {
+  _mut="$TMPDIR_TEST/jira-setup.sh.mut"
+  cp "$SCRIPT" "$_mut"
+  grep -qF 'printf '"'"'%s=%s\n'"'"' "$_jscfs_id" "$_jscfs_status"' "$_mut" \
+    || { _fail "mutant_stale" "anchor de check-field-support nao encontrado (script mudou?)"; return 1; }
+  sed 's/printf '"'"'%s=%s\\n'"'"' "\$_jscfs_id" "\$_jscfs_status"/printf '"'"'%s=on\\n'"'"' "\$_jscfs_id"/' \
+    "$_mut" > "$_mut.tmp" && mv "$_mut.tmp" "$_mut"
+  grep -qF 'printf '"'"'%s=on\n'"'"' "$_jscfs_id"' "$_mut" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao em check-field-support"; return 1; }
+  chmod +x "$_mut"
+
+  # controle: original -> off para campo ausente
+  capture sh -c "printf 'summary\n' | \"$SCRIPT\" check-field-support fixVersions"
+  [ "$_CAPTURED_STDOUT" = "fixVersions=off" ] \
+    || { _fail "controle" "original deveria imprimir fixVersions=off, obtido '$_CAPTURED_STDOUT'"; return 1; }
+
+  # mutante: ignora stdin, sempre =on (regressao que este teste MUST detectar)
+  capture sh -c "printf 'summary\n' | \"$_mut\" check-field-support fixVersions"
+  [ "$_CAPTURED_STDOUT" = "fixVersions=on" ] \
+    || { _fail "mutant_no_effect" "esperado regressao (mutante sempre =on), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
 # ==== check-link-type (r02 FASE 18 tarefa 18.1.1/18.1.3) ====
 
 scenario_check_link_type_id_presente_exit0() {
@@ -360,6 +433,13 @@ sync_autonomous=on
 EOF
 }
 
+# _append_config_line: acrescenta KEY=VALUE ao config de teste (JA escrito
+# por _cp_write_full_config) — usado pelos cenarios de project_create
+# (21.6).
+_append_config_line() {
+  printf '%s\n' "$1" >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+}
+
 _cp_write_credential() {
   mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
   printf 'site_host=%s\nemail=%s\napi_token=%s\n' \
@@ -472,6 +552,68 @@ scenario_create_project_get_project_200_exit1_zero_r18() {
   assert_stderr_contains "ja existe" || return 1
   [ "$(_queue_calls_count)" = "1" ] \
     || { _fail "get_project_200_1_chamada" "esperado 1 chamada (getProject), obtido $(_queue_calls_count)"; return 1; }
+}
+
+# ---- create-project/consent-question: project_create policy (r02 FASE 21
+#      tarefa 21.6, FR-024) ----
+#
+#   JS-38 project_create=never -> create-project exit 2, ZERO requisicoes,
+#         mesmo com --confirm-key valido
+#   JS-39 project_create=never -> consent-question tambem recusa (exit 2)
+#   JS-40 project_create ausente (comportamento atual = gated) -> segue
+#         fluxo normal (reuse via getProject, 1 chamada)
+#   JS-41 project_create=gated explicito -> mesmo comportamento de ausente
+
+scenario_create_project_policy_never_exit2_zero_rede() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _append_config_line "project_create=never"
+  _cp_write_credential
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  PATH="$_bin:$PATH" assert_exit 2 "$SCRIPT" create-project --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --confirm-key NEW || return 1
+  assert_stderr_contains "project_create=never" || return 1
+  [ "$(_queue_calls_count)" = "0" ] \
+    || { _fail "policy_never_zero_rede" "esperado 0 chamadas, obtido $(_queue_calls_count)"; return 1; }
+}
+
+scenario_consent_question_policy_never_exit2() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _append_config_line "project_create=never"
+  assert_exit 2 "$SCRIPT" consent-question --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban || return 1
+  assert_stderr_contains "project_create=never" || return 1
+}
+
+scenario_create_project_policy_ausente_comportamento_atual() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10099","key":"NEW"}'
+  PATH="$_bin:$PATH" assert_exit 1 "$SCRIPT" create-project --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --confirm-key NEW || return 1
+  assert_stderr_contains "ja existe" || return 1
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "policy_ausente_1_chamada" "esperado 1 chamada (getProject), obtido $(_queue_calls_count)"; return 1; }
+}
+
+scenario_create_project_policy_gated_explicito_comportamento_atual() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _append_config_line "project_create=gated"
+  _cp_write_credential
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10099","key":"NEW"}'
+  PATH="$_bin:$PATH" assert_exit 1 "$SCRIPT" create-project --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --confirm-key NEW || return 1
+  assert_stderr_contains "ja existe" || return 1
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "policy_gated_1_chamada" "esperado 1 chamada (getProject), obtido $(_queue_calls_count)"; return 1; }
 }
 
 # ---- create-project: SEC-9 (19.1.8, mutation-tested) ----

@@ -19,6 +19,13 @@
 #       — Confere presenca de todos os campos obrigatorios de ProjectConfig
 #         no caminho EFETIVO (`resolve-path`), `site_host` como hostname puro
 #         (sem esquema/path/porta/userinfo) e `status_fail != status_pass`.
+#         r02 FASE 21 tarefa 21.4.1 (data-model.md ProjectConfig "Validation
+#         rules (novas)"): tambem valida, quando PRESENTES (ausente/vazia
+#         continua valida — ADITIVO), os enums `milestone_mode` (auto/off),
+#         `labels_enabled`/`fix_versions_on_subtask`/`links_enabled`
+#         (on/off) e `project_create` (gated/never); `milestone_release`
+#         contra a allowlist SEC-6 (`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`);
+#         `link_type_id` contra a allowlist SEC-1 (`[A-Za-z0-9_-]`).
 #         Exit 3 se nenhum arquivo existir; exit 1 com diagnostico em stderr
 #         no primeiro problema encontrado; exit 0 (sem stdout) se tudo
 #         valido.
@@ -219,6 +226,24 @@ _jc_is_bare_hostname() {
   return 0
 }
 
+# _jc_check_enum FIELD FILE ALLOWED... — r02 FASE 21 tarefa 21.4.1
+# (data-model.md ProjectConfig "Validation rules (novas)"): chave AUSENTE
+# ou VAZIA continua valida (o DEFAULT documentado e aplicado por quem LE,
+# nunca por este script — ADITIVO, nao quebra config r01/r02 sem as
+# chaves novas); chave PRESENTE com valor fora de ALLOWED... => exit 1
+# citando a chave.
+_jc_check_enum() {
+  _jce_field="$1"
+  _jce_file="$2"
+  shift 2
+  _jce_val=$(_jc_read_raw "$_jce_field" "$_jce_file" 2>/dev/null) || _jce_val=""
+  [ -z "$_jce_val" ] && return 0
+  for _jce_allowed in "$@"; do
+    [ "$_jce_val" = "$_jce_allowed" ] && return 0
+  done
+  _jc_die "valor invalido para $_jce_field (esperado um de: $*, obtido '$_jce_val')" 1
+}
+
 _jc_cmd_validate() {
   _jcv_file=$(_jc_resolve_config_path) \
     || _jc_die "config ausente: nem $_JC_CONFIG_FILE nem a worktree principal (plugin inativo)" 3
@@ -239,6 +264,47 @@ _jc_cmd_validate() {
   _jcv_status_fail=$(_jc_read_raw status_fail "$_jcv_file")
   if [ "$_jcv_status_pass" = "$_jcv_status_fail" ]; then
     _jc_die "status_fail e status_pass sao iguais ('$_jcv_status_pass') — crie um status distinto no workflow do projeto Jira para representar falha" 1
+  fi
+
+  # r02 FASE 21 tarefa 21.4.1 (data-model.md ProjectConfig "Validation
+  # rules (novas)" + plan.md Convencoes de Borda SEC-6/SEC-1): chaves
+  # novas opcionais — ausente/vazia continua valida (default aplicado por
+  # quem le); presente fora do enum/allowlist => exit 1 citando a chave.
+  _jc_check_enum milestone_mode "$_jcv_file" auto off
+  _jc_check_enum labels_enabled "$_jcv_file" on off
+  _jc_check_enum fix_versions_on_subtask "$_jcv_file" on off
+  _jc_check_enum links_enabled "$_jcv_file" on off
+  _jc_check_enum project_create "$_jcv_file" gated never
+
+  # SEC-6: milestone_release, quando presente, casa
+  # ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$ (mesma allowlist de
+  # jira-io.sh validate-version-name).
+  _jcv_milestone_release=$(_jc_read_raw milestone_release "$_jcv_file" 2>/dev/null) || _jcv_milestone_release=""
+  if [ -n "$_jcv_milestone_release" ]; then
+    case "$_jcv_milestone_release" in
+      [A-Za-z0-9]*) : ;;
+      *) _jc_die "milestone_release fora da allowlist SEC-6 (^[A-Za-z0-9][A-Za-z0-9._-]{0,254}\$) — deve comecar com alfanumerico: '$_jcv_milestone_release'" 1 ;;
+    esac
+    _jcv_mr_len=${#_jcv_milestone_release}
+    if [ "$_jcv_mr_len" -gt 255 ]; then
+      _jc_die "milestone_release excede 255 caracteres (SEC-6)" 1
+    fi
+    case "$_jcv_milestone_release" in
+      *[!A-Za-z0-9._-]*)
+        _jc_die "milestone_release fora da allowlist SEC-6 (^[A-Za-z0-9][A-Za-z0-9._-]{0,254}\$): '$_jcv_milestone_release'" 1
+        ;;
+    esac
+  fi
+
+  # SEC-1: link_type_id, quando presente, casa a allowlist FECHADA
+  # [A-Za-z0-9_-] (mesma allowlist de jira-io.sh validate-segment).
+  _jcv_link_type_id=$(_jc_read_raw link_type_id "$_jcv_file" 2>/dev/null) || _jcv_link_type_id=""
+  if [ -n "$_jcv_link_type_id" ]; then
+    case "$_jcv_link_type_id" in
+      *[!A-Za-z0-9_-]*)
+        _jc_die "link_type_id fora da allowlist SEC-1 ([A-Za-z0-9_-]): '$_jcv_link_type_id'" 1
+        ;;
+    esac
   fi
 
   return 0

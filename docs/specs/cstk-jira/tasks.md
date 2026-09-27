@@ -3014,9 +3014,9 @@ idem. A onda-016 reescreveu a linha `validate` de
 contrato ao codigo nao fecha a regra do data-model. Completar e ADITIVO
 (chave ausente continua valida, com o DEFAULT do data-model).
 
-- [ ] 21.4.1 Implementar em `_jc_cmd_validate` (`plugins/cstk-jira/scripts/jira-config.sh`) conforme data-model.md: enums `milestone_mode` (`auto`/`off`), `labels_enabled`/`fix_versions_on_subtask`/`links_enabled` (`on`/`off`), `project_create` (`gated`/`never`) — chave presente com valor fora da lista => exit 1 citando a chave; `milestone_release` nao-vazio fora de SEC-6 (`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`) => exit 1; `link_type_id` nao-vazio fora de `[A-Za-z0-9_-]` => exit 1; chave ausente/vazia => valida (POSIX puro, sem `jq`)
-- [ ] 21.4.2 Teste em `tests/cstk/test_jira-config.sh`: 1 cenario por chave (valor valido, invalido, ausente); mutation (remover a checagem de um enum) MUST falhar
-- [ ] 21.4.3 Restaurar a linha `validate` de `contracts/plugin-scripts.md` (r02) para o comportamento final (reverter a nota da onda-016)
+- [x] 21.4.1 Implementar em `_jc_cmd_validate` (`plugins/cstk-jira/scripts/jira-config.sh`) conforme data-model.md: enums `milestone_mode` (`auto`/`off`), `labels_enabled`/`fix_versions_on_subtask`/`links_enabled` (`on`/`off`), `project_create` (`gated`/`never`) — chave presente com valor fora da lista => exit 1 citando a chave; `milestone_release` nao-vazio fora de SEC-6 (`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`) => exit 1; `link_type_id` nao-vazio fora de `[A-Za-z0-9_-]` => exit 1; chave ausente/vazia => valida (POSIX puro, sem `jq`)
+- [x] 21.4.2 Teste em `tests/cstk/test_jira-config.sh`: 1 cenario por chave (valor valido, invalido, ausente); mutation (remover a checagem de um enum) MUST falhar
+- [x] 21.4.3 Restaurar a linha `validate` de `contracts/plugin-scripts.md` (r02) para o comportamento final (reverter a nota da onda-016)
 
 <!-- converge-key: 1662140021a8 -->
 
@@ -3040,9 +3040,9 @@ a linha de `contracts/plugin-scripts.md` em vez de implementar. Completar e
 ADITIVO (o comentario de `jira-sync.sh` ~linha 2075 ja presume o
 subcomando).
 
-- [ ] 21.5.1 Implementar `check-field-support` em `plugins/cstk-jira/scripts/jira-setup.sh` conforme plan.md/`contracts/plugin-scripts.md` (forma original r02): POSIX puro, le de stdin os `fieldId` de um tipo (extraidos pela skill de R8 via `jira-io.sh json-get`) e imprime `FIELD_ID=on|off` para os ids pedidos; sem `jq`/cliente HTTP no script
-- [ ] 21.5.2 Skill `plugins/cstk-jira/skills/jira-setup/SKILL.md` ETAPA 3/8: usar `check-field-support` e gravar `labels_enabled`/`fix_versions_on_subtask` via `write-config`, com aviso ao operador quando `off`; nomes de campo SO os ja citados em `contracts/jira-rest.md` R8 (Principio VI — sem campo suposto)
-- [ ] 21.5.3 Teste em `tests/cstk/test_jira-setup.sh`: lista com/sem `labels` e `fixVersions` => saida `on`/`off` correta; mutation MUST falhar; restaurar a linha em `contracts/plugin-scripts.md`
+- [x] 21.5.1 Implementar `check-field-support` em `plugins/cstk-jira/scripts/jira-setup.sh` conforme plan.md/`contracts/plugin-scripts.md` (forma original r02): POSIX puro, le de stdin os `fieldId` de um tipo (extraidos pela skill de R8 via `jira-io.sh json-get`) e imprime `FIELD_ID=on|off` para os ids pedidos; sem `jq`/cliente HTTP no script
+- [x] 21.5.2 Skill `plugins/cstk-jira/skills/jira-setup/SKILL.md` ETAPA 3/8: usar `check-field-support` e gravar `labels_enabled`/`fix_versions_on_subtask` via `write-config`, com aviso ao operador quando `off`; nomes de campo SO os ja citados em `contracts/jira-rest.md` R8 (Principio VI — sem campo suposto)
+- [x] 21.5.3 Teste em `tests/cstk/test_jira-setup.sh`: lista com/sem `labels` e `fixVersions` => saida `on`/`off` correta; mutation MUST falhar; restaurar a linha em `contracts/plugin-scripts.md`
 
 <!-- converge-key: ddc128167a9d -->
 
@@ -3060,8 +3060,8 @@ plan condiciona a oferta a `project_create=gated`. Nenhum arquivo de
 recebendo a oferta (o gate humano SEC-7/SEC-9 segue impedindo a criacao sem
 consentimento, por isso MEDIUM e nao HIGH). Completar e ADITIVO.
 
-- [ ] 21.6.1 Implementar conforme data-model.md: `jira-setup.sh create-project`/`consent-question` recusam (exit 2, sem requisicao) quando `project_create=never`, e a ETAPA 2.bis da skill `jira-setup` pula a oferta nesse caso, orientando criacao manual (FR-024)
-- [ ] 21.6.2 Teste em `tests/cstk/test_jira-setup.sh`: `project_create=never` => `create-project` exit 2 com 0 requisicoes mesmo com `--confirm-key` valido; ausente/`gated` => comportamento atual
+- [x] 21.6.1 Implementar conforme data-model.md: `jira-setup.sh create-project`/`consent-question` recusam (exit 2, sem requisicao) quando `project_create=never`, e a ETAPA 2.bis da skill `jira-setup` pula a oferta nesse caso, orientando criacao manual (FR-024)
+- [x] 21.6.2 Teste em `tests/cstk/test_jira-setup.sh`: `project_create=never` => `create-project` exit 2 com 0 requisicoes mesmo com `--confirm-key` valido; ausente/`gated` => comportamento atual
 
 <!-- converge-key: 167e86bd12d4 -->
 

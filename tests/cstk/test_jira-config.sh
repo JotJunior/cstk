@@ -164,6 +164,174 @@ scenario_validate_campo_obrigatorio_ausente_exit1() {
   assert_stderr_contains "board_id" || return 1
 }
 
+# ==== validate: enums/allowlists r02 (data-model.md ProjectConfig
+# "Validation rules (novas)" — r02 FASE 21 tarefa 21.4) ====
+#
+#   JC-18..24 milestone_mode/labels_enabled/fix_versions_on_subtask/
+#             links_enabled/project_create: 1 cenario por chave (valor
+#             valido, invalido, ausente = valido/default)
+#   JC-25..27 milestone_release: SEC-6 valido/invalido/ausente
+#   JC-28..30 link_type_id: SEC-1 valido/invalido/ausente
+#   JC-31     mutation: remover a checagem de UM enum (milestone_mode)
+#             MUST fazer o teste de invalido falhar (script mutante aceita
+#             valor fora do enum)
+
+# _append_config_line: acrescenta KEY=VALUE ao config valido de teste
+# (config JA escrito por _write_valid_config).
+_append_config_line() {
+  printf '%s\n' "$1" >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+}
+
+scenario_validate_milestone_mode_valido_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "milestone_mode=off"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_milestone_mode_invalido_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "milestone_mode=Auto"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "milestone_mode" || return 1
+}
+
+scenario_validate_milestone_mode_ausente_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_labels_enabled_valido_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "labels_enabled=off"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_labels_enabled_invalido_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "labels_enabled=yes"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "labels_enabled" || return 1
+}
+
+scenario_validate_fix_versions_on_subtask_valido_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "fix_versions_on_subtask=on"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_fix_versions_on_subtask_invalido_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "fix_versions_on_subtask=maybe"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "fix_versions_on_subtask" || return 1
+}
+
+scenario_validate_links_enabled_valido_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "links_enabled=off"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_links_enabled_invalido_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "links_enabled=1"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "links_enabled" || return 1
+}
+
+scenario_validate_project_create_valido_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "project_create=never"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_project_create_invalido_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "project_create=always"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "project_create" || return 1
+}
+
+scenario_validate_milestone_release_valido_sec6_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "milestone_release=1.2.3"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_milestone_release_invalido_sec6_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "milestone_release=../etc"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "milestone_release" || return 1
+}
+
+scenario_validate_milestone_release_ausente_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_link_type_id_valido_sec1_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "link_type_id=10003"
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+scenario_validate_link_type_id_invalido_sec1_exit1() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "link_type_id=10003;drop"
+  assert_exit 1 "$SCRIPT" validate || return 1
+  assert_stderr_contains "link_type_id" || return 1
+}
+
+scenario_validate_link_type_id_ausente_exit0() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  assert_exit 0 "$SCRIPT" validate || return 1
+}
+
+# JS-mutation 21.4.2: reverter a checagem de UM enum (milestone_mode)
+# MUST fazer este teste falhar — o mutante aceita valor fora do enum.
+scenario_mutation_21_4_2_remove_enum_check_fails() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_valid_config
+  _append_config_line "milestone_mode=Auto"
+
+  _mut="$TMPDIR_TEST/jira-config.sh.mut"
+  cp "$SCRIPT" "$_mut"
+  grep -qF '_jc_check_enum milestone_mode "$_jcv_file" auto off' "$_mut" \
+    || { _fail "mutant_stale" "anchor da checagem de milestone_mode nao encontrado (script mudou?)"; return 1; }
+  sed 's/_jc_check_enum milestone_mode "\$_jcv_file" auto off//' \
+    "$_mut" > "$_mut.tmp" && mv "$_mut.tmp" "$_mut"
+  chmod +x "$_mut"
+
+  # controle: original REJEITA (exit 1).
+  assert_exit 1 "$SCRIPT" validate || return 1
+
+  # mutante: sem a checagem, ACEITA o valor invalido (exit 0) — a
+  # regressao que este teste MUST detectar.
+  _mut_exit=0
+  "$_mut" validate >/dev/null 2>&1 || _mut_exit=$?
+  [ "$_mut_exit" = "0" ] \
+    || { _fail "mutant_no_effect" "esperado regressao: mutante deveria aceitar milestone_mode invalido (exit 0), obtido $_mut_exit"; return 1; }
+  return 0
+}
+
 scenario_credential_check_ausente_exit4() {
   _home="$TMPDIR_TEST/home-ausente"
   mkdir -p "$_home"
