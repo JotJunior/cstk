@@ -134,7 +134,7 @@ Ref: spec.md §User Story 4
 - [x] 6.3.1 `narrative-guide.md` (Linguagem de produto), `slide-grammar.md`,
       `templates/story.md`, `SKILL.md` (etapa 5 e Gotcha)
 - [x] 6.3.2 Fixture em linguagem de produto com `@tag`
-- [ ] 6.3.3 Reescrever a story do cstk sem tecniques, validar e enviar
+- [x] 6.3.3 Reescrever a story do cstk sem tecniques, validar e enviar
       prints ao dono do produto
 
 ---
