@@ -3225,3 +3225,152 @@ exit-code-capture bug em si nao havia sido detectado antes. Recomendado
 para o proximo ciclo de `converge`.
 
 <!-- converge-key: ee0f64ae8684 -->
+
+## FASE 24 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 4 (onda-024): 23.1 conferido no CODIGO e nos testes
+> (fechado). A varredura pedida pelo achado colateral da onda-023 (dec-084)
+> achou o mesmo defeito em `_js_reconcile_epic_milestone` e mais quatro
+> sitios com a mesma classe de falha: status HTTP nao-2xx de escrita tratado
+> como sucesso, `$?` morto e baseline do SyncMarker apagada. Um grupo por
+> funcao.
+
+### 24.1 `_js_reconcile_epic_milestone`: falha do R2 PUT de `fixVersions` mascarada (`$?` lido apos `fi` sem `else`) e 400/404/409/422 gravam `written_fix_version_id` falso `[C]`
+
+Ref: FR-020 / task 16.4.2 _js_reconcile_epic_milestone · tipo: `contradicts` · severidade: `HIGH`
+
+Em `plugins/cstk-jira/scripts/jira-sync.sh`, `_js_reconcile_epic_milestone`
+(~linhas 1719-1728) le `_jrem_ec=$?` DEPOIS de um `if ...; then ...; fi`
+sem `else` (linha 1725) — por POSIX o valor e sempre 0 (medido nesta onda:
+`sh -c 'if false; then :; fi; echo $?'` => `0`). O cabecalho da propria
+funcao (~1624-1627) promete repassar o exit code do `jira-io.sh` para o
+chamador decidir `auth_failed`/`deferred`; isso nunca acontece. Alem disso,
+o R2 nao confere `http_status`: `jira-io.sh` so classifica 400 para R4/R12
+(~927-935) e devolve exit 0 para os demais codigos em passthrough (~956-958;
+contracts/plugin-scripts.md:58), mas o R2 PUT documenta
+`400`/`401`/`403`/`404`/`409`/`422` (contracts/jira-rest.md:121). Com um
+400/404/409/422, a funcao imprime o id NOVO como se o marco tivesse sido
+aplicado; o chamador do drain (~2877-2881) grava esse id no R6 PUT do
+marker. Resultado: baseline `written_fix_version_id` falsa. O proximo drain
+ve `new_id == written` e retorna sem fazer nada (~1690), entao o Epic fica
+no marco antigo para sempre, sem `milestone_drift`. No round seguinte, o
+`remove` mira o id falso (que nao esta no Epic) e o `add` do marco novo
+se soma ao marco real antigo, que nunca foi removido: o Epic fica com as
+duas Fix Versions. Isso viola o "nunca os dois" das Clarifications
+(FR-020). Mesmo padrao do achado 23.1, que la foi medido com o stub; aqui
+foi confirmado pela leitura do codigo. O chamador (~2877) e uma atribuicao
+NUA sob `set -eu`, e esse e o mesmo alcapao da nota de execucao da
+onda-023: corrigir so a funcao faria o `drain` inteiro abortar no primeiro
+R2 que falhasse.
+
+- [ ] 24.1.1 Corrigir `_js_reconcile_epic_milestone`: capturar o exit code real do R2 PUT com `else` explicito e tratar `http_status` nao-2xx (lido do stderr do `jira-io.sh`, mesmo padrao de `_js_reconcile_phase_label` ~1827-1845) como falha: imprime WRITTEN inalterado e retorna nao-zero
+- [ ] 24.1.2 Absorver a falha no chamador do drain (~2877) com `if var=$(...); then :; else ...; fi`, sem abortar o `drain` e mantendo a reconciliacao de status. Honrar o contrato do cabecalho (~1624-1627): exit 4 => `_JSPE_BREAK=yes` (auth_failed); demais => `_jspr_had_deferred=yes`, para o evento `reconcile` nao ser marcado `done` com o marco pendente
+- [ ] 24.1.3 Testes em `tests/cstk/test_jira-sync.sh` (stub): Epic com marco novo e R2 => 400 => marker SEM `written_fix_version_id` novo e evento nao-`done`; R2 => 403 => drain exit 0, reconciliacao de status dos demais itens preservada; R2 => 401 => evento `auth_failed`. Mutation em `tests/cstk/test_jira-mutation.sh`: remover a checagem de `http_status` MUST falhar o cenario 400. Remover a guarda do chamador MUST falhar o cenario 403 (o drain aborta)
+- [ ] 24.1.4 Corrigir o comentario de oraculo de `tests/cstk/test_jira-sync.sh` ~3879-3880 (23.1.3). Ele afirma que reintroduzir `$?` apos o `fi` em `_js_reconcile_phase_label` faz o teste falhar, mas esse mutante e EQUIVALENTE, porque a checagem de `http_status` (~1836-1839) converte qualquer nao-2xx em falha (medido: os 3 cenarios 23.1 passam com o mutante). O oraculo que discrimina e remover a checagem de `http_status` (medido: o cenario 400 falha). Documentar isso e cobrir no mutation suite
+
+<!-- converge-key: 0c0c7530fa65 -->
+
+### 24.2 `_js_process_one_event`: o R6 PUT do marker apos transicao por evento apaga `written_phase_label`/`written_fix_version_id` e desliga a reconciliacao de FASE do item `[C]`
+
+Ref: FR-022 / task 17.3.1 _js_process_one_event R6 marker · tipo: `contradicts` · severidade: `HIGH`
+
+O R6 PUT substitui o valor INTEIRO da propriedade, como o proprio arquivo
+documenta em `plugins/cstk-jira/scripts/jira-sync.sh` ~2848-2851. Por isso
+todo escritor de marker precisa carregar adiante as baselines r02, como ja
+fazem ~932-933, ~2241-2244, ~2938-2939 e ~3010-3011. Em
+`_js_process_one_event` (~3253-3255), o marker da transicao de status por
+evento (`local_key` concreto, enfileirado pelo hook,
+`hooks/posttooluse-jira-sync.sh`:223) so leva summary/status/at/descricao.
+Medido nesta onda com o stub de fila (probe fora do repo, mesmo arranjo de
+`scenario_drain_transicao_preserva_baseline_descricao_convert_seguinte_detecta_manual_edit`):
+marker lido com `written_phase_label=phase-1` e R6 PUT gravado SEM
+`written_phase_label`. Consequencia: a reconciliacao de troca de FASE do
+drain so roda para item com `written_phase_label` nao-vazio (~2895-2896).
+Depois da primeira transicao de status do item, que e o fluxo normal da
+US3, o label `phase-N` nunca mais acompanha a FASE local (FR-022, R2-5).
+No Epic, `written_fix_version_id` tambem se perde, e o proximo reconcile
+so faz `add`, sem `remove`: o marco antigo e o novo ficam juntos no Epic.
+
+- [ ] 24.2.1 Em `_js_process_one_event`, ler `written_fix_version_id` e `written_phase_label` do marker ja obtido no R6 GET e repassar `--written-fix-version-id`/`--written-phase-label` no `json-build marker` (~3253-3255), com a mesma disciplina de `written_description_sha256`
+- [ ] 24.2.2 Testes (stub de fila): transicao por evento com marker contendo `written_phase_label` (Task) e `written_fix_version_id` (Epic) => o corpo do R6 PUT preserva os dois. Mutation: remover o carry-forward MUST falhar
+
+<!-- converge-key: 15b9e643cb33 -->
+
+### 24.3 `_js_maybe_update_mapped_issue`: R2 de summary/descricao com status nao-2xx tratado como sucesso (baseline falsa, `manual_edit` espurio) e marker regravado sem as baselines r02 `[C]`
+
+Ref: FR-011 / task 12.5.1 _js_maybe_update_mapped_issue R2 · tipo: `contradicts` · severidade: `HIGH`
+
+Em `plugins/cstk-jira/scripts/jira-sync.sh`, `_js_maybe_update_mapped_issue`
+tem dois defeitos. (a) O R2 PUT (~2139-2148) so olha o exit code, e
+400/404/409/422 chegam como exit 0 (passthrough, `jira-io.sh` ~956-958;
+contracts/jira-rest.md:121). A funcao segue e grava no R6 (~2150-2172) o
+sha do summary/descricao NOVO sem que ele tenha sido aplicado. O proximo
+`convert`/`drain` compara o summary real (antigo) com essa baseline e
+abre um `manual_edit` atribuindo a um humano uma divergencia que o proprio
+plugin criou (FR-011: sinalizar alteracao feita no Jira, nao falha da
+sincronizacao). Se o operador resolver com `keep_jira`, a atualizacao
+local se perde em silencio. (b) O `json-build marker` desse R6 (~2152-2157)
+nao carrega `written_phase_label`/`written_fix_version_id`, a mesma perda
+do achado anterior, agora pelo caminho de `convert` quando o titulo ou a
+descricao (criticidade/dependencias, 12.5.1) muda. (b) foi confirmado pela
+leitura do codigo, com o mesmo mecanismo medido no achado anterior.
+
+- [ ] 24.3.1 Tratar `http_status` nao-2xx do R2 (~2139) como falha: SyncMarker inalterado, diagnostico em stderr com o status, mesma forma de `_js_reconcile_phase_label`
+- [ ] 24.3.2 Carregar adiante `written_fix_version_id`/`written_phase_label` do marker lido no `json-build marker` (~2152-2157)
+- [ ] 24.3.3 Testes (stub): R2 => 400 => nenhum R6 PUT e a proxima checagem nao abre `manual_edit`; titulo alterado com marker contendo `written_phase_label` => R6 PUT preserva o campo. Mutation: remover a checagem de `http_status` MUST falhar o cenario 400
+
+<!-- converge-key: 081aa21de382 -->
+
+### 24.4 `_js_cmd_links`: R17 com 400 (passthrough) grava a aresta como `active` sem o link existir no Jira, e ela nunca mais e tentada `[C]`
+
+Ref: FR-025 / task 18.4 _js_cmd_links R17 · tipo: `contradicts` · severidade: `HIGH`
+
+Em `plugins/cstk-jira/scripts/jira-sync.sh`, `_js_cmd_links` (~1554-1568)
+decide so pelo exit code do R17 POST. O `jira-io.sh` classifica apenas
+404/413 de R17 (~886-919); o `400` documentado para R17
+(contracts/jira-rest.md:548) chega como exit 0 em passthrough (~956-958).
+O `link-put --state active` e gravado mesmo sem o link ter sido criado. Na
+execucao seguinte, a aresta `active` com as mesmas chaves e contada e
+pulada (~1531-1536): a dependencia nunca e representada no Jira e
+`links_active` a reporta como representada. FR-025 exige representar a
+dependencia ou sinalizar que ela nao e representavel; aqui nenhuma das
+duas acontece, em silencio. O `stderr` do R17 ja e capturado em
+`_jsl_r17_err`, mas `http_status` nunca e lido no ramo de sucesso.
+
+- [ ] 24.4.1 Ler `http_status` de `_jsl_r17_err` e so gravar `active` com 2xx. Nao-2xx em passthrough => aresta fora de `active` (nao conta em `links_active`), diagnostico em stderr e nova tentativa na proxima execucao. Nunca marcar `unrepresentable` sem a prova de 404/413
+- [ ] 24.4.2 Testes (stub): R17 => 400 => nenhuma linha `active` para a aresta, `links_active=0` e a 2a execucao tenta o R17 de novo. Mutation: remover a checagem de `http_status` MUST falhar
+
+<!-- converge-key: 3d148f121adb -->
+
+### 24.5 `_js_process_reconcile_event`: `_jspr_items_ok=$?` morto sob `set -eu`; falha de `jira-tasks.sh items` aborta o `drain` inteiro em silencio `[C]`
+
+Ref: FR-004 / task 10.3 _js_process_reconcile_event items · tipo: `contradicts` · severidade: `HIGH`
+
+Em `plugins/cstk-jira/scripts/jira-sync.sh` ~2724-2730,
+`_jspr_items=$(... items ... 2>/dev/null)` e uma atribuicao NUA seguida de
+`_jspr_items_ok=$?`. Sob `set -eu` (linha 148), com a chamada fora de
+qualquer contexto `if`/`||` (~3442 -> ~3068), uma falha de `items` aborta
+o script antes de `$?` ser lido. O ramo "evento permanece na fila"
+(~2731-2734) e codigo morto. Medido nesta onda (probe com o stub de fila,
+`tasks.md` ausente, outbox `e1 local_key=* reconcile` + `e2 local_key=1.1`):
+`drain` sai com exit 1, stderr vazio, `e2` nunca processado e o arquivo
+de outcomes temporario vaza. Com a atribuicao guardada por `|| ec=$?`, o
+mesmo probe sai com exit 0, imprime "jira-tasks.sh items falhou para demo
+— evento e1 permanece na fila" e processa `e2`. Enquanto `items` falhar,
+todo `drain` da feature para no mesmo evento (bloqueio de cabeca de fila).
+Gatilho realista: `tasks.md` ausente ou renomeado com um `reconcile` na
+fila.
+
+- [ ] 24.5.1 Guardar as duas atribuicoes (~2724 e ~2728) com `|| _jspr_items_ok=$?` (ou `if var=$(...); then :; else ec=$?; fi`), preservando o ramo de diagnostico existente
+- [ ] 24.5.2 Teste (stub): `tasks.md` ausente com `reconcile` + evento por item na fila => `drain` exit 0, diagnostico "permanece na fila", evento por item processado. Mutation: reverter para a atribuicao nua MUST falhar
+
+<!-- converge-key: 205fc7f5234e -->

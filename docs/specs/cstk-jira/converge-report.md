@@ -107,3 +107,66 @@ test_jira-config 36/36, test_posttooluse-jira-sync 21/21. Gate MUST:
 Principio II honrado (`sqlite3` so em comentario/usage). Residuais R1/R2
 do r01 inalterados (LOW, documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T18:04:24Z; actionable=1; tasks-digest=7cfa44107059 -->
+
+## Round r02 — Ciclo 4 (onda-024) — actionable
+
+Conferencia da FASE 23 no CODIGO e nos testes:
+
+| achado c3 | veredito | evidencia |
+|-----------|----------|-----------|
+| 23.1 | fechado | `jira-sync.sh` `_js_reconcile_phase_label`: R3 GET com `if VAR=$(cmd); then :; else ec=$?; fi` (~1772-1778) e R2 PUT com `else` explicito mais `http_status` nao-2xx => falha (~1827-1845); `_js_rebaseline_marker` le `labels_enabled` e com `off` nao faz R2/R3 e deixa a baseline vazia (~873-895); o chamador do drain absorve a falha com `if/else` e fallback para WRITTEN (~2915-2920), sem perder a reconciliacao de status. `scenario_mutation_17_3_6` discrimina: o stub zera o log a cada `_make_curl_stub`, o controle exige 1 PUT R2 e o mutante exige 0 |
+
+Residuais da FASE 23 (LOW, registrados):
+
+- O oraculo de mutation declarado em `tests/cstk/test_jira-sync.sh` ~3879-3880 (23.1.3, "reintroduzir `$?` apos o `fi` MUST falhar") e falso. Esse mutante e EQUIVALENTE, porque a checagem de `http_status` ja converte qualquer nao-2xx em falha. Medido com uma copia mutada do plugin fora do repo: os 3 cenarios 23.1 passam. O oraculo que discrimina e remover a checagem de `http_status`, e com ele o cenario 400 falha (medido). A correcao do comentario ficou na tarefa 24.1.4.
+- A nota de execucao da onda-023 informa `test_jira-sync 110/110`, mas o arquivo tem 108 cenarios (104 + 3 + 1), e a rodada desta onda deu 108/108.
+
+Decisao sobre o achado colateral dec-084 (`_js_reconcile_epic_milestone`): **confirmado e classificado HIGH**, nao LOW. `_jrem_ec=$?` e lido apos `fi` sem `else` (~1725; medido `if false; then :; fi; echo $?` => 0), e 400/404/409/422 do R2 (contracts/jira-rest.md:121, passthrough exit 0 em `jira-io.sh` ~956-958) imprimem o id NOVO. O drain grava entao um `written_fix_version_id` falso, o Epic nunca e corrigido, `milestone_drift` nunca reabre e o round seguinte deixa duas Fix Versions no Epic. O impacto e distinto do residual aceito em dec-081 (`overwrite` igual a `keep_jira`). Virou a tarefa 24.1.
+
+Varredura de `$?` morto (todos os `.sh` de `plugins/cstk-jira/scripts` e `hooks`: 28 leituras de `$?` fora de comentario):
+
+| sitio | padrao | veredito |
+|-------|--------|----------|
+| `jira-sync.sh:1725` | `$?` apos `if...fi` sem `else` | defeito (24.1) |
+| `jira-sync.sh:2726`, `:2730` | `$?` apos atribuicao NUA sob `set -eu` | defeito (24.5; medido: `drain` exit 1 silencioso, evento seguinte nao processado) |
+| `jira-io.sh:821`, `:829` | `|| _jir_ec=$?` | correto |
+| demais 23 (21 em `jira-sync.sh`, `jira-setup.sh:730/803`) | `$?` logo apos `else` | correto |
+
+Nenhum `if ! ...; then ... $?` restante (o de `_js_reconcile_phase_label` foi corrigido na 23.1.1). Os hooks e os scripts `jira-map`/`jira-config`/`jira-tasks`/`jira-title`/`jira-conflict-view` nao leem `$?`.
+
+Varredura de status nao-2xx de ESCRITA tratado como sucesso (`jira-io.sh` so classifica 400/409 em R4 e 400 em R12; os demais codigos vao em passthrough com exit 0, contracts/plugin-scripts.md:58):
+
+| sitio | op | efeito | veredito |
+|-------|----|--------|----------|
+| `jira-sync.sh:1719` | R2 fixVersions | baseline de marco falsa e acumulo de 2 versoes | 24.1 HIGH |
+| `jira-sync.sh:1554` | R17 | aresta `active` sem link, nunca retentada | 24.4 HIGH |
+| `jira-sync.sh:2139` | R2 summary/descricao | baseline falsa e `manual_edit` espurio | 24.3 HIGH |
+| `jira-sync.sh:1827` | R2 labels | ja trata `http_status` | ok (23.1) |
+| `jira-sync.sh:1306` | R12 | 400 classificado; outro nao-2xx => sem `.id` => `_js_die` | fail-closed, ok |
+| `jira-sync.sh:2476` | R1 | nao-2xx => sem id/key => `_js_die` | fail-closed, ok |
+| `jira-setup.sh:799` | R18 | nao-2xx => sem `.key` => `_js_die` | fail-closed, ok |
+| `jira-sync.sh:2984`, `:3233` | R4 | 400/409 => deferred; 404/422 em passthrough gravam o status alvo no marker | LOW: a divergencia reaparece no proximo R3 como `manual_edit` |
+| `jira-sync.sh:938`, `:2172`, `:2250`, `:2944`, `:3016`, `:3277` | R6 PUT marker | 400/404 em passthrough => marker nao gravado | LOW: aparece no proximo R6 GET como `marker_missing`/`manual_edit`; o corpo e montado por `json-build`, entao 400 e improvavel |
+
+Achado novo, fora das duas varreduras: escritores de SyncMarker que apagam as baselines r02. O R6 PUT substitui a propriedade inteira (~2848-2851), e `_js_process_one_event` (~3253-3255) e `_js_maybe_update_mapped_issue` (~2152-2157) nao carregam `written_phase_label`/`written_fix_version_id`. Medido com o stub de fila: marker lido com `written_phase_label=phase-1` e R6 PUT da transicao por evento gravado sem o campo. Como a reconciliacao de FASE exige esse campo (~2895-2896), ela deixa de rodar para o item depois da primeira transicao de status (FR-022). Viraram as tarefas 24.2 e 24.3.
+
+| # | tipo | severidade | path | origem |
+|---|------|------------|------|--------|
+| 24.1 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_reconcile_epic_milestone` + chamador do drain ~2877) | FR-020 / task 16.4.2 |
+| 24.2 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_process_one_event` R6 marker) | FR-022 / task 17.3.1 |
+| 24.3 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_maybe_update_mapped_issue`) | FR-011 / task 12.5.1 |
+| 24.4 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_cmd_links` R17) | FR-025 / task 18.4 |
+| 24.5 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_process_reconcile_event` items) | FR-004 / task 10.3 |
+
+Severidades calculadas por `severity.sh` (contradicts + P1 + must-violated=false => HIGH). Probabilidade de disparo por item:
+
+- 24.2: fluxo normal da US3.
+- 24.1, 24.3, 24.4: exigem um 4xx documentado no contrato.
+- 24.5: exige `tasks.md` ausente.
+
+Cobertura de FR-020..FR-025: FR-021 (reuso), FR-023 (Epic por feature) e FR-024 (gate da criacao de projeto) nao tem gap novo; os gaps de FR-020, FR-022 e FR-025 estao acima.
+
+Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`: test_jira-sync 108/108, test_jira-mutation 17/17.
+
+Gate MUST: `extract-must --coverage` => 5 principios, `cobertura de MUST: ok`. Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T19:06:53Z; actionable=5; tasks-digest=09017c961b85 -->
