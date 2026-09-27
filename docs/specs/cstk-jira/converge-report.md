@@ -72,3 +72,38 @@ gaps novos, apendados como FASE 22:
 que nao conta como fechamento. Residuais R1/R2 do r01 inalterados (LOW,
 documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T17:09:19Z; actionable=2; tasks-digest=aae6563e4a62 -->
+
+## Round r02 — Ciclo 3 (onda-022) — actionable
+
+Verificacao da FASE 22 no CODIGO e nos testes (nao na doc):
+
+| achado c2 | veredito | evidencia |
+|-----------|----------|-----------|
+| 22.1 | fechado | `jira-sync.sh` `_js_cmd_milestone_ensure` (~1245-1265): `state=blocked` para a mesma `(project_key, name)` => `status=blocked` exit 7 com diagnostico, ANTES do GET de project/R13/R12; `milestone-unblock` (~3745-3782) delega a `jira-map.sh milestone-clear-blocked` (~656-686: charset `[A-Za-z0-9_-]` validado, so apaga `$5 == "blocked"`, header preservado); `jira-setup.sh write-config` (~545-567) chama os dois best-effort so apos gravar; contrato `plugin-scripts.md` 133/205/215/216 bate com o codigo; SY-92 (0 chamadas na 2a ensure) + JS-20/21 + 3 cenarios de `milestone-clear-blocked` |
+| 22.2 | fechado no caminho feliz | `_js_rebaseline_marker` (~858-890): `overwrite` de `label_drift` reaplica `phase-<N>` local so com `add` e grava `written_phase_label`; `keep_jira` mantem a re-derivacao de 21.1; os 2 unicos chamadores (`_js_cmd_resolve` ~3642 `overwrite`, ~3650 `keep_jira`) passam CHOICE; skill `jira-sync` (~282-296) restaurada |
+
+Regressao encontrada (FASE 23): o ramo novo de 22.2.1 depende do exit code
+de `_js_reconcile_phase_label`, que nunca e nao-zero no R2 (`_jrpl_ec=$?`
+apos `fi` sem `else` ~1800 => sempre 0; 400 em R2 e passthrough exit 0 em
+`jira-io.sh` ~927). Medido com o stub: R2 403 => `resolve` exit 0 e marker
+sem `written_phase_label` (overwrite volta a ser keep_jira); R2 400 =>
+marker com `written_phase_label=phase-5` sem o label aplicado (baseline
+falsa). O ramo `overwrite` tambem ignora `labels_enabled=off`.
+
+| # | tipo | severidade | path | origem |
+|---|------|------------|------|--------|
+| 23.1 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_reconcile_phase_label` / ramo `overwrite` de `_js_rebaseline_marker`) | FR-022 / task 22.2.1 / data-model.md ConflictRecord + :406 |
+
+dec-079 (`overwrite` de `milestone_drift` igual a `keep_jira`) avaliado:
+honra o "overwrite reaplica" do data-model (baseline vazia auto-cura no
+proximo reconcile, `_js_reconcile_epic_milestone` sem guard de written
+nao-vazio); residual LOW aceito (dec-081): as 2 escolhas ficam
+indistinguiveis para `milestone_drift`. Tambem LOW: JS-20 nao assere a R13
+da ensure seguinte (decorre da guarda nao casar). Cobertura FR-020..FR-025:
+sem outros gaps. Suites (uma a uma, `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`):
+test_jira-sync 104/104, test_jira-map 44/44, test_jira-setup 41/41,
+test_jira-config 36/36, test_posttooluse-jira-sync 21/21. Gate MUST:
+`extract-must --coverage` => 5 principios, `cobertura de MUST: ok`;
+Principio II honrado (`sqlite3` so em comentario/usage). Residuais R1/R2
+do r01 inalterados (LOW, documentacao).
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T18:04:24Z; actionable=1; tasks-digest=7cfa44107059 -->

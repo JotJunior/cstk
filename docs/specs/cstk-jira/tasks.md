@@ -3138,3 +3138,58 @@ baseline vazia sob `overwrite` explicito.
 - [x] 22.2.3 Restaurar `plugins/cstk-jira/skills/jira-sync/SKILL.md` (item `overwrite` do Gotcha de `resolve`) para descrever o reaplicar de marco/label, retirando a frase "independente de marco/label"
 
 <!-- converge-key: 2b7269eeca2e -->
+
+## FASE 23 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 3 (onda-022): 22.1 e 22.2 conferidos no CODIGO e nos
+> testes, caminho feliz fechado; o achado abaixo e uma REGRESSAO do
+> caminho de falha introduzido pela 22.2.1.
+
+### 23.1 `overwrite` de `label_drift` fecha o conflito como sucesso quando o R2 de `add` falha (403 mascarado, 400 grava baseline falsa) e ignora `labels_enabled=off` `[C]`
+
+Ref: FR-022 / task 22.2.1 (data-model.md ConflictRecord "`overwrite` reaplica"; data-model.md:406 `phase_label` "vazio para Epic ou `labels_enabled=off`") · tipo: `contradicts` · severidade: `HIGH`
+
+O ramo novo de 22.2.1 em `_js_rebaseline_marker`
+(`plugins/cstk-jira/scripts/jira-sync.sh`, ~linhas 878-883) depende do exit
+code de `_js_reconcile_phase_label` para abortar o rebaseline ("falha ao
+reaplicar label ... rebaseline abortado"). Esse contrato nao e honrado pela
+funcao chamada: (a) no ramo de falha do R2 PUT (~linhas 1794-1802),
+`_jrpl_ec=$?` e lido DEPOIS de um `if ...; then ... fi` sem `else` — por
+POSIX o status e sempre 0 (medido: `if false; then :; fi; echo $?` => 0; o
+proprio arquivo documenta a armadilha no comentario de
+`_js_cmd_milestone_ensure`), logo um 403 em R2 (exit 7 de `jira-io.sh`)
+retorna 0 com WRITTEN=""; (b) `jira-io.sh request` devolve exit 0 para 400
+em `--op R2` (passthrough, `plugins/cstk-jira/scripts/jira-io.sh` ~linhas
+926-935 so classificam 400 para R4/R12) e a funcao nao confere
+`http_status`, tratando o 400 como sucesso e imprimindo TARGET. Medido nesta
+onda com o stub de `jira-io.sh` (probe fora do repo, mesmo cenario de
+`scenario_resolve_overwrite_label_drift_sem_phase_reaplica_fase_local`):
+R2 => 403 resulta em `resolve` exit 0, ConflictRecord `overwrite`, marker
+SEM `written_phase_label` (overwrite volta a ter o efeito de `keep_jira`, o
+proprio achado 22.2, agora no caminho de falha); R2 => 400 resulta em
+`resolve` exit 0 e marker com `written_phase_label=phase-5` sem o label ter
+sido aplicado — baseline falsa que o drain nunca corrige (WRITTEN == TARGET
+=> retorno imediato em ~linha 1741, sem R15) e que nunca reabre
+`label_drift`. A mensagem de erro de ~linha 881 e codigo morto. Alem disso,
+o ramo `overwrite` nao le `labels_enabled` (convert ~linha 2403 e drain
+~linha 2853 so escrevem label com `labels_enabled=on`): com o setup tendo
+gravado `labels_enabled=off` depois do conflito, `overwrite` ainda emite
+`update.labels`. Nenhum teste cobre falha do R2 nem `labels_enabled=off` sob
+`overwrite`. Corrigir exige MUDAR logica ja presente (captura do exit code e
+checagem de `http_status` em `_js_reconcile_phase_label`, guarda de
+`labels_enabled` no ramo `overwrite`).
+
+- [ ] 23.1.1 Corrigir `_js_reconcile_phase_label` (`plugins/cstk-jira/scripts/jira-sync.sh`) conforme task 22.2.1: capturar o exit code real do R2 PUT (e do R3/R15 com `if !`) com `else` explicito, e tratar `http_status` nao-2xx do R2 (ex.: 400 em passthrough) como falha — imprime WRITTEN inalterado e retorna nao-zero; conferir que o chamador do drain (~linha 2862) continua absorvendo a falha sem quebrar a reconciliacao de status (hoje so compara o valor impresso)
+- [ ] 23.1.2 Guardar o ramo `overwrite` de `label_drift` em `_js_rebaseline_marker` por `labels_enabled=on` (mesma leitura de `jira-config.sh get labels_enabled`, default `on`), conforme data-model.md:406; com `off`, baseline vazia e ZERO `update.labels`
+- [ ] 23.1.3 Testes em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `overwrite` de `label_drift` com R2 => 403 e com R2 => 400 => `resolve` exit 1, ConflictRecord continua `pending`, nenhum R6 PUT; `labels_enabled=off` => nenhuma chamada R2 e marker sem `written_phase_label`; mutation (voltar a ler `$?` apos o `fi`) MUST falhar
+
+<!-- converge-key: ee0f64ae8684 -->
