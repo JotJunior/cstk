@@ -1019,6 +1019,124 @@ EOF2
   return 0
 }
 
+# scenario_mutation_25_1_1_drain_phase_label_caller_classification — r02
+# FASE 26 tarefa 26.1.1 (achado 26.1: a parte de mutation da tarefa 25.1.2
+# nunca foi escrita). Mira o bloco do `else` do chamador de
+# `_js_reconcile_phase_label` (jira-sync.sh ~3033-3042, adicionado na
+# 25.1.1) que CLASSIFICA o exit code genuino da funcao (exit 4 =>
+# `_JSPE_BREAK=yes` + `break`, auth_failed; qualquer outro exit nao-zero =>
+# `_jspr_had_deferred=yes`) — mesmo idioma de 24.1.2 (python3, mutacao
+# multi-linha), agora para o marco de FASE (nao o Epic). Com o R2
+# (update.labels) da Task 1.1 respondendo 401 (credencial rejeitada), o
+# original classifica exit 4 e fecha o evento `e1` como `auth_failed`
+# (FR-016); o mutante remove a classificacao e mantem so o fallback de
+# WRITTEN (`_jspr_new_phase_label="${_jspr_written_phase_label:-}"`) — o
+# evento `e1` NUNCA vira `auth_failed` (nem `deferred`, ja que
+# `_jspr_had_deferred` tambem some), fechando `done` com a credencial
+# invalida ja descartada silenciosamente — o mesmo bug que 25.1.1 corrigiu,
+# reintroduzido.
+scenario_mutation_25_1_1_drain_phase_label_caller_classification() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 5 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf 'demo\tepic\t20001\tDEMO-1\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _sha_epic=$(printf '%s' "demo" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-1?fields=summary,status|200|{\"fields\":{\"summary\":\"demo\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status|200|{\"fields\":{\"summary\":\"Titulo da tarefa\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=labels|200|{\"fields\":{\"labels\":[\"phase-3\",\"prioridade-alta\"]}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2|401|{\"errorMessages\":[\"unauthorized\"]}"
+
+  # -- controle: R2 de labels responde 401 (credencial rejeitada); o
+  # chamador classifica exit 4 -> _JSPE_BREAK=yes + break, evento e1 vira
+  # auth_failed, ZERO R6 PUT do marker (mesmo idioma de
+  # scenario_drain_reconcile_phase_label_r2_401_vira_auth_failed em
+  # test_jira-sync.sh) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  _ctrl_calls=$(_curl_call_count)
+  [ "$_ctrl_calls" = "6" ] \
+    || { _fail "controle_calls_count" "esperado 6 chamadas (2 epic idempotente + 4 task: R3/R6get/R15/R2-401), obtido $_ctrl_calls"; return 1; }
+  awk -F '\t' '$1=="e1"' "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" | grep -q 'auth_failed$' \
+    || { _fail "controle_auth_failed" "controle: evento e1 deveria virar auth_failed, obtido: $(awk -F '\t' '$1=="e1"' "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv")"; return 1; }
+
+  # -- mutante: remove a classificacao do `else` do chamador (~3033-3042),
+  # mantendo so o fallback de WRITTEN --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '        _jspr_phl_ec=$?' "$_sy" \
+    || { _fail "mutant_stale" "classificacao do exit code de _js_reconcile_phase_label no chamador nao encontrada — repo mudou"; return 1; }
+  python3 - "$_sy" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = '''      if _jspr_new_phase_label=$(_js_reconcile_phase_label "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" \\
+        "${_jspr_written_phase_label:-}" "$_jspr_target_label"); then
+        :
+      else
+        _jspr_phl_ec=$?
+        _jspr_new_phase_label="${_jspr_written_phase_label:-}"
+        if [ "$_jspr_phl_ec" -eq 4 ]; then
+          _JSPE_BREAK="yes"
+          break
+        fi
+        _jspr_had_deferred="yes"
+      fi'''
+new = '''      if _jspr_new_phase_label=$(_js_reconcile_phase_label "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" \\
+        "${_jspr_written_phase_label:-}" "$_jspr_target_label"); then
+        :
+      else
+        _jspr_new_phase_label="${_jspr_written_phase_label:-}"
+      fi'''
+assert old in content, "padrao 25.1.1 (classificacao do chamador do label de fase) nao encontrado no source"
+content = content.replace(old, new, 1)
+with open(path, "w") as f:
+    f.write(content)
+PYEOF
+  _py_rc=$?
+  [ "$_py_rc" = "0" ] \
+    || { _fail "mutant_apply" "python3 falhou ao remover a classificacao do chamador do label de fase (rc=$_py_rc)"; return 1; }
+  grep -qF '        _jspr_phl_ec=$?' "$_sy" \
+    && { _fail "mutant_apply" "classificacao ainda presente apos a mutacao"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja marcou o evento auth_failed).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "drain deveria continuar saindo 0 (mutante nao introduz abort), obtido $_CAPTURED_EXIT"; return 1; }
+  awk -F '\t' '$1=="e1"' "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" | grep -q 'auth_failed$' \
+    && { _fail "mutant_regression" "regressao: evento e1 NAO deveria virar auth_failed (classificacao removida, credencial invalida descartada em silencio)"; return 1; }
+  return 0
+}
+
 # scenario_mutation_24_2_1_process_one_event_carryforward — r02 FASE 24
 # tarefa 24.2.1/24.2.2 (achado 24.2): mira as 2 linhas de carry-forward de
 # `_js_process_one_event` que repassam `written_fix_version_id`/

@@ -3502,6 +3502,6 @@ Portanto so falta o guard de regressao que a tarefa declarou. Hoje nada
 impede que as assercoes de status do evento nesses 2 cenarios sejam
 enfraquecidas em silencio.
 
-- [ ] 26.1.1 Adicionar `scenario_mutation_25_1_1_drain_phase_label_caller_classification` em `tests/cstk/test_jira-mutation.sh`, no mesmo formato de `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard`: guarda `mutant_stale` (padrao `_jspr_phl_ec=$?` nao encontrado), mutacao multi-linha via python3 que remove a classificacao e mantem so o fallback de WRITTEN, checagem de que a mutacao foi aplicada, controle no plugin original com R2 de labels => 401 (evento `e1` = `auth_failed`) e o mutante com o outbox reenfileirado (evento `e1` MUST NOT ser `auth_failed`)
+- [x] 26.1.1 Adicionar `scenario_mutation_25_1_1_drain_phase_label_caller_classification` em `tests/cstk/test_jira-mutation.sh`, no mesmo formato de `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard`: guarda `mutant_stale` (padrao `_jspr_phl_ec=$?` nao encontrado), mutacao multi-linha via python3 que remove a classificacao e mantem so o fallback de WRITTEN, checagem de que a mutacao foi aplicada, controle no plugin original com R2 de labels => 401 (evento `e1` = `auth_failed`) e o mutante com o outbox reenfileirado (evento `e1` MUST NOT ser `auth_failed`)
 
 <!-- converge-key: cf6d28c3a99b -->
