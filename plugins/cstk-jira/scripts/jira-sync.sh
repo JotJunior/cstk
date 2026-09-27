@@ -1233,6 +1233,93 @@ _js_reconcile_epic_milestone() {
   return "$_jrem_ec"
 }
 
+# _js_reconcile_phase_label FEATURE LOCAL_KEY JKEY WRITTEN TARGET — r02
+# FASE 17 task 17.3.1/17.3.2/17.3.3 (research.md Decision R2-5; data-model.md
+# SyncMarker `written_phase_label`; plan.md SEC-10): chamada por
+# `_js_process_reconcile_event` so para kind=task|subtask com
+# labels_enabled=on (Epic nunca tem phase_label, 17.2.1). Quando o
+# `phase_number` local diverge do marker (WRITTEN != TARGET), reaplica via
+# `update.labels` remove-antigo/add-novo, preservando qualquer label humano
+# (a operacao so referencia os 2 valores phase-N, nunca substitui o array
+# inteiro). Devolve (stdout) o `written_phase_label` a gravar no marker:
+# TARGET em sucesso; WRITTEN inalterado em no-op/conflito/falha (mesma
+# convencao de retorno de `_js_reconcile_epic_milestone`).
+_js_reconcile_phase_label() {
+  _jrpl_feature="$1"
+  _jrpl_lkey="$2"
+  _jrpl_jkey="$3"
+  _jrpl_written="$4"
+  _jrpl_target="$5"
+
+  _jrpl_dir="$(_js_script_dir)"
+  _jrpl_io="$_jrpl_dir/jira-io.sh"
+
+  if [ "$_jrpl_target" = "$_jrpl_written" ]; then
+    printf '%s' "$_jrpl_written"
+    return 0
+  fi
+
+  # 17.3.3: SO existe algo a remover/verificar quando o marker ja tinha um
+  # label anterior. R15 (extensao de R3, contracts/jira-rest.md) confere o
+  # estado REAL da issue antes de qualquer remocao — nunca confia cegamente
+  # no marker. `--op R3` (nao ha `R15` na allowlist de `_ji_op_allowed`
+  # porque R15 e, por definicao do proprio contrato, uma extensao de R3, so
+  # com mais `fields` no querystring).
+  _jrpl_do_remove="no"
+  if [ -n "$_jrpl_written" ]; then
+    if ! _jrpl_resp=$("$_jrpl_io" request GET "/rest/api/3/issue/$_jrpl_jkey?fields=labels" --op R3 2>/dev/null); then
+      _jrpl_ec=$?
+      printf '%s' "$_jrpl_written"
+      return "$_jrpl_ec"
+    fi
+    _jrpl_cur_labels=$(printf '%s' "$_jrpl_resp" | "$_jrpl_io" json-get '.fields.labels[]?')
+    if printf '%s\n' "$_jrpl_cur_labels" | grep -qxF "$_jrpl_written"; then
+      # SEC-10: remove SO se o valor casar ^phase-[0-9]+$ — nunca remove um
+      # label humano mesmo que (por acidente) coincida com o marker.
+      case "$_jrpl_written" in
+        phase-*)
+          _jrpl_suffix=${_jrpl_written#phase-}
+          case "$_jrpl_suffix" in
+            ''|*[!0-9]*) _jrpl_do_remove="no" ;;
+            *) _jrpl_do_remove="yes" ;;
+          esac
+          ;;
+        *) _jrpl_do_remove="no" ;;
+      esac
+    else
+      # 17.3.3: marker aponta um label que ja nao esta na issue -> drift,
+      # NUNCA reaplicacao forcada. Fica pendente ate resolucao humana (mesma
+      # disciplina de milestone_drift, task 16.4.6/SEC-10).
+      _js_conflict_pending_exists "$_jrpl_feature" "$_jrpl_lkey" \
+        || _js_append_conflict "$_jrpl_feature" "$_jrpl_lkey" "$_jrpl_jkey" label_drift
+      printf '%s' "$_jrpl_written"
+      return 0
+    fi
+  fi
+
+  set --
+  [ "$_jrpl_do_remove" = "yes" ] && set -- --remove-label "$_jrpl_written"
+  [ -n "$_jrpl_target" ] && set -- "$@" --add-label "$_jrpl_target"
+  if [ "$#" -eq 0 ]; then
+    printf '%s' "$_jrpl_written"
+    return 0
+  fi
+  _jrpl_body=$("$_jrpl_io" json-build issue-update "$@")
+  _jrpl_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2lblbody.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  printf '%s' "$_jrpl_body" > "$_jrpl_body_file"
+  if "$_jrpl_io" request PUT "/rest/api/3/issue/$_jrpl_jkey" \
+      --body-file "$_jrpl_body_file" --op R2 >/dev/null 2>/dev/null; then
+    rm -f "$_jrpl_body_file"
+    printf '%s' "$_jrpl_target"
+    return 0
+  fi
+  _jrpl_ec=$?
+  rm -f "$_jrpl_body_file"
+  printf '%s' "$_jrpl_written"
+  return "$_jrpl_ec"
+}
+
 # _js_cmd_milestone MODE [ARGS...] — dispatcher interno de `milestone`.
 # MODE em {resolve, ensure} (16.2/16.3) — allowlist FECHADA, mesmo estilo
 # de `_ji_cmd_json_build`.
@@ -2228,6 +2315,11 @@ _js_process_reconcile_event() {
       # atual — mesma disciplina de `written_description_sha256` acima (o
       # R6 PUT substitui o valor inteiro da propriedade).
       _jspr_written_fixver=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_fix_version_id? // ""')
+      # r02 FASE 17 task 17.3.1 (data-model.md SyncMarker
+      # `written_phase_label`): mesma disciplina — carrega adiante a
+      # baseline atual para o R6 PUT nunca apagar a protecao do label de
+      # FASE de outra task/sub-task.
+      _jspr_written_phase_label=$(printf '%s' "$_jspr_prop_resp" | "$_jsd_io" json-get '.value.written_phase_label? // ""')
       if [ "$_jspr_cur_sha" != "$_jspr_written_sha" ] || [ "$_jspr_cur_status" != "$_jspr_written_status" ]; then
         _jspr_conflict="yes"
         _jspr_conflict_reason="manual_edit"
@@ -2254,11 +2346,39 @@ _js_process_reconcile_event() {
       fi
     fi
 
-    # Idempotencia (FR-004/10.3): ja no status alvo E sem mudanca de marco
-    # -> no-op, sem R5/R4/R6-PUT. Marco mudou mas status ja e o alvo -> so
-    # regrava o marker (sem R4/R5) com o written_fix_version_id novo.
+    # r02 FASE 17 task 17.3.1 (research.md Decision R2-5): reaplica o label
+    # de FASE de Task/Sub-task, independente do status alvo — mesma logica
+    # de `_jspr_milestone_changed` acima, mas por item (nao so o Epic) e
+    # so quando `labels_enabled=on`. Restrito a itens que JA carregam
+    # `written_phase_label` no marker (17.2.3 grava-o na CRIACAO) — isto e
+    # RECONCILIACAO DE TROCA de fase (R2-5), nunca atribuicao retroativa de
+    # um label que a criacao nunca aplicou (Epic nunca tem, 17.2.1; e um
+    # item criado com `labels_enabled=off` nao deve ganhar label so por
+    # `drain` rodar depois com a config ligada — isso e escopo de `convert`/
+    # `check-field-support`, nao de reconciliacao).
+    _jspr_phase_changed="no"
+    if [ "$_jsd_labels_enabled" = "on" ] && { [ "$_jspr_kind" = "task" ] || [ "$_jspr_kind" = "subtask" ]; } \
+        && [ -n "${_jspr_written_phase_label:-}" ]; then
+      _jspr_phase=$(printf '%s' "$_jspr_line" | cut -f3)
+      _jspr_phase_num=$(printf '%s' "$_jspr_phase" | awk '{print $2}')
+      case "$_jspr_phase_num" in
+        ''|*[!0-9]*) _jspr_phase_num="" ;;
+      esac
+      _jspr_target_label=""
+      [ -n "$_jspr_phase_num" ] && _jspr_target_label="phase-$_jspr_phase_num"
+      _jspr_new_phase_label=$(_js_reconcile_phase_label "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" \
+        "${_jspr_written_phase_label:-}" "$_jspr_target_label")
+      if [ "$_jspr_new_phase_label" != "${_jspr_written_phase_label:-}" ]; then
+        _jspr_written_phase_label="$_jspr_new_phase_label"
+        _jspr_phase_changed="yes"
+      fi
+    fi
+
+    # Idempotencia (FR-004/10.3): ja no status alvo E sem mudanca de marco/
+    # label -> no-op, sem R5/R4/R6-PUT. Marco/label mudou mas status ja e o
+    # alvo -> so regrava o marker (sem R4/R5) com o valor novo.
     if [ "$_jspr_cur_status" = "$_jspr_target" ]; then
-      if [ "$_jspr_milestone_changed" != "yes" ]; then
+      if [ "$_jspr_milestone_changed" != "yes" ] && [ "$_jspr_phase_changed" != "yes" ]; then
         continue
       fi
       _jspr_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -2266,6 +2386,7 @@ _js_process_reconcile_event() {
         --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_cur_status" --written-at "$_jspr_now"
       [ -n "${_jspr_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspr_written_desc_sha"
       [ -n "${_jspr_written_fixver:-}" ] && set -- "$@" --written-fix-version-id "$_jspr_written_fixver"
+      [ -n "${_jspr_written_phase_label:-}" ] && set -- "$@" --written-phase-label "$_jspr_written_phase_label"
       _jspr_marker_body=$("$_jsd_io" json-build "$@")
       _jspr_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
         || _js_die "falha ao criar arquivo temporario" 1
@@ -2329,12 +2450,15 @@ _js_process_reconcile_event() {
     # marker atual) — o PUT substitui o valor inteiro da propriedade, entao
     # omiti-lo apagaria a baseline de protecao da descricao. task 16.4.2:
     # mesma disciplina para `written_fix_version_id` (ja atualizado acima
-    # por `_js_reconcile_epic_milestone`, se aplicavel).
+    # por `_js_reconcile_epic_milestone`, se aplicavel). task 17.3.1: mesma
+    # disciplina para `written_phase_label` (ja atualizado acima por
+    # `_js_reconcile_phase_label`, se aplicavel).
     _jspr_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     set -- marker --local-key "$_jspr_lkey" --feature "$_jsd_feature" \
       --written-summary-sha256 "$_jspr_cur_sha" --written-status "$_jspr_target" --written-at "$_jspr_now"
     [ -n "${_jspr_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspr_written_desc_sha"
     [ -n "${_jspr_written_fixver:-}" ] && set -- "$@" --written-fix-version-id "$_jspr_written_fixver"
+    [ -n "${_jspr_written_phase_label:-}" ] && set -- "$@" --written-phase-label "$_jspr_written_phase_label"
     _jspr_marker_body=$("$_jsd_io" json-build "$@")
     _jspr_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
       || _js_die "falha ao criar arquivo temporario" 1
@@ -2734,6 +2858,10 @@ _js_cmd_drain() {
   _jsd_status_in_progress=$("$_jsd_config" get status_in_progress)
   _jsd_status_pass=$("$_jsd_config" get status_pass)
   _jsd_status_fail=$("$_jsd_config" get status_fail)
+  # r02 FASE 17 task 17.3.1 (mesmo default de `_js_cmd_convert`
+  # `_jsc_labels_enabled`): "on" quando ausente do ProjectConfig.
+  _jsd_labels_enabled=$("$_jsd_config" get labels_enabled 2>/dev/null) || _jsd_labels_enabled="on"
+  [ -n "$_jsd_labels_enabled" ] || _jsd_labels_enabled="on"
 
   # Loop sobre um arquivo (nao um pipe) para os IDs: um `while read` num
   # pipe roda em subshell (POSIX) — inofensivo aqui porque cada iteracao so

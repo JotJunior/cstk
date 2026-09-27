@@ -3325,4 +3325,120 @@ scenario_convert_labels_enabled_off_nenhuma_chamada_com_label() {
   return 0
 }
 
+# _write_tasks_fase5_1task_1sub_pass: task 1.1 vive sob "## FASE 5" (nao
+# FASE 1) — usado pelos cenarios de reconciliacao de troca de fase (r02
+# FASE 17 task 17.3). O `written_phase_label` "antigo" (ex.: phase-3) e
+# controlado pela fixture do MARKER de cada cenario, nao pelo heading —
+# aqui so se fixa o phase_number LOCAL atual (5).
+_write_tasks_fase5_1task_1sub_pass() {
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 5 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+}
+
+# SY-84 drain reconcile (r02 FASE 17 task 17.3.1/17.3.4, plan.md SEC-10):
+# task 1.1 tem written_phase_label=phase-3 no marker (fase anterior) mas
+# vive agora sob FASE 5 (phase_number local=5) -> update.labels
+# remove=phase-3/add=phase-5; o label humano extra (prioridade-alta) SEGUE
+# na issue (a operacao so referencia os 2 valores phase-N, nunca substitui
+# o array inteiro) — a leitura via R15 (extensao de R3) confirma que
+# phase-3 AINDA esta la antes de remover (17.3.3). Epic (sem phase_label,
+# 17.2.1) fica idempotente (status bate, marco `auto` sem round ->
+# unresolved, zero chamadas extras) — so a Task gera trafego de label.
+scenario_drain_reconcile_phase_label_troca_de_fase_update_add_remove() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): R3 + R6-GET, ja "Done" com marker batendo, marco `auto`
+  # sem round -> unresolved (0 chamadas) -> idempotente puro.
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  # Task (DEMO-2): R3 + R6-GET (written_phase_label=phase-3), R15 (labels
+  # atuais: phase-3 + humano prioridade-alta), R2 (update.labels
+  # remove/add), R6-PUT final (written_phase_label=phase-5).
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  _queue_push 200 '{"fields":{"labels":["phase-3","prioridade-alta"]}}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "7" ] \
+    || { _fail "sy84_calls_count" "esperado 7 chamadas (2 epic idempotente + 5 task: R3/R6get/R15/R2/R6put), obtido $(_queue_calls_count)"; return 1; }
+
+  _lbl_ops=$("$IO_SCRIPT" json-get '.update.labels | tostring' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_lbl_ops" = '[{"remove":"phase-3"},{"add":"phase-5"}]' ] \
+    || { _fail "sy84_label_ops" "esperado remove phase-3/add phase-5, obtido: $_lbl_ops"; return 1; }
+
+  _lbl_ops_has_human=$("$IO_SCRIPT" json-get '.update.labels | tostring | contains("prioridade-alta")' < "$TMPDIR_TEST/queue-curl-body-6.json")
+  [ "$_lbl_ops_has_human" = "false" ] \
+    || { _fail "sy84_human_label_intocado" "update.labels NUNCA deveria referenciar o label humano prioridade-alta"; return 1; }
+
+  _final_marker_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_final_marker_label" = "phase-5" ] \
+    || { _fail "sy84_marker_label" "esperado written_phase_label=phase-5 no R6 PUT final, obtido: $_final_marker_label"; return 1; }
+  return 0
+}
+
+# SY-85 drain reconcile (r02 FASE 17 task 17.3.3, plan.md SEC-10):
+# written_phase_label do marker (phase-3) NAO consta mais nos labels REAIS
+# da issue (R15 devolve so phase-9 — alguem removeu/trocou manualmente) ->
+# ConflictRecord reason=label_drift e ZERO chamadas de update.labels (nunca
+# reaplicacao forcada por cima de um drift nao detectado).
+scenario_drain_reconcile_phase_label_drift_gera_conflito_sem_update() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  _queue_push 200 '{"fields":{"labels":["phase-9"]}}'
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy85_calls_count" "esperado 5 chamadas (2 epic + 3 task: R3/R6get/R15, ZERO update.labels), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT ' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy85_no_put" "nenhuma chamada PUT deveria ocorrer (0 update.labels, SEC-10/17.3.3)"; return 1; }
+
+  grep -q 'demo	1.1	DEMO-2	label_drift	pending$' "$(_conflicts_file)" \
+    || { _fail "sy85_conflict_record" "ConflictRecord label_drift ausente/incorreto: $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  return 0
+}
+
 run_all_scenarios

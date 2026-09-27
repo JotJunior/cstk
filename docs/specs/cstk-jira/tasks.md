@@ -2185,27 +2185,39 @@ Decision R2-5; Clarification r02 FR-022.
 Ref: research.md Decision R2-5 (troca de fase); data-model.md SyncMarker
 `written_phase_label`; plan.md SEC-10.
 
-- [ ] 17.3.1 `drain` (evento `reconcile`): task que mudou de FASE
+- [x] 17.3.1 `drain` (evento `reconcile`): task que mudou de FASE
       (`phase_number` local diferente do `written_phase_label` do marker)
       => `update.labels` `[{"remove":"<written_phase_label>"},
       {"add":"phase-<M>"}]`, preservando labels humanos; toda regravacao
       do marker CARREGA ADIANTE `written_phase_label` (mesma disciplina de
-      `written_description_sha256`)
-- [ ] 17.3.2 SEC-10: `update.labels` `remove` SO e emitido se o valor
+      `written_description_sha256`) — implementado em `jira-sync.sh`
+      `_js_reconcile_phase_label` + chamada em `_js_process_reconcile_event`
+      (so kind=task|subtask com `labels_enabled=on` e `written_phase_label`
+      ja gravado — reconciliacao de TROCA, nunca atribuicao retroativa)
+- [x] 17.3.2 SEC-10: `update.labels` `remove` SO e emitido se o valor
       casar `^phase-[0-9]+$` — nunca remove label humano mesmo que
-      coincida por acidente com outro padrao
-- [ ] 17.3.3 Divergencia entre `written_phase_label` e o label de fato
+      coincida por acidente com outro padrao — case pattern em
+      `_js_reconcile_phase_label` (`_jrpl_do_remove`)
+- [x] 17.3.3 Divergencia entre `written_phase_label` e o label de fato
       presente na issue (R15) => `ConflictRecord reason=label_drift`,
-      nunca reaplicacao forcada
-- [ ] 17.3.4 Teste: task movida da FASE 3 para a FASE 5 entre reconciles
+      nunca reaplicacao forcada — GET `/rest/api/3/issue/{key}?fields=labels`
+      (`--op R3`, R15 e extensao de R3) antes de qualquer remove
+- [x] 17.3.4 Teste: task movida da FASE 3 para a FASE 5 entre reconciles
       => remove `phase-3`, adiciona `phase-5`; label humano extra
-      (`prioridade-alta`) nunca e tocado
-- [ ] 17.3.5 Teste: `written_phase_label` divergente do estado real
+      (`prioridade-alta`) nunca e tocado —
+      `tests/cstk/test_jira-sync.sh::scenario_drain_reconcile_phase_label_troca_de_fase_update_add_remove`
+      (89/89 verdes: `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C sh
+      tests/cstk/test_jira-sync.sh`)
+- [x] 17.3.5 Teste: `written_phase_label` divergente do estado real
       (label sumiu da issue) => `ConflictRecord label_drift`, 0
-      `update.labels`
-- [ ] 17.3.6 Mutation test: reverter a checagem SEC-10 de 17.3.2 (remover
+      `update.labels` —
+      `tests/cstk/test_jira-sync.sh::scenario_drain_reconcile_phase_label_drift_gera_conflito_sem_update`
+- [x] 17.3.6 Mutation test: reverter a checagem SEC-10 de 17.3.2 (remover
       qualquer string do marker sem validar o padrao) faz um teste
-      dedicado falhar (removeria valor nao-`phase-N`)
+      dedicado falhar (removeria valor nao-`phase-N`) —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_17_3_6_phase_label_sec10`
+      (drain fim-a-fim: controle exit 0, mutante crasha por SEC-1
+      `_ji_charset_ok` recusar `--remove-label "prioridade alta"`)
 
 ---
 
@@ -2223,21 +2235,30 @@ r01).
 Ref: contracts/plugin-scripts.md `jira-setup.sh check-link-type`;
 research.md Decision R2-6; spec.md FR-025 Clarification.
 
-- [ ] 18.1.1 `jira-setup.sh check-link-type ID CANDIDATE_ID...`: aceita
+- [x] 18.1.1 `jira-setup.sh check-link-type ID CANDIDATE_ID...`: aceita
       `ID` SO se estiver entre os ids REALMENTE devolvidos por `GET
       /rest/api/3/issueLinkType` (R16) na MESMA execucao (SEC-13); nunca
       um id digitado de memoria; ausente => exit 1 com a lista de
-      candidatos
+      candidatos — implementado como membership pura (mesmo idioma de
+      `check-status-mapping`/R5: a network/R16 fica na skill, o script
+      so valida)
 - [ ] 18.1.2 Skill `jira-setup` (passo novo): lista os tipos de R16
       rotulados como conteudo externo (`[UNTRUSTED-JIRA]`, SEC-2 extensao
       + SEC-13); operador confirma um `link_type_id`, gravado em
       ProjectConfig; vazio => regra de candidato unico automatico (18.2)
-- [ ] 18.1.3 Teste: `check-link-type` com `ID` fora da lista de candidatos
+      — PENDENTE (so a prosa da skill; `check-link-type` ja pronto e
+      testado acima)
+- [x] 18.1.3 Teste: `check-link-type` com `ID` fora da lista de candidatos
       => exit 1; `ID` presente => exit 0; nenhuma tool/skill usa
       `name`/`inward`/`outward` da resposta para decidir automaticamente
-      sem exibir rotulado
-- [ ] 18.1.4 Mutation test: reverter 18.1.1 (aceitar qualquer `ID` sem
-      conferir contra os candidatos de R16) faz o teste de 18.1.3 falhar
+      sem exibir rotulado —
+      `tests/cstk/test_jira-setup.sh::scenario_check_link_type_id_ausente_exit1_lista_candidatos`/
+      `scenario_check_link_type_id_presente_exit0`/
+      `scenario_check_link_type_uso_incorreto_exit2` (15/15 verdes)
+- [x] 18.1.4 Mutation test: reverter 18.1.1 (aceitar qualquer `ID` sem
+      conferir contra os candidatos de R16) faz o teste de 18.1.3 falhar —
+      `tests/cstk/test_jira-mutation.sh::scenario_mutation_18_1_4_check_link_type_membership`
+      (12/12 verdes)
 
 ### 18.2 Escolha automatica de candidato unico (R2-6, SEC-13) `[A]`
 

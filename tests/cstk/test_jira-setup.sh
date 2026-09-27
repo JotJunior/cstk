@@ -92,6 +92,22 @@ scenario_check_status_mapping_uso_incorreto_exit2() {
   assert_exit 2 "$SCRIPT" check-status-mapping "To Do" "In Progress" || return 1
 }
 
+# ==== check-link-type (r02 FASE 18 tarefa 18.1.1/18.1.3) ====
+
+scenario_check_link_type_id_presente_exit0() {
+  assert_exit 0 "$SCRIPT" check-link-type 10000 10000 10001 10002 10003 || return 1
+}
+
+scenario_check_link_type_id_ausente_exit1_lista_candidatos() {
+  assert_exit 1 "$SCRIPT" check-link-type 99999 10000 10001 10002 10003 || return 1
+  assert_stderr_contains "nao esta entre os candidatos" || return 1
+  assert_stderr_contains "10000, 10001, 10002, 10003" || return 1
+}
+
+scenario_check_link_type_uso_incorreto_exit2() {
+  assert_exit 2 "$SCRIPT" check-link-type 10000 || return 1
+}
+
 scenario_write_config_campo_obrigatorio_ausente_exit1_nada_gravado() {
   cd "$TMPDIR_TEST" || return 1
   assert_exit 1 env CSTK_JIRA_CONFIG="./.claude/cstk-jira/config" "$SCRIPT" write-config \

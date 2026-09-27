@@ -602,4 +602,117 @@ scenario_mutation_17_1_4_label_allowlist() {
   return 0
 }
 
+# scenario_mutation_17_3_6_phase_label_sec10 — r02 FASE 17 task 17.3.6
+# (plan.md SEC-10, task 17.3.2): mira DIRETAMENTE a guarda default do case
+# em `_js_reconcile_phase_label` (jira-sync.sh) que so autoriza
+# `_jrpl_do_remove="yes"` quando `written_phase_label` casa
+# `^phase-[0-9]+$` — "remove SO se o valor casar o padrao, nunca um label
+# humano mesmo que (por acidente) coincida com o marker". Alvo via
+# `drain` fim-a-fim (a guarda vive numa funcao interna, sem subcomando
+# proprio como `jira-map.sh milestone-id-known` em 16.4.7): o marker da
+# Task 1.1 guarda `written_phase_label="prioridade alta"` (valor que NUNCA
+# seria escrito pelo proprio motor — so `phase-<N>` — mas defesa em
+# profundidade contra um estado corrompido) e a issue REAL (R15) confirma
+# esse mesmo valor presente. No original, `_jrpl_do_remove` fica "no"
+# (fora do padrao) -> so `--add-label phase-5` entra no corpo (charset
+# ok) -> `drain` conclui normalmente. No mutante, `_jrpl_do_remove` vira
+# "yes" incondicional -> `--remove-label "prioridade alta"` (espaco,
+# fora da allowlist SEC-1 de `_ji_charset_ok`) faz `json-build
+# issue-update` morrer com exit 2 DENTRO da substituicao de comando que
+# monta o corpo — sob `set -eu` (jira-sync.sh) isso aborta o processo
+# INTEIRO de `drain` (exit != 0), uma divergencia bem observavel do
+# `exit 0` do original.
+scenario_mutation_17_3_6_phase_label_sec10() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 5 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf 'demo\tepic\t20001\tDEMO-1\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _sha_epic=$(printf '%s' "demo" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-1?fields=summary,status|200|{\"fields\":{\"summary\":\"demo\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status|200|{\"fields\":{\"summary\":\"Titulo da tarefa\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"prioridade alta\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=labels|200|{\"fields\":{\"labels\":[\"prioridade alta\"]}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2|204|
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|"
+
+  # -- controle: written_phase_label fora do padrao phase-N -> do_remove=no
+  # -> so --add-label phase-5 (charset ok) -> drain conclui exit 0 --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+
+  # -- mutante: neutraliza a guarda SEC-10 (17.3.2) — aceita remover
+  # QUALQUER written_phase_label, mesmo fora do padrao phase-N --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '        *) _jrpl_do_remove="no" ;;' "$_sy" \
+    || { _fail "mutant_stale" "guarda SEC-10 (default do_remove=no) nao encontrada — repo mudou"; return 1; }
+  sed 's/        \*) _jrpl_do_remove="no" ;;/        *) _jrpl_do_remove="yes" ;;/' "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF '        *) _jrpl_do_remove="yes" ;;' "$_sy" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao SEC-10"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja marcou o evento done).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" != "0" ] \
+    || { _fail "mutant_exit" "esperado exit != 0 (regressao: SEC-10 tenta remover \"prioridade alta\", label fora do padrao phase-N), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# scenario_mutation_18_1_4_check_link_type_membership — r02 FASE 18 tarefa
+# 18.1.4 (SEC-13): mira DIRETAMENTE a guarda de `jira-setup.sh
+# check-link-type` que so aceita `ID` se estiver entre os `CANDIDATE_ID...`
+# devolvidos por R16 nesta execucao (18.1.1). Reverter essa guarda
+# (aceitar qualquer ID) faz o teste negativo de 18.1.3
+# (scenario_check_link_type_id_ausente_exit1_lista_candidatos,
+# tests/cstk/test_jira-setup.sh) falhar — um id digitado de memoria/nao
+# devolvido por R16 deixaria de ser recusado.
+scenario_mutation_18_1_4_check_link_type_membership() {
+  # -- controle: original recusa id fora da lista de candidatos (exit 1) --
+  assert_exit 1 "$ORIG_PLUGIN_DIR/scripts/jira-setup.sh" check-link-type \
+    99999 10000 10001 10002 10003 || return 1
+
+  # -- mutante: neutraliza a checagem de membership em check-link-type,
+  # aceitando qualquer ID (equivalente a "reverter a validacao de 18.1.1") --
+  _mp=$(_mut_copy_plugin)
+  _su="$_mp/scripts/jira-setup.sh"
+  grep -qF '_js_contains "$_jsclt_id" "$@"' "$_su" \
+    || { _fail "mutant_stale" "guarda de membership de check-link-type nao encontrada — repo mudou"; return 1; }
+  sed 's/_js_contains "\$_jsclt_id" "\$@"/true/' "$_su" > "$_su.mut" && mv "$_su.mut" "$_su"
+  grep -qF '_js_contains "$_jsclt_id"' "$_su" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de check-link-type"; return 1; }
+  chmod +x "$_su"
+
+  capture "$_su" check-link-type 99999 10000 10001 10002 10003
+  [ "$_CAPTURED_EXIT" != "1" ] \
+    || { _fail "mutant_exit" "esperado exit != 1 (regressao: id fora da lista de candidatos R16 aceito), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
 run_all_scenarios

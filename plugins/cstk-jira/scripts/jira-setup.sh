@@ -27,6 +27,19 @@
 #         status disponiveis descobertos no mesmo fluxo (ux CHK004) e
 #         exit 1. Sucesso => exit 0, sem stdout.
 #
+#   jira-setup.sh check-link-type ID CANDIDATE_ID...
+#       — r02 FASE 18 tarefa 18.1.1 (contracts/plugin-scripts.md
+#         `jira-setup.sh check-link-type`; research.md Decision R2-6;
+#         spec.md FR-025 Clarification): ID e o `link_type_id` que o
+#         operador confirmou; CANDIDATE_ID... e a lista de ids REALMENTE
+#         devolvida por `GET /rest/api/3/issueLinkType` (R16) NESTA MESMA
+#         execucao (SEC-13) — a skill descobre via `jira-io.sh
+#         request GET`, este script so valida a MEMBERSHIP (mesmo
+#         idioma de `check-status-mapping`/R5: a network fica na skill,
+#         o script e puro/deterministico). ID fora da lista => exit 1
+#         com a lista de candidatos no diagnostico; nunca aceita um id
+#         digitado de memoria.
+#
 #   jira-setup.sh write-config KEY=VALUE [KEY=VALUE...]
 #       — Grava `ProjectConfig` (mesmo arquivo/formato de `jira-config.sh`,
 #         `${CSTK_JIRA_CONFIG:-./.claude/cstk-jira/config}`) de forma
@@ -65,6 +78,11 @@ USO:
       Valida o mapeamento local -> status Jira contra a lista de status
       REALMENTE descoberta (R5). Rejeita FAIL == PASS e qualquer valor fora
       da lista descoberta, listando os status disponiveis no diagnostico.
+
+  jira-setup.sh check-link-type ID CANDIDATE_ID...
+      Valida que ID (link_type_id confirmado pelo operador) esta entre os
+      CANDIDATE_ID... devolvidos por GET /rest/api/3/issueLinkType (R16)
+      nesta execucao. ID fora da lista => exit 1 com os candidatos.
 
   jira-setup.sh write-config KEY=VALUE [KEY=VALUE...]
       Grava ProjectConfig atomicamente (temp file + jira-config.sh validate
@@ -137,6 +155,25 @@ _js_cmd_check_status_mapping() {
   return 0
 }
 
+# _js_cmd_check_link_type ID CANDIDATE_ID... — r02 FASE 18 tarefa 18.1.1
+# (SEC-13): membership PURA (mesmo idioma de _js_cmd_check_status_mapping
+# com R5) — ID so e aceito se estiver entre os CANDIDATE_ID... que a skill
+# leu de R16 nesta execucao. NUNCA um id digitado de memoria (a lista vem
+# sempre de fora, nunca de um literal fixo aqui).
+_js_cmd_check_link_type() {
+  [ "$#" -ge 2 ] || _js_die_usage \
+    "check-link-type requer ID e ao menos 1 CANDIDATE_ID"
+  _jsclt_id="$1"
+  shift
+  _jsclt_list=$(printf '%s, ' "$@")
+  _jsclt_list=${_jsclt_list%, }
+
+  _js_contains "$_jsclt_id" "$@" \
+    || _js_die "link_type_id '$_jsclt_id' nao esta entre os candidatos devolvidos por GET /rest/api/3/issueLinkType (R16) nesta execucao. Candidatos: $_jsclt_list"
+
+  return 0
+}
+
 _js_cmd_write_config() {
   [ "$#" -ge 1 ] || _js_die_usage "write-config requer ao menos um KEY=VALUE"
 
@@ -201,10 +238,13 @@ case "$_js_sub" in
   check-status-mapping)
     _js_cmd_check_status_mapping "$@"
     ;;
+  check-link-type)
+    _js_cmd_check_link_type "$@"
+    ;;
   write-config)
     _js_cmd_write_config "$@"
     ;;
   *)
-    _js_die_usage "subcomando desconhecido: $_js_sub (validos: check-status-mapping, write-config)"
+    _js_die_usage "subcomando desconhecido: $_js_sub (validos: check-status-mapping, check-link-type, write-config)"
     ;;
 esac
