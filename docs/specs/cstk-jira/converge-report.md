@@ -205,3 +205,44 @@ Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`: t
 
 Gate MUST: `extract-must --coverage` => 5 principios (I, II, III, IV, VI), `cobertura de MUST: ok`. Principio II honrado: `sqlite3` so aparece no texto de usage (~239). Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T20:34:26Z; actionable=2; tasks-digest=f820af305787 -->
+
+## Round r02 — Ciclo 6 (onda-029) — actionable
+
+Conferencia da FASE 25 no CODIGO e nos testes:
+
+| achado c5 | veredito | evidencia |
+|-----------|----------|-----------|
+| 25.1 | fechado (codigo e comportamento) | `jira-sync.sh` ~3031-3042: o `else` do chamador de `_js_reconcile_phase_label` captura `_jspr_phl_ec=$?`; exit 4 => `_JSPE_BREAK=yes` + `break`; os demais => `_jspr_had_deferred=yes`. E a mesma convencao do marco do Epic (~2978-2988). O fallback para WRITTEN foi mantido, e a reconciliacao de status do mesmo item segue. O comentario (~3015-3030) foi corrigido; a frase "ainda devolve sempre 0" nao existe mais no arquivo. Cenarios 401 (`auth_failed`) e 403 (`deferred`) verdes. Mutante medido fora do repo (o `else` volta a so restaurar WRITTEN): os 2 cenarios falham. A parte de mutation da 25.1.2 nao existe no mutation suite (achado 26.1) |
+| 25.2 | fechado | `test_jira-mutation.sh`: `scenario_mutation_24_1_1_reconcile_epic_milestone_http_status` (~841) e `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard` (~925). Cada um tem guarda `mutant_stale`, confere que a mutacao foi aplicada (grep pos-sed; `assert` do python3 + grep pos-mutacao) e roda controle no original antes do mutante. Discriminam: A => 0 PUT ao marker do Epic no controle e 1 no mutante; B => controle transiciona a Task (R4), mutante sai com exit != 0 sem chegar a Task. Suite 24/24 |
+
+Regressao da FASE 25 (o diff de codigo desde a onda-027 e so o bloco do `else` acima):
+
+- **Alcance do `break`.** Esta dentro do `while ... done < "$_jspr_items_file"` (~2835-3150), sem loop aninhado entre ele e o `while`. Sai do loop de ITENS, igual ao ramo do marco. Depois, `links` e pulado (`_JSPE_BREAK` ~3159), o evento vira `auth_failed` (~3167-3169) e `_js_cmd_drain` interrompe o loop de EVENTOS (~3583-3585). Os eventos seguintes ficam `queued` e nao sao marcados `done`. O gate FR-016 no inicio do proximo `drain` (~3499-3506) bloqueia chamadas novas enquanto houver `auth_failed`. O estado da outbox e o mesmo do ramo do marco.
+- **Marker no break/deferred.** Com exit 4, nenhum R6 PUT e feito para o item (o `break` vem antes). Com exit != 4, o item segue com `_jspr_written_phase_label` inalterado, e o R6 PUT de status regrava a baseline antiga (label nao aplicado). Nao ha baseline falsa. Os cenarios 401/403 exigem 6 chamadas e zero PUT em properties.
+- **Contagens do resumo.** `status` (~3660, ~3687) conta direto da outbox. `auth_failed`/`deferred` passam a aparecer onde antes saia `done`. Nenhuma contagem e derivada do evento processado.
+- **Outro chamador.** `_js_rebaseline_marker` (~888) e acionado pelo operador e ja falha alto (`return 1` com diagnostico). Nao foi alterado.
+
+Revisao dos residuais LOW aceitos, somados aos fixes recentes:
+
+- **dec-081** (overwrite de `milestone_drift` igual a `keep_jira`): nenhum codigo tocado. Segue LOW.
+- **dec-088** (R4 404/422 e R6 PUT 400/404 em passthrough): nenhum codigo tocado. As falhas continuam aparecendo no proximo R3/R6 GET. Segue LOW.
+- **dec-095 (a)** (R17 400 retentado) e **(c)** (`maybe_update` com 401): nenhum codigo tocado. Seguem LOW.
+- **dec-095 (b)** (reconcile `deferred` acumulando, um evento por `close_wave`): a 25.1.1 ALARGA o gatilho. Um 4xx deterministico no R2 de labels, que antes fechava `done`, agora e `deferred` como o R4 403/400 e o marco. `enqueue` nao coalesce (~2697-2707), e `deferred` sem Retry-After e elegivel em todo `drain` (~3529-3532). Num projeto com esse defeito, cada `drain` reprocessa todos os eventos acumulados. A classe e a mesma ja aceita: spec, data-model e contratos nao exigem coalescencia (nada encontrado por grep), `deferred --> queued` no proximo `drain` e o comportamento especificado, e o estado aparece como `deferred=N`. A alternativa (`done`) era o defeito 25.1. **Segue LOW**, com o gatilho ampliado registrado.
+
+| # | tipo | severidade | path | origem |
+|---|------|------------|------|--------|
+| 26.1 | partial | HIGH | `tests/cstk/test_jira-mutation.sh` (mutante da classificacao do `else` do chamador de `_js_reconcile_phase_label`) | FR-016 / task 25.1.2 |
+
+Severidade calculada por `severity.sh` (partial + P1 + must-violated=false => HIGH). A classificacao e a mesma do 25.2 no ciclo 5 (FR-011).
+
+Cobertura de FR-020..FR-025, de ponta a ponta:
+
+- FR-021, FR-023 e FR-024: sem gap.
+- FR-020: fechado, inclusive o guard de mutation.
+- FR-022: codigo fechado (carry-forward e classificacao no chamador). Falta so o guard de mutation da 26.1.
+- FR-025: so o residual LOW de dec-095(a).
+
+Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`: test_jira-sync 117/117, test_jira-mutation 24/24, test_jira-map 44/44, test_jira-setup 41/41, test_jira-config 36/36, test_jira-tasks 29/29, test_jira-io 129/129, test_posttooluse-jira-sync 21/21.
+
+Gate MUST: `extract-must --coverage` => 5 principios, 0 so por heading, `cobertura de MUST: ok`. Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T21:09:47Z; actionable=1; tasks-digest=d39413f3a9d5 -->

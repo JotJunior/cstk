@@ -3457,3 +3457,51 @@ impede que os cenarios 24.1 sejam enfraquecidos em silencio.
 - [x] 25.2.1 Adicionar `scenario_mutation_24_1_1_reconcile_epic_milestone_http_status` (mutante A, com guarda `mutant_stale` para o padrao nao encontrado) e `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard` (mutante B: o `drain` MUST sair com exit != 0 no arranjo 403), no mesmo formato de `scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment`. Cada um com controle no plugin original e depois o mutante
 
 <!-- converge-key: 49dc741332b0 -->
+
+## FASE 26 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 6 (onda-029): os 2 achados da FASE 25 foram conferidos
+> no CODIGO e nos testes. A correcao do chamador (25.1.1) e os dois
+> mutantes do marco do Epic (25.2.1) estao fechados, sem regressao. Sobra
+> um achado, da mesma classe do 25.2: a parte de mutation da tarefa 25.1.2
+> nao foi escrita.
+
+### 26.1 Mutation suite: a parte de mutation da tarefa 25.1.2 (classificacao do exit code no chamador de `_js_reconcile_phase_label`) nao existe em `tests/cstk/test_jira-mutation.sh` `[C]`
+
+Ref: FR-016 / task 25.1.2 mutation _js_reconcile_phase_label caller classification · tipo: `partial` · severidade: `HIGH`
+
+A tarefa 25.1.2 (marcada `[x]`) termina com: "Mutation em
+`tests/cstk/test_jira-mutation.sh`: remover a classificacao do `else` MUST
+falhar o cenario 401". O mutation suite tem hoje 24 cenarios. Os de r02
+que tocam `_js_reconcile_phase_label` sao 17_3_6 (guarda SEC-10 e guarda
+`if/else` do chamador) e 24_1_4 (checagem de `http_status` dentro da
+funcao). Nenhum muta o bloco novo do `else` do chamador em
+`plugins/cstk-jira/scripts/jira-sync.sh` ~3033-3042 (`_jspr_phl_ec=$?`,
+`-eq 4` => `_JSPE_BREAK=yes` + `break`, senao `_jspr_had_deferred=yes`).
+
+Os cenarios de comportamento existem e discriminam. Medido nesta onda com
+uma copia mutada do plugin fora do repo (o `else` volta a so restaurar
+WRITTEN), rodando so os 2 cenarios pelo `_SCENARIOS` do harness com
+`REPO_ROOT` apontando para a copia:
+
+- `scenario_drain_reconcile_phase_label_r2_401_vira_auth_failed`: original
+  `ok`, mutante `not ok`.
+- `scenario_drain_reconcile_phase_label_r2_403_nao_aborta_drain_inteiro`:
+  original `ok`, mutante `not ok`.
+
+Portanto so falta o guard de regressao que a tarefa declarou. Hoje nada
+impede que as assercoes de status do evento nesses 2 cenarios sejam
+enfraquecidas em silencio.
+
+- [ ] 26.1.1 Adicionar `scenario_mutation_25_1_1_drain_phase_label_caller_classification` em `tests/cstk/test_jira-mutation.sh`, no mesmo formato de `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard`: guarda `mutant_stale` (padrao `_jspr_phl_ec=$?` nao encontrado), mutacao multi-linha via python3 que remove a classificacao e mantem so o fallback de WRITTEN, checagem de que a mutacao foi aplicada, controle no plugin original com R2 de labels => 401 (evento `e1` = `auth_failed`) e o mutante com o outbox reenfileirado (evento `e1` MUST NOT ser `auth_failed`)
+
+<!-- converge-key: cf6d28c3a99b -->
