@@ -89,6 +89,13 @@ _write_credential() {
 }
 
 # _make_curl_stub MAPA — mesmo idioma de test_jira-io.sh::_make_curl_stub.
+# r02 FASE 24 tarefa 24.2.2: acrescenta captura do corpo (`@file` de
+# `--data-binary`) em `$TMPDIR_TEST/io-curl-body-N.json` (N = numero
+# 1-based da chamada, mesma convencao de `queue-curl-body-N.json` em
+# test_jira-sync.sh::_init_queue_stub) — aditivo puro, nenhum scenario
+# pre-existente inspeciona esses arquivos, so os novos que precisam
+# auditar o corpo de um PUT/POST (ex.: carry-forward de campos do
+# SyncMarker).
 _make_curl_stub() {
   _stub_dir="$TMPDIR_TEST/bin"
   mkdir -p "$_stub_dir"
@@ -99,6 +106,7 @@ _make_curl_stub() {
 _url=""
 _out=""
 _method="GET"
+_bodyfile=""
 _prev=""
 for _a in "\$@"; do
   case "\$_prev" in
@@ -107,9 +115,15 @@ for _a in "\$@"; do
   esac
   case "\$_a" in
     https://*) _url="\$_a" ;;
+    @*) _bodyfile="\${_a#@}" ;;
   esac
   _prev="\$_a"
 done
+_n=\$(wc -l < "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null | tr -d ' ')
+_n=\$((_n + 1))
+if [ -n "\$_bodyfile" ] && [ -f "\$_bodyfile" ]; then
+  cp -- "\$_bodyfile" "$TMPDIR_TEST/io-curl-body-\$_n.json" 2>/dev/null
+fi
 printf '%s %s\n' "\$_method" "\$_url" >> "$TMPDIR_TEST/io-curl-calls.log"
 while IFS='|' read -r _pat _code _body; do
   [ -n "\$_pat" ] || continue
@@ -716,6 +730,175 @@ EOF2
   return 0
 }
 
+# scenario_mutation_24_1_4_reconcile_phase_label_http_status — r02 FASE 24
+# tarefa 24.1.4 (achado 23.1/24.1, correcao de oraculo falso em
+# tests/cstk/test_jira-sync.sh ~3879-3880): mira DIRETAMENTE a checagem de
+# `http_status` de `_js_reconcile_phase_label` (jira-sync.sh, `case
+# "$_jrpl_status" in 2??) : ;; *) [ "$_jrpl_ec" -eq 0 ] && _jrpl_ec=1 ;;
+# esac`, adicionada na MESMA tarefa 23.1.1 que corrigiu a captura de "$?").
+# Medido nesta tarefa: reintroduzir SO a leitura de "$?" apos o `fi` sem
+# `else` (a outra metade do fix 23.1.1, sem tocar esta checagem) e um
+# mutante EQUIVALENTE para os 3 cenarios de 23.1 em test_jira-sync.sh — a
+# checagem de `http_status` abaixo ja re-deriva a falha a partir do
+# `http_status` observado, independente do valor (correto ou mascarado em
+# 0) que a captura de "$?" produziu. O mutante que de fato discrimina e
+# remover ESTA checagem: com o R2 (update.labels) respondendo 400
+# (passthrough, exit 0 em jira-io.sh — `--op R2` so classifica
+# 401/403/429/5xx), o original propaga a falha (WRITTEN inalterado, ZERO
+# R6 PUT do marker do item); o mutante grava `written_phase_label=phase-5`
+# como se o label tivesse sido de fato aplicado (baseline falsa) e regrava
+# o marker via R6 PUT — sinal observavel: 1 PUT extra as properties da
+# issue.
+scenario_mutation_24_1_4_reconcile_phase_label_http_status() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 5 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf 'demo\tepic\t20001\tDEMO-1\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _sha_epic=$(printf '%s' "demo" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  # written_phase_label="phase-3" (padrao valido, PRESENTE na issue via
+  # R15/fields=labels abaixo) diverge do target "phase-5" (FASE 5 do
+  # tasks.md) -> do_remove=yes -> R2 tenta remove phase-3/add phase-5, mas
+  # responde 400 (contracts/jira-rest.md:121, passthrough em jira-io.sh).
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-1?fields=summary,status|200|{\"fields\":{\"summary\":\"demo\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status|200|{\"fields\":{\"summary\":\"Titulo da tarefa\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=labels|200|{\"fields\":{\"labels\":[\"phase-3\"]}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2|400|{\"errorMessages\":[\"invalid label value\"]}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|"
+
+  # -- controle: R2 responde 400 (passthrough exit 0); a checagem de
+  # http_status converte em falha -> WRITTEN inalterado, ZERO R6 PUT do
+  # marker do item (mesmo idioma do cenario 400 em test_jira-sync.sh) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  _ctrl_props_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _ctrl_props_puts=0
+  [ "$_ctrl_props_puts" = "0" ] \
+    || { _fail "controle_marker_put" "esperado ZERO PUT ao marker no controle (R2 400 deveria propagar falha, sem regravar o marker), obtido $_ctrl_props_puts"; return 1; }
+
+  # -- mutante: neutraliza a checagem de http_status (case "$_jrpl_status"
+  # in 2??) : ;; *) [ "$_jrpl_ec" -eq 0 ] && _jrpl_ec=1 ;; esac) — um R2 em
+  # passthrough (exit 0) volta a ser tratado como sucesso independente do
+  # http_status observado --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '    *) [ "$_jrpl_ec" -eq 0 ] && _jrpl_ec=1 ;;' "$_sy" \
+    || { _fail "mutant_stale" "checagem de http_status de _js_reconcile_phase_label nao encontrada — repo mudou"; return 1; }
+  sed 's/    \*) \[ "\$_jrpl_ec" -eq 0 \] && _jrpl_ec=1 ;;/    *) : ;;/' "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF '    *) [ "$_jrpl_ec" -eq 0 ] && _jrpl_ec=1 ;;' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de http_status"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja marcou o evento done).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "drain deveria continuar saindo 0 (mutante nao introduz abort), obtido $_CAPTURED_EXIT"; return 1; }
+  _mut_props_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _mut_props_puts=0
+  [ "$_mut_props_puts" = "1" ] \
+    || { _fail "mutant_marker_put_missing" "esperado 1 PUT ao marker no mutante (regressao: 400 em passthrough tratado como sucesso, baseline falsa gravada), obtido $_mut_props_puts"; return 1; }
+  return 0
+}
+
+# scenario_mutation_24_2_1_process_one_event_carryforward — r02 FASE 24
+# tarefa 24.2.1/24.2.2 (achado 24.2): mira as 2 linhas de carry-forward de
+# `_js_process_one_event` que repassam `written_fix_version_id`/
+# `written_phase_label` (lidos do R6 GET do marker atual) para o
+# `json-build marker` do R6 PUT da transicao de status por evento — o R6
+# PUT substitui o valor INTEIRO da entity property (jira-sync.sh
+# ~2848-2851), entao omitir as 2 chaves apaga a baseline de reconciliacao
+# de FASE/marco do item na PRIMEIRA transicao de status (fluxo normal da
+# US3). Reverter as 2 linhas (removendo o carry-forward) MUST falhar este
+# teste — o corpo do R6 PUT (`io-curl-body-5.json`, a 5a chamada de rede:
+# R3+R6get+R5+R4+R6put) deixa de preservar os 2 campos.
+scenario_mutation_24_2_1_process_one_event_carryforward() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF2
+
+  _summary="Titulo da tarefa"
+  _sha_summary=$(printf '%s' "$_summary" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status|200|{\"fields\":{\"summary\":\"$_summary\",\"status\":{\"name\":\"To Do\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"To Do\",\"written_phase_label\":\"phase-1\",\"written_fix_version_id\":\"30001\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/transitions|200|{\"transitions\":[{\"id\":\"31\",\"to\":{\"name\":\"Done\"}}]}"
+
+  # -- controle: R6 PUT (5a chamada) preserva os 2 campos --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  _ctrl_phase=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-5.json")
+  [ "$_ctrl_phase" = "phase-1" ] \
+    || { _fail "controle_phase_label" "esperado written_phase_label=phase-1 preservado no controle, obtido '$_ctrl_phase'"; return 1; }
+  _ctrl_fixver=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_fix_version_id? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-5.json")
+  [ "$_ctrl_fixver" = "30001" ] \
+    || { _fail "controle_fix_version" "esperado written_fix_version_id=30001 preservado no controle, obtido '$_ctrl_fixver'"; return 1; }
+
+  # -- mutante: remove as 2 linhas de carry-forward (24.2.1) --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF -- '--written-fix-version-id "$_jspe_written_fixver"' "$_sy" \
+    || { _fail "mutant_stale" "carry-forward de written_fix_version_id nao encontrado — repo mudou"; return 1; }
+  grep -qF -- '--written-phase-label "$_jspe_written_phase_label"' "$_sy" \
+    || { _fail "mutant_stale" "carry-forward de written_phase_label nao encontrado — repo mudou"; return 1; }
+  sed '/--written-fix-version-id "\$_jspe_written_fixver"/d;/--written-phase-label "\$_jspe_written_phase_label"/d' \
+    "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF -- '--written-fix-version-id "$_jspe_written_fixver"' "$_sy" \
+    && { _fail "mutant_apply" "sed nao removeu o carry-forward de written_fix_version_id"; return 1; }
+  grep -qF -- '--written-phase-label "$_jspe_written_phase_label"' "$_sy" \
+    && { _fail "mutant_apply" "sed nao removeu o carry-forward de written_phase_label"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja marcou o evento done).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "drain deveria continuar saindo 0 (mutante nao introduz abort), obtido $_CAPTURED_EXIT"; return 1; }
+  _mut_phase=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-5.json")
+  [ "$_mut_phase" != "phase-1" ] \
+    || { _fail "mutant_regression" "regressao: written_phase_label continuou preservado sem o carry-forward, obtido '$_mut_phase'"; return 1; }
+  return 0
+}
+
 # scenario_mutation_18_1_4_check_link_type_membership — r02 FASE 18 tarefa
 # 18.1.4 (SEC-13): mira DIRETAMENTE a guarda de `jira-setup.sh
 # check-link-type` que so aceita `ID` se estiver entre os `CANDIDATE_ID...`
@@ -1025,6 +1208,101 @@ scenario_mutation_19_2_4_project_create_dupla_condicao() {
   capture sh -c 'printf "%s" "$1" | "$2"' _ "$_J" "$_hook"
   [ "$_CAPTURED_EXIT" = "2" ] \
     || { _fail "mutant_exit" "esperado exit 2 (regressao: bloqueia project-create mesmo sem config), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# ==== 24.5.1 (r02 FASE 24, achado 24.5) ====
+
+# scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment —
+# mira o ramo SEM `--stage` (exercitado sem execucao ativa/state.json) da
+# guarda 24.5.1 em `_js_process_reconcile_event`
+# (`if _jspr_items=$(...); then _jspr_items_ok=0; else _jspr_items_ok=$?;
+# fi`). Reverter para a forma NUA original (`_jspr_items=$(...);
+# _jspr_items_ok=$?`, sem if/else) reproduz o achado 24.5: sob `set -eu`
+# (jira-sync.sh linha 148), uma falha de `jira-tasks.sh items` (aqui,
+# `tasks.md` ausente) aborta o script ANTES de `$?` ser lido — o `drain`
+# inteiro morre no evento reconcile `e1` e o evento `e2` (outro local_key,
+# na MESMA fila) NUNCA chega a ser processado. Python3 (nao sed) porque a
+# mutacao e um bloco multi-linha (if/else/fi -> 2 linhas), mais robusto que
+# um `s///` de sed line-based para este caso — mesma disciplina de
+# "mutant_stale"/"mutant_apply" das demais mutacoes deste arquivo.
+scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  # tasks.md AUSENTE de proposito -- jira-tasks.sh items falha (exit 1)
+  # para o evento reconcile e1; sem execucao ativa (state.json ausente),
+  # _js_resolve_stage retorna vazio -> exercita o ramo SEM --stage.
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+e2	2026-01-01T00:00:01Z	demo	1.1	pass	manual	0	queued
+EOF2
+
+  _summary="Titulo da tarefa"
+  _sha_summary=$(printf '%s' "$_summary" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status|200|{\"fields\":{\"summary\":\"$_summary\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"Done\"}}"
+
+  # -- controle: original absorve a falha (e1 permanece queued, e2 chega a
+  # ser processado ate done) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  awk -F '\t' '$1=="e2"' "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" | grep -q 'done$' \
+    || { _fail "controle_e2_done" "controle: evento e2 deveria ter sido processado (done)"; return 1; }
+
+  # -- mutante: reverte a guarda 24.5.1 (ramo sem --stage) para a
+  # atribuicao NUA original --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF -- '--outcomes-file "$_jspr_outcomes_file" 2>/dev/null); then' "$_sy" \
+    || { _fail "mutant_stale" "guarda 24.5.1 (ramo sem --stage) nao encontrada — repo mudou"; return 1; }
+  python3 - "$_sy" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = '''    if _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \\
+      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null); then
+      _jspr_items_ok=0
+    else
+      _jspr_items_ok=$?
+    fi
+  fi'''
+new = '''    _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \\
+      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null)
+    _jspr_items_ok=$?
+  fi'''
+assert old in content, "padrao 24.5.1 (ramo sem --stage) nao encontrado no source"
+content = content.replace(old, new, 1)
+with open(path, "w") as f:
+    f.write(content)
+PYEOF
+  _py_rc=$?
+  [ "$_py_rc" = "0" ] \
+    || { _fail "mutant_apply" "python3 falhou ao reverter a guarda 24.5.1 para atribuicao nua (rc=$_py_rc)"; return 1; }
+  grep -qF -- '--outcomes-file "$_jspr_outcomes_file" 2>/dev/null); then' "$_sy" \
+    && { _fail "mutant_apply" "guarda 24.5.1 (ramo sem --stage) ainda presente apos a mutacao"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja processou e1/e2).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+e2	2026-01-01T00:00:01Z	demo	1.1	pass	manual	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" != "0" ] \
+    || { _fail "mutant_regression" "regressao: drain deveria abortar (exit != 0) com a atribuicao nua sob set -eu — bug 24.5 reintroduzido, obtido exit 0"; return 1; }
   return 0
 }
 

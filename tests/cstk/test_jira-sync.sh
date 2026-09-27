@@ -1113,6 +1113,55 @@ EOF
   return 0
 }
 
+# r02 FASE 24 tarefa 24.2.1/24.2.2 (achado 24.2): mesmo mecanismo de
+# `sy62` acima (o R6 PUT de `_js_process_one_event` substitui o valor
+# INTEIRO da entity property), agora para `written_phase_label`/
+# `written_fix_version_id` — sem carregar as duas adiante (lidas do MESMO
+# R6 GET que ja fornece written_description_sha256), a PRIMEIRA transicao
+# de status por evento (fluxo normal da US3) apagava os dois campos do
+# marker, desligando a reconciliacao de troca de FASE
+# (`_js_reconcile_phase_label`, so roda com o campo nao-vazio) e de marco
+# do Epic (o proximo `_js_reconcile_epic_milestone` so faria `add`, sem
+# `remove`, acumulando 2 Fix Versions). Mutation (remover o carry-forward
+# de qualquer um dos dois campos) MUST falhar este teste.
+scenario_drain_transicao_preserva_phase_label_e_fix_version_no_marker() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  _summary="[FASE 1] 1.1 Titulo da tarefa"
+  _sha_summary=$(printf '%s' "$_summary" | "$IO_SCRIPT" sha256-stdin)
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<EOF
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	1.1	pass	manual	0	queued
+EOF
+  _bin="$(_init_queue_stub)"
+  # R6 GET do marker atual JA carrega written_phase_label (Task, reaplicado
+  # por reconcile em ondas anteriores) e written_fix_version_id (residual
+  # improvavel numa Task real, mas prova que o carry-forward do R6 PUT nao
+  # discrimina por kind — ambos os campos sao repassados tal-e-qual).
+  _queue_push 200 "{\"fields\":{\"summary\":\"$_summary\",\"status\":{\"name\":\"To Do\"}}}"
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"To Do\",\"written_phase_label\":\"phase-1\",\"written_fix_version_id\":\"30001\"}}"
+  _queue_push 200 '{"transitions":[{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy_carryfwd_calls" "esperado 5 chamadas, obtido $(_queue_calls_count)"; return 1; }
+  _put_phase=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_put_phase" = "phase-1" ] \
+    || { _fail "sy_carryfwd_phase_label" "R6 PUT da transicao deveria preservar written_phase_label=phase-1, obtido '$_put_phase'"; return 1; }
+  _put_fixver=$("$IO_SCRIPT" json-get '.written_fix_version_id? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-5.json")
+  [ "$_put_fixver" = "30001" ] \
+    || { _fail "sy_carryfwd_fix_version" "R6 PUT da transicao deveria preservar written_fix_version_id=30001, obtido '$_put_fixver'"; return 1; }
+  return 0
+}
+
 # SY-19 drain: titulo atual diverge do sha256 gravado no SyncMarker ->
 # ConflictRecord (reason=manual_edit), evento vira `conflict`, NUNCA
 # sobrescreve (FR-011) — so 2 chamadas de rede (R3 + R6-GET), nenhuma
@@ -1802,6 +1851,55 @@ scenario_convert_403_na_criacao_vira_permission_denied_exit7() {
     _fail "convert_403_no_map_row" "jira-map.tsv nao deveria ganhar linha para o item que falhou"
     return 1
   fi
+  return 0
+}
+
+# r02 FASE 24 tarefa 24.5.1/24.5.2 (achado 24.5): `_js_process_reconcile_
+# event` faz `_jspr_items=$("$_jsd_tasks" items ...); _jspr_items_ok=$?` —
+# ANTES do fix, essa era uma atribuicao NUA sob `set -eu` (linha 148), fora
+# de qualquer contexto `if`/`||` — uma falha de `jira-tasks.sh items`
+# (aqui, `tasks.md` ausente) abortava o `drain` INTEIRO antes de `$?` ser
+# lido, tornando o ramo de diagnostico "evento X permanece na fila" codigo
+# morto: o evento `e2` (outro local_key, na MESMA fila) nunca chegava a
+# ser processado. Com a guarda (`if var=$(...); then ...; else ec=$?; fi`),
+# o evento `e1` (reconcile, `local_key=*`) MUST permanecer `queued`
+# (nao consumido pela falha) e o diagnostico MUST aparecer em stderr, MAS
+# o `drain` MUST continuar e processar `e2` normalmente ate `done`.
+scenario_drain_reconcile_items_falha_tasks_md_ausente_outros_eventos_processados() {
+  _write_full_config
+  _write_credential
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  # tasks.md AUSENTE de proposito (nem docs/specs/demo/tasks.md existe) —
+  # jira-tasks.sh items falha (exit 1) para o evento reconcile e1.
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+e2	2026-01-01T00:00:01Z	demo	1.1	pass	manual	0	queued
+EOF
+  _summary="Titulo da tarefa"
+  _sha_summary=$(printf '%s' "$_summary" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # e2 (1.1, processado por _js_process_one_event — nao depende de
+  # jira-tasks.sh items): ja no status alvo com marker batendo, idempotente
+  # (so R3+R6-GET, prova que o item foi de fato alcancado e lido).
+  _queue_push 200 "{\"fields\":{\"summary\":\"$_summary\",\"status\":{\"name\":\"Done\"}}}"
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_summary\",\"written_status\":\"Done\"}}"
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" drain --feature demo 2>&1) \
+    || { _fail "sy_reconcile_items_fail_exit" "drain deveria sair exit 0, saida: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -q "jira-tasks.sh items falhou para demo — evento e1 permanece na fila" \
+    || { _fail "sy_reconcile_items_fail_diag" "diagnostico esperado ausente, obtido: $_out"; return 1; }
+
+  [ "$(_queue_calls_count)" = "2" ] \
+    || { _fail "sy_reconcile_items_fail_calls" "esperado exatamente 2 chamadas (so o evento e2 chega a rede), obtido $(_queue_calls_count)"; return 1; }
+
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'queued$' \
+    || { _fail "sy_reconcile_items_fail_e1_still_queued" "evento e1 deveria permanecer queued (nao consumido pela falha)"; return 1; }
+  awk -F '\t' '$1=="e2"' "$(_outbox_file)" | grep -q 'done$' \
+    || { _fail "sy_reconcile_items_fail_e2_done" "evento e2 deveria ter sido processado e fechado done"; return 1; }
   return 0
 }
 
@@ -3329,6 +3427,144 @@ EOF
   return 0
 }
 
+# r02 FASE 24 tarefa 24.1.1/24.1.3 (achado 24.1): R2 PUT de
+# `update.fixVersions` (marker sem written_fix_version_id, add-only)
+# responde 400 — `--op R2` so classifica 401/403/429/5xx (jira-io.sh);
+# 400/404/409/422 ficam em passthrough (exit 0, contracts/jira-rest.md:121)
+# — sem checar `http_status`, o 400 seria tratado como sucesso e
+# `written_fix_version_id=30002` gravado no marker do Epic sem o marco ter
+# sido de fato aplicado (baseline falsa). Drain MUST propagar a falha (ZERO
+# R6 PUT do marker do Epic) e o evento `reconcile` MUST ficar `deferred`
+# (nunca `done`) enquanto o marco continua pendente.
+scenario_drain_reconcile_epic_milestone_r2_400_nao_grava_baseline_falsa() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[{"id":"30002","name":"demo-r02"}]'
+  _queue_push 400 '{"errorMessages":["invalid body"]}'
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy_milestone_400_calls" "esperado exatamente 5 chamadas (R3+R6get+R1project+R13+R2 400), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_milestone_400_no_marker_put" "R6 PUT do marker do Epic NAO deveria ocorrer (falha do R2 propagada, milestone_changed=no)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'deferred$' \
+    || { _fail "sy_milestone_400_deferred" "evento e1 deveria ficar deferred (marco ainda pendente), obtido: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# r02 FASE 24 tarefa 24.1.2/24.1.3 (achado 24.1): R2 PUT de
+# `update.fixVersions` do Epic falha com 403 (permission_denied, exit 7 —
+# NUNCA exit 4/auth_failed, contracts/jira-rest.md). Antes de 24.1.2, o
+# chamador do drain (`_jspr_new_fixver=$(_js_reconcile_epic_milestone
+# ...)`) era uma atribuicao NUA sob `set -eu` — a falha do R2 abortava o
+# `drain` INTEIRO no Epic, e a Task 1.1 (mapeada, precisando de uma
+# transicao de status REAL) nunca chegava a ser processada. Com a guarda
+# (`if ...; then :; else ec=$?; fi`), exit 7 (nao-4) so marca
+# `_jspr_had_deferred=yes` — a reconciliacao de status dos DEMAIS itens
+# continua normalmente (Task 1.1 transiciona de "To Do" para "Done" via
+# R5/R4/R6-PUT), e SO o evento fica `deferred` (o marco do Epic, nao a
+# Task, e o que ficou pendente).
+scenario_drain_reconcile_epic_milestone_r2_403_preserva_reconciliacao_demais_itens() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # -- Epic: R3, R6get, R1 project, R13 versions, R2 PUT (403) --
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[{"id":"30002","name":"demo-r02"}]'
+  _queue_push 403 '{"errorMessages":["forbidden"]}'
+  # -- Task 1.1: R3 (status atual "To Do", diverge do alvo "Done"), R6get
+  # marker (bate com o estado atual, sem manual_edit), R5 transitions, R4
+  # executa transicao, R6 PUT regrava marker --
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"To Do\"}}"
+  _queue_push 200 '{"transitions":[{"id":"31","to":{"name":"Done"}}]}'
+  _queue_push 200 ''
+  _queue_push 200 ''
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "10" ] \
+    || { _fail "sy_milestone_403_calls" "esperado exatamente 10 chamadas (Epic 5 + Task 5), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*issue/DEMO-1/properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_milestone_403_epic_no_marker_put" "R6 PUT do marker do Epic NAO deveria ocorrer (falha do R2 propagada)"; return 1; }
+  grep -qE '^PUT .*issue/DEMO-2/properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    || { _fail "sy_milestone_403_task_marker_put" "R6 PUT do marker da Task 1.1 deveria ocorrer (reconciliacao de status preservada apesar da falha do Epic)"; return 1; }
+  grep -qE '^POST .*issue/DEMO-2/transitions' "$TMPDIR_TEST/queue-curl-calls.log" \
+    || { _fail "sy_milestone_403_task_transition" "R4 (transicao) da Task 1.1 deveria ocorrer (status reconciliado apesar da falha do Epic)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'deferred$' \
+    || { _fail "sy_milestone_403_deferred" "evento e1 deveria ficar deferred (marco do Epic pendente), obtido: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# r02 FASE 24 tarefa 24.1.1/24.1.3 (achado 24.1): R2 PUT de
+# `update.fixVersions` do Epic falha com 401 (auth_failed, exit 4
+# incondicional — jira-io.sh nao distingue por `--op`). O contrato do
+# cabecalho de `_js_reconcile_epic_milestone` (~1614-1633) exige repassar
+# o exit code para o chamador decidir `auth_failed`; 24.1.2 honra isso:
+# exit 4 => `_JSPE_BREAK=yes` => o evento vira `auth_failed` (gate FR-016,
+# mesma disciplina do resto do arquivo — NENHUMA chamada nova ate
+# reconfiguracao de credencial).
+scenario_drain_reconcile_epic_milestone_r2_401_vira_auth_failed() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[{"id":"30002","name":"demo-r02"}]'
+  _queue_push 401 '{"errorMessages":["unauthorized"]}'
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "5" ] \
+    || { _fail "sy_milestone_401_calls" "esperado exatamente 5 chamadas (sem retry, sem links apos auth_failed), obtido $(_queue_calls_count)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'auth_failed$' \
+    || { _fail "sy_milestone_401_auth_failed" "evento e1 nao virou auth_failed: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
 # task 21.1.1/21.1.2 (plan.md SEC-10, achado 21.1): resolve --choice
 # keep_jira de um ConflictRecord milestone_drift RE-DERIVA
 # written_fix_version_id do estado REAL do Epic (fixVersions), restrito ao
@@ -3876,8 +4112,21 @@ EOF
 # era lido DEPOIS de um `if...fi` sem `else` (sempre 0 por definicao POSIX
 # quando a condicao falha), mascarando o 403 e fazendo `overwrite` voltar a
 # ter o efeito de `keep_jira` (baseline vazia, conflito fechado igual).
-# Mutation (reintroduzir a leitura de "$?" apos o `fi` sem `else`) MUST
-# falhar este teste (resolve voltaria a sair 0).
+#
+# r02 FASE 24 tarefa 24.1.4 (correcao de oraculo falso): reintroduzir SO a
+# leitura de "$?" apos o `fi` sem `else` (sem tocar a checagem de
+# `http_status` adicionada na MESMA tarefa 23.1.1) e um mutante EQUIVALENTE
+# para ESTE teste — medido nesta tarefa: os 3 cenarios 23.1 (este, o 400
+# logo abaixo e o labels_enabled=off) continuam TODOS passando com esse
+# mutante, porque a checagem de `http_status` em `_js_reconcile_phase_label`
+# (jira-sync.sh, `case "$_jrpl_status" in 2??) : ;; *) [ "$_jrpl_ec" -eq 0 ]
+# && _jrpl_ec=1 ;; esac`) ja converte qualquer `http_status` nao-2xx (403
+# incluso) em `_jrpl_ec` nao-zero, independente do valor (correto ou
+# mascarado-em-0) que a captura de "$?" produziu. O mutante que de fato
+# discrimina um teste desta familia e remover a checagem de `http_status`
+# (medido: o cenario 400 logo abaixo falha com esse mutante) — coberto em
+# tests/cstk/test_jira-mutation.sh
+# scenario_mutation_24_1_4_reconcile_phase_label_http_status.
 scenario_resolve_overwrite_label_drift_r2_403_nao_fecha_como_sucesso() {
   _write_full_config
   _write_credential

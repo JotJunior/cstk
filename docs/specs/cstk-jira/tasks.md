@@ -3272,10 +3272,10 @@ NUA sob `set -eu`, e esse e o mesmo alcapao da nota de execucao da
 onda-023: corrigir so a funcao faria o `drain` inteiro abortar no primeiro
 R2 que falhasse.
 
-- [ ] 24.1.1 Corrigir `_js_reconcile_epic_milestone`: capturar o exit code real do R2 PUT com `else` explicito e tratar `http_status` nao-2xx (lido do stderr do `jira-io.sh`, mesmo padrao de `_js_reconcile_phase_label` ~1827-1845) como falha: imprime WRITTEN inalterado e retorna nao-zero
-- [ ] 24.1.2 Absorver a falha no chamador do drain (~2877) com `if var=$(...); then :; else ...; fi`, sem abortar o `drain` e mantendo a reconciliacao de status. Honrar o contrato do cabecalho (~1624-1627): exit 4 => `_JSPE_BREAK=yes` (auth_failed); demais => `_jspr_had_deferred=yes`, para o evento `reconcile` nao ser marcado `done` com o marco pendente
-- [ ] 24.1.3 Testes em `tests/cstk/test_jira-sync.sh` (stub): Epic com marco novo e R2 => 400 => marker SEM `written_fix_version_id` novo e evento nao-`done`; R2 => 403 => drain exit 0, reconciliacao de status dos demais itens preservada; R2 => 401 => evento `auth_failed`. Mutation em `tests/cstk/test_jira-mutation.sh`: remover a checagem de `http_status` MUST falhar o cenario 400. Remover a guarda do chamador MUST falhar o cenario 403 (o drain aborta)
-- [ ] 24.1.4 Corrigir o comentario de oraculo de `tests/cstk/test_jira-sync.sh` ~3879-3880 (23.1.3). Ele afirma que reintroduzir `$?` apos o `fi` em `_js_reconcile_phase_label` faz o teste falhar, mas esse mutante e EQUIVALENTE, porque a checagem de `http_status` (~1836-1839) converte qualquer nao-2xx em falha (medido: os 3 cenarios 23.1 passam com o mutante). O oraculo que discrimina e remover a checagem de `http_status` (medido: o cenario 400 falha). Documentar isso e cobrir no mutation suite
+- [x] 24.1.1 Corrigir `_js_reconcile_epic_milestone`: capturar o exit code real do R2 PUT com `else` explicito e tratar `http_status` nao-2xx (lido do stderr do `jira-io.sh`, mesmo padrao de `_js_reconcile_phase_label` ~1827-1845) como falha: imprime WRITTEN inalterado e retorna nao-zero
+- [x] 24.1.2 Absorver a falha no chamador do drain (~2877) com `if var=$(...); then :; else ...; fi`, sem abortar o `drain` e mantendo a reconciliacao de status. Honrar o contrato do cabecalho (~1624-1627): exit 4 => `_JSPE_BREAK=yes` (auth_failed); demais => `_jspr_had_deferred=yes`, para o evento `reconcile` nao ser marcado `done` com o marco pendente
+- [x] 24.1.3 Testes em `tests/cstk/test_jira-sync.sh` (stub): Epic com marco novo e R2 => 400 => marker SEM `written_fix_version_id` novo e evento nao-`done`; R2 => 403 => drain exit 0, reconciliacao de status dos demais itens preservada; R2 => 401 => evento `auth_failed`. Mutation em `tests/cstk/test_jira-mutation.sh`: remover a checagem de `http_status` MUST falhar o cenario 400. Remover a guarda do chamador MUST falhar o cenario 403 (o drain aborta)
+- [x] 24.1.4 Corrigir o comentario de oraculo de `tests/cstk/test_jira-sync.sh` ~3879-3880 (23.1.3). Ele afirma que reintroduzir `$?` apos o `fi` em `_js_reconcile_phase_label` faz o teste falhar, mas esse mutante e EQUIVALENTE, porque a checagem de `http_status` (~1836-1839) converte qualquer nao-2xx em falha (medido: os 3 cenarios 23.1 passam com o mutante). O oraculo que discrimina e remover a checagem de `http_status` (medido: o cenario 400 falha). Documentar isso e cobrir no mutation suite
 
 <!-- converge-key: 0c0c7530fa65 -->
 
@@ -3300,8 +3300,8 @@ US3, o label `phase-N` nunca mais acompanha a FASE local (FR-022, R2-5).
 No Epic, `written_fix_version_id` tambem se perde, e o proximo reconcile
 so faz `add`, sem `remove`: o marco antigo e o novo ficam juntos no Epic.
 
-- [ ] 24.2.1 Em `_js_process_one_event`, ler `written_fix_version_id` e `written_phase_label` do marker ja obtido no R6 GET e repassar `--written-fix-version-id`/`--written-phase-label` no `json-build marker` (~3253-3255), com a mesma disciplina de `written_description_sha256`
-- [ ] 24.2.2 Testes (stub de fila): transicao por evento com marker contendo `written_phase_label` (Task) e `written_fix_version_id` (Epic) => o corpo do R6 PUT preserva os dois. Mutation: remover o carry-forward MUST falhar
+- [x] 24.2.1 Em `_js_process_one_event`, ler `written_fix_version_id` e `written_phase_label` do marker ja obtido no R6 GET e repassar `--written-fix-version-id`/`--written-phase-label` no `json-build marker` (~3253-3255), com a mesma disciplina de `written_description_sha256`
+- [x] 24.2.2 Testes (stub de fila): transicao por evento com marker contendo `written_phase_label` (Task) e `written_fix_version_id` (Epic) => o corpo do R6 PUT preserva os dois. Mutation: remover o carry-forward MUST falhar
 
 <!-- converge-key: 15b9e643cb33 -->
 
@@ -3370,7 +3370,7 @@ todo `drain` da feature para no mesmo evento (bloqueio de cabeca de fila).
 Gatilho realista: `tasks.md` ausente ou renomeado com um `reconcile` na
 fila.
 
-- [ ] 24.5.1 Guardar as duas atribuicoes (~2724 e ~2728) com `|| _jspr_items_ok=$?` (ou `if var=$(...); then :; else ec=$?; fi`), preservando o ramo de diagnostico existente
-- [ ] 24.5.2 Teste (stub): `tasks.md` ausente com `reconcile` + evento por item na fila => `drain` exit 0, diagnostico "permanece na fila", evento por item processado. Mutation: reverter para a atribuicao nua MUST falhar
+- [x] 24.5.1 Guardar as duas atribuicoes (~2724 e ~2728) com `|| _jspr_items_ok=$?` (ou `if var=$(...); then :; else ec=$?; fi`), preservando o ramo de diagnostico existente
+- [x] 24.5.2 Teste (stub): `tasks.md` ausente com `reconcile` + evento por item na fila => `drain` exit 0, diagnostico "permanece na fila", evento por item processado. Mutation: reverter para a atribuicao nua MUST falhar
 
 <!-- converge-key: 205fc7f5234e -->

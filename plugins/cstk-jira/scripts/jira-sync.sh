@@ -1622,9 +1622,13 @@ _js_cmd_links() {
 # Contrato de saida: imprime (stdout, SEM newline) o valor de
 # written_fix_version_id que o CHAMADOR deve gravar no proximo R6 PUT do
 # marker (pode ser igual a WRITTEN_FIX_VERSION_ID quando nada mudou). Exit
-# sempre 0 exceto falha de rede no R2 final (repassa o exit code de
-# jira-io.sh — o chamador decide auth_failed/deferred, mesmo padrao do
-# resto do arquivo); qualquer falha ANTES do R2 (milestone ensure
+# nao-zero no R2 final: falha de rede (repassa o exit code de jira-io.sh —
+# o chamador decide auth_failed/deferred, mesmo padrao do resto do
+# arquivo) OU `http_status` nao-2xx em passthrough (400/404/409/422,
+# contracts/jira-rest.md:121 — `jira-io.sh` so classifica 401/403/429/5xx
+# via `--op R2`; achado 24.1) — em ambos os casos WRITTEN_FIX_VERSION_ID
+# e impresso inalterado, nunca o id novo nao-confirmado. Qualquer falha
+# ANTES do R2 (milestone ensure
 # indisponivel, R13/R12 fora do ar) degrada SILENCIOSAMENTE para "nada
 # muda nesta passada" (imprime WRITTEN_FIX_VERSION_ID inalterado, exit 0) —
 # o proximo `drain` tenta de novo, nunca quebra a reconciliacao de status
@@ -1716,14 +1720,34 @@ _js_reconcile_epic_milestone() {
   _jrem_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2fvbody.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jrem_body" > "$_jrem_body_file"
+  _jrem_err_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2fverr.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  # 24.1.1: `else` explicito — ler "$?" DEPOIS de um `if cmd; then ...; fi`
+  # sem ramo `else` e SEMPRE 0 por definicao POSIX quando a condicao falha,
+  # mesmo padrao ja corrigido em `_js_reconcile_phase_label` (23.1.1) —
+  # mascarava qualquer 401/403/429/5xx do R2 PUT. Alem disso, `--op R2` so
+  # classifica esses codigos (jira-io.sh ~857-935); 400/404/409/422
+  # documentados para o R2 de fixVersions (contracts/jira-rest.md:121)
+  # ficam em passthrough (exit 0) — sem checar `http_status` aqui, um 400
+  # gravaria `written_fix_version_id` sem o marco ter sido de fato
+  # aplicado (baseline falsa, achado 24.1).
   if "$_jrem_io" request PUT "/rest/api/3/issue/$_jrem_jkey" \
-      --body-file "$_jrem_body_file" --op R2 >/dev/null 2>/dev/null; then
-    rm -f "$_jrem_body_file"
+      --body-file "$_jrem_body_file" --op R2 >/dev/null 2>"$_jrem_err_file"; then
+    _jrem_ec=0
+  else
+    _jrem_ec=$?
+  fi
+  rm -f "$_jrem_body_file"
+  _jrem_status=$(grep '^http_status=' "$_jrem_err_file" | tail -n 1 | cut -d= -f2)
+  rm -f "$_jrem_err_file"
+  case "$_jrem_status" in
+    2??) : ;;
+    *) [ "$_jrem_ec" -eq 0 ] && _jrem_ec=1 ;;
+  esac
+  if [ "$_jrem_ec" -eq 0 ]; then
     printf '%s' "$_jrem_new_id"
     return 0
   fi
-  _jrem_ec=$?
-  rm -f "$_jrem_body_file"
   printf '%s' "$_jrem_written"
   return "$_jrem_ec"
 }
@@ -2720,14 +2744,29 @@ _js_process_reconcile_event() {
   # (mesmo efeito de "nao configurado" em `jira-tasks.sh items`).
   _jspr_outcomes_file=$(_js_outcomes_file_for_feature "$_jsd_feature")
   _jspr_stage=$(_js_resolve_stage "$_jsd_feature")
+  # 24.5.1: as duas atribuicoes abaixo eram NUAS (`var=$(cmd); ec=$?`) sob
+  # `set -eu` (linha 148), fora de qualquer contexto `if`/`||` ate o
+  # chamador de `drain` (~3068 -> ~3442) — uma falha de `jira-tasks.sh
+  # items` (ex.: `tasks.md` ausente/renomeado) abortava o script ANTES de
+  # `$?` ser lido, tornando o ramo de diagnostico abaixo (~2731-2734)
+  # codigo morto: o `drain` inteiro saia sem processar o resto da fila,
+  # em silencio (achado 24.5). Guardar com `if cmd; then :; else ec=$?;
+  # fi` (mesma convencao de `_js_cmd_milestone_ensure`/23.1.1) preserva o
+  # exit code genuino sem abortar o processo.
   if [ -n "$_jspr_stage" ]; then
-    _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
-      --outcomes-file "$_jspr_outcomes_file" --stage "$_jspr_stage" 2>/dev/null)
-    _jspr_items_ok=$?
+    if _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
+      --outcomes-file "$_jspr_outcomes_file" --stage "$_jspr_stage" 2>/dev/null); then
+      _jspr_items_ok=0
+    else
+      _jspr_items_ok=$?
+    fi
   else
-    _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
-      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null)
-    _jspr_items_ok=$?
+    if _jspr_items=$("$_jsd_tasks" items --feature "$_jsd_feature" \
+      --outcomes-file "$_jspr_outcomes_file" 2>/dev/null); then
+      _jspr_items_ok=0
+    else
+      _jspr_items_ok=$?
+    fi
   fi
   if [ "$_jspr_items_ok" -ne 0 ]; then
     rm -f "$_jspr_outcomes_file"
@@ -2874,7 +2913,29 @@ _js_process_reconcile_event() {
     # idempotencia de marco sao dimensoes independentes).
     _jspr_milestone_changed="no"
     if [ "$_jspr_kind" = "epic" ]; then
-      _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}")
+      # 24.1.2: atribuicao NUA sob `set -eu` — `_js_reconcile_epic_milestone`
+      # agora devolve exit code genuino no R2 final (24.1.1; antes sempre
+      # 0). Sem esta guarda, uma falha no R2 (rede ou `http_status`
+      # nao-2xx) abortaria o `drain` inteiro no primeiro Epic que falhasse
+      # (mesmo alcapao ja resolvido para `_js_reconcile_phase_label`
+      # abaixo). Honra o contrato do cabecalho (~1614-1633): exit 4 =>
+      # auth_failed (`_JSPE_BREAK`, mesmo gate FR-016 do resto do arquivo);
+      # qualquer outro exit nao-zero => `_jspr_had_deferred=yes`, para o
+      # evento `reconcile` nao ser marcado `done` com o marco ainda
+      # pendente. Em nenhum dos dois casos o item e pulado — a
+      # reconciliacao de status/label do MESMO item segue normalmente
+      # abaixo, so o marco fica para a proxima passada.
+      if _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}"); then
+        :
+      else
+        _jspr_mil_ec=$?
+        _jspr_new_fixver="${_jspr_written_fixver:-}"
+        if [ "$_jspr_mil_ec" -eq 4 ]; then
+          _JSPE_BREAK="yes"
+          break
+        fi
+        _jspr_had_deferred="yes"
+      fi
       if [ "$_jspr_new_fixver" != "${_jspr_written_fixver:-}" ]; then
         _jspr_written_fixver="$_jspr_new_fixver"
         _jspr_milestone_changed="yes"
@@ -3171,6 +3232,17 @@ _js_process_one_event() {
     # task 13.2.1: baseline de descricao lida do marker atual, carregada
     # adiante para o R6 PUT desta transicao (ver nota no R6 PUT abaixo).
     _jspe_written_desc_sha=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_description_sha256? // ""')
+    # 24.2.1: mesma disciplina — o R6 PUT abaixo substitui o valor INTEIRO
+    # da propriedade (~2848-2851/documentado no cabecalho do arquivo). Sem
+    # carregar adiante estas duas baselines, a PRIMEIRA transicao de status
+    # por evento (fluxo normal da US3) apagava `written_phase_label`/
+    # `written_fix_version_id` do marker, desligando a reconciliacao de
+    # troca de FASE (`_js_reconcile_phase_label`, so roda com o campo
+    # nao-vazio) e fazendo o proximo `_js_reconcile_epic_milestone` so
+    # `add` (sem `remove`), acumulando duas Fix Versions no Epic (achado
+    # 24.2).
+    _jspe_written_fixver=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_fix_version_id? // ""')
+    _jspe_written_phase_label=$(printf '%s' "$_jspe_prop_resp" | "$_jsd_io" json-get '.value.written_phase_label? // ""')
     if [ "$_jspe_cur_sha" != "$_jspe_written_sha" ] || [ "$_jspe_cur_status" != "$_jspe_written_status" ]; then
       _jspe_conflict="yes"
       _jspe_conflict_reason="manual_edit"
@@ -3268,6 +3340,13 @@ _js_process_one_event() {
   set -- marker --local-key "$_jspe_lkey" --feature "$_jsd_feature" \
     --written-summary-sha256 "$_jspe_cur_sha" --written-status "$_jspe_target" --written-at "$_jspe_now"
   [ -n "${_jspe_written_desc_sha:-}" ] && set -- "$@" --written-description-sha256 "$_jspe_written_desc_sha"
+  # 24.2.1: carry-forward de written_fix_version_id/written_phase_label
+  # (lidos acima do marker atual) — mesma disciplina do desc_sha imediatamente
+  # acima; ausentes no marker atual (kind sem marco/label, ou marker_missing
+  # tratado como conflito antes de chegar aqui) => permanecem vazios, sem
+  # `set --`.
+  [ -n "${_jspe_written_fixver:-}" ] && set -- "$@" --written-fix-version-id "$_jspe_written_fixver"
+  [ -n "${_jspe_written_phase_label:-}" ] && set -- "$@" --written-phase-label "$_jspe_written_phase_label"
   _jspe_marker_body=$("$_jsd_io" json-build "$@")
   _jspe_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
