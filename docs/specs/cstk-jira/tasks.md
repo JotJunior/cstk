@@ -2469,70 +2469,131 @@ SEC-7/SEC-9. **Depende de FASE 15** (15.4, decisao sobre CHK026) e FASE 6
 Ref: plan.md SEC-7/SEC-9; contracts/plugin-scripts.md `create-project`;
 data-model.md ProjectCreateRequest.
 
-- [ ] 19.1.1 `validate-project-key KEY`: regra do OpenAPI de R18
-      (`^[A-Z][A-Z0-9]{1,9}$`) E SEC-1; exit 2 se falhar
-- [ ] 19.1.2 `create-project --name N --key K --template T (--confirm-key
+- [x] 19.1.1 `validate-project-key KEY`: regra do OpenAPI de R18
+      (`^[A-Z][A-Z0-9]{1,9}$`) E SEC-1; exit 2 se falhar — implementado em
+      `_ji_cmd_validate_project_key` (`jira-io.sh`, NAO em `jira-setup.sh`:
+      contracts/plugin-scripts.md lista esta validacao na secao
+      `jira-io.sh`, mesma familia de `validate-segment`/
+      `validate-version-name`, POSIX puro sem jq/cliente HTTP); `jira-
+      setup.sh` ganhou o helper interno `_js_validate_project_key` que so
+      DELEGA (`"$_JS_JIRA_IO_SCRIPT" validate-project-key`), reusado por
+      `consent-question`/`create-project`. Testes:
+      `tests/cstk/test_jira-io.sh` (valido 2/10 chars, minusculo, digito
+      inicial, muito curto/longo, caractere invalido, uso incorreto).
+- [x] 19.1.2 `create-project --name N --key K --template T (--confirm-key
       K | --consent-block block-NNN)`: (1) `validate-project-key`; (2)
       `getProject` com K — `200` => exit 1 "projeto ja existe, reuse"
       (NUNCA cria); (3) fora de execucao 00c ativa: SO `--confirm-key` e
       aceito e MUST repetir K EXATAMENTE; dentro de execucao 00c ativa: SO
-      `--consent-block` e aceito
-- [ ] 19.1.3 SEC-9: `--consent-block block-NNN` so vale se (a) o bloqueio
-      esta `respondido` (via `bloqueios.sh list --status respondido`,
-      delegado ao `agente-00c-runtime`, mesmo padrao de `state-rw.sh` na
-      task 13.1.1); (b) a `pergunta` tem o marcador literal
-      `cstk-jira:create-project key=<K> name-sha256=<H> template=<T>` com
-      K/T/H IGUAIS aos argumentos da chamada; (c) a resposta e a opcao
-      afirmativa fixa `criar-projeto`; (d) o `block-NNN` NUNCA foi
-      consumido antes (consumo registrado em
-      `runtime/consumed-consents.tsv`, append, nao versionado) — qualquer
-      condicao falha => exit 2 SEM requisicao
-- [ ] 19.1.4 `leadAccountId` de `GET /rest/api/3/myself` (nunca digitado);
+      `--consent-block` e aceito — implementado em `_js_cmd_create_project`
+      (`jira-setup.sh`); decisao de implementacao: a checagem de modo
+      (passo 3) roda ANTES do `getProject` (passo 2) — inversao
+      deliberada da ordem em prosa desta tabela — para que
+      "`--confirm-key` com valor errado"/"modo errado" falhem SEM NENHUMA
+      chamada de rede (leitura literal de 19.1.7 "sem requisicao"), nao
+      so sem R18; `getProject` continua sendo o UNICO ponto de reuse-check
+      (`200`=>exit1). Deteccao de execucao 00c ativa via
+      `_js_detect_00c_active` (mesmo idioma `.lock` de
+      `posttooluse-jira-sync.sh`).
+- [x] 19.1.3 SEC-9: `--consent-block block-NNN` so vale se (a) o bloqueio
+      esta `respondido` (via `bloqueios.sh get --state-dir`, delegado ao
+      `agente-00c-runtime` via `_js_runtime_bloqueios`, mesmo padrao de
+      `state-rw.sh` na task 13.1.1); (b) a `pergunta` tem o marcador
+      literal `cstk-jira:create-project key=<K> name-sha256=<H>
+      template=<T>` com K/T/H IGUAIS aos argumentos da chamada; (c) a
+      resposta e a opcao afirmativa fixa `criar-projeto`; (d) o
+      `block-NNN` NUNCA foi consumido antes (consumo registrado em
+      `<dir-do-config>/runtime/consumed-consents.tsv`, append, nao
+      versionado) — qualquer condicao falha => exit 2 (mutation-tested em
+      19.1.9). `H` calculado via `jira-io.sh sha256-stdin` do `--name`
+      recebido (nunca o nome em texto plano no marcador).
+- [x] 19.1.4 `leadAccountId` de `GET /rest/api/3/myself` (nunca digitado);
       R18 com `projectTypeKey=software`, `projectTemplateKey=T` (T
-      validado contra a lista de templates `software` do OpenAPI R18);
-      sucesso (`201`) => `write-config project_key=K` (limpa qualquer
-      bloqueio de marco pendente, mesmo padrao de reconfiguracao)
-- [ ] 19.1.5 `403` em R18 => `permission_denied` (exit 7) + texto de
+      validado contra a lista de templates `software` do OpenAPI R18 via
+      `_js_template_allowed`, enum `_JS_R18_TEMPLATES`); sucesso (`201`)
+      => `write-config project_key=K` — decisao de implementacao:
+      `_js_cmd_write_config` passou a fazer MERGE com o config JA
+      EXISTENTE (campos nao informados sao preservados; sem config previo
+      o comportamento e IDENTICO ao r01), porque uma chamada com so
+      `project_key=K` sempre falharia a validacao "tudo ou nada" contra um
+      config vazio — sem essa mudanca a criacao remota teria sucesso mas
+      `write-config` falharia depois. Testes: `scenario_create_project_
+      sucesso_grava_config_e_consome_bloqueio` confirma merge (preserva
+      `board_id` original) + `project_key` atualizado.
+- [x] 19.1.5 `403` em R18 => `permission_denied` (exit 7) + texto de
       orientacao para criacao manual (UI do Jira ou `createJiraProject`
       do Rovo MCP por um admin) — NUNCA tratado como credencial invalida
-- [ ] 19.1.6 `jira-setup.sh consent-question --name N --key K --template
+      — `jira-io.sh request --op R18` classifica 403 como
+      `permission_denied`/exit 7 (novo branch, paralelo a R1/R2/R12);
+      `jira-setup.sh create-project` captura o exit 7 e IMPRIME a
+      orientacao adicional de criacao manual antes de propagar o exit.
+- [x] 19.1.6 `jira-setup.sh consent-question --name N --key K --template
       T`: imprime a pergunta com o marcador literal de SEC-9 — o
       orquestrador consome esta saida em vez de redigir a pergunta a mao
-- [ ] 19.1.7 Teste: `--confirm-key` com valor diferente de K => exit 2 sem
+      — implementado em `_js_cmd_consent_question`; testado em
+      `scenario_consent_question_imprime_marcador_com_sha_correto`
+      (confirma marcador `key=/name-sha256=/template=` EXATO + resposta
+      afirmativa fixa `criar-projeto` no texto).
+- [x] 19.1.7 Teste: `--confirm-key` com valor diferente de K => exit 2 sem
       requisicao; `--confirm-key` dentro de execucao 00c ativa
       (`.claude/*-00c-state/.lock` presente) => exit 2 (modo errado);
-      `getProject` `200` => exit 1, 0 chamadas a R18
-- [ ] 19.1.8 Teste SEC-9 (mutation-tested): bloqueio `respondido` de
-      OUTRO assunto (`subject_key` diferente) NUNCA autoriza
-      `create-project`; 2o uso do MESMO `block-NNN` (apos sucesso) =>
-      exit 2 sem requisicao, mesmo com o bloqueio ainda `respondido` no
-      state
-- [ ] 19.1.9 Mutation test: reverter a checagem de reuso unico de
+      `getProject` `200` => exit 1, 0 chamadas a R18 — `tests/cstk/
+      test_jira-setup.sh` scenarios `create_project_confirm_key_
+      diferente_exit2_zero_rede` (0 chamadas), `create_project_confirm_
+      key_com_execucao_ativa_exit2_modo_errado` (0 chamadas),
+      `create_project_get_project_200_exit1_zero_r18` (1 chamada,
+      so getProject).
+- [x] 19.1.8 Teste SEC-9 (mutation-tested): bloqueio `respondido` de
+      OUTRO assunto (marcador nao bate) NUNCA autoriza `create-project`;
+      2o uso do MESMO `block-NNN` (apos sucesso) => exit 2 sem
+      requisicao a R18/myself, mesmo com o bloqueio ainda `respondido` no
+      state — scenarios `create_project_sec9_marcador_de_outro_assunto_
+      nunca_autoriza` e `create_project_sec9_bloqueio_ja_consumido_exit2_
+      sem_requisicao` (ambos: 1 chamada = so `getProject`, que roda ANTES
+      da checagem SEC-9 — ver decisao em 19.1.2).
+- [x] 19.1.9 Mutation test: reverter a checagem de reuso unico de
       `runtime/consumed-consents.tsv` em 19.1.3 faz o teste de 19.1.8
-      (2o uso) falhar
+      (2o uso) falhar — `tests/cstk/test_jira-mutation.sh::
+      scenario_mutation_19_1_9_sec9_uso_unico`: controle (original) exit 2
+      no 2o uso; mutante (checagem neutralizada via `if false; then`)
+      completa a criacao (exit 0) — regressao detectada.
 
 ### 19.2 Guarda `PreToolUse` para `createJiraProject` (SEC-7) `[C]`
 
 Ref: contracts/hooks.md r02 (`hooks.json` entrada nova);
 checklists/security.md CHK022; plan.md SEC-7.
 
-- [ ] 19.2.1 `hooks.json`: entrada `PreToolUse` com matcher
+- [x] 19.2.1 `hooks.json`: entrada `PreToolUse` com matcher
       `mcp__.*__createJiraProject` -> `pretooluse-jira-deny-destructive.sh`
-      (modo novo `project-create`)
-- [ ] 19.2.2 `pretooluse-jira-deny-destructive.sh` modo `project-create`:
+      (modo novo `project-create`) — entrada nova adicionada ao array
+      `PreToolUse` (mesmo script do modo `destructive`, sem argumento
+      posicional: o modo e derivado do `tool_name` casado internamente).
+- [x] 19.2.2 `pretooluse-jira-deny-destructive.sh` modo `project-create`:
       nega (stderr citando FR-024, exit 2) SO quando ha execucao 00c
-      ATIVA no cwd (mesma deteccao de `.lock` do hook de sync) E o
-      plugin esta configurado (`jira-config.sh resolve-path` resolve um
-      ProjectConfig); sem config OU sem execucao ativa => no-op (exit 0)
-      — sessao interativa usa o prompt do Claude Code + a confirmacao da
-      skill como gate
-- [ ] 19.2.3 Teste: `createJiraProject` com execucao 00c ativa + config
+      ATIVA no cwd (mesma deteccao de `.lock` do hook de sync, nova
+      funcao `_pjd_00c_active`) E o plugin esta configurado; sem config
+      OU sem execucao ativa => no-op (exit 0) — decisao de implementacao:
+      a checagem de config presente (`[ -f "$_PJD_CONFIG" ] || exit 0`) e
+      COMPARTILHADA com o modo `destructive` (secao 3, roda para os DOIS
+      modos ANTES do dispatch por modo) em vez de delegar a
+      `jira-config.sh resolve-path` (contracts/hooks.md prosa) — esse
+      subcomando e FASE 20 (task 20.1, ainda pendente); documentado no
+      cabecalho do hook e em contracts/hooks.md como divida ate FASE 20.
+- [x] 19.2.3 Teste: `createJiraProject` com execucao 00c ativa + config
       presente => exit 2; sem execucao ativa (sessao interativa pura) =>
       exit 0; execucao ativa SEM config => exit 0 (FR-017/SC-006, plugin
-      nao configurado nao muda comportamento)
-- [ ] 19.2.4 Mutation test: reverter a condicao dupla de 19.2.2 (negar so
+      nao configurado nao muda comportamento) — `tests/
+      test_pretooluse-jira-deny-destructive.sh` scenarios
+      `create_project_com_execucao_ativa_e_config_bloqueia`,
+      `create_project_sem_execucao_ativa_no_op`,
+      `create_project_execucao_ativa_sem_config_no_op`.
+- [x] 19.2.4 Mutation test: reverter a condicao dupla de 19.2.2 (negar so
       por execucao ativa, ignorando config) faz o cenario "execucao ativa
-      sem config" de 19.2.3 falhar
+      sem config" de 19.2.3 falhar — `tests/cstk/test_jira-mutation.sh::
+      scenario_mutation_19_2_4_project_create_dupla_condicao`: controle
+      (original) exit 0 com execucao ativa sem config; mutante (guard de
+      config neutralizado) bloqueia (exit 2) mesmo sem config — regressao
+      detectada.
 
 ### 19.3 Skill `jira-setup` — fluxo de oferta de projeto `[A]`
 

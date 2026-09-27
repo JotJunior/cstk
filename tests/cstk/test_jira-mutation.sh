@@ -275,13 +275,14 @@ scenario_mutation_8_4_3_pretooluse_matcher() {
   assert_exit 2 sh -c 'printf "%s" "$1" | "$2"' _ "$_J" "$ORIG_PLUGIN_DIR/hooks/pretooluse-jira-deny-destructive.sh" || return 1
   assert_stderr_contains "FR-012" || return 1
 
-  # -- mutante: substitui o matcher por um padrao que nunca casa --
+  # -- mutante: substitui o matcher por um padrao que nunca casa (r02
+  # FASE 19: o case-arm agora tambem seta _PJD_MODE="destructive") --
   _mp=$(_mut_copy_plugin)
   _hook="$_mp/hooks/pretooluse-jira-deny-destructive.sh"
-  grep -q 'mcp__\*__deleteJiraIssue | mcp__\*__executeDestructive) ;;' "$_hook" \
+  grep -qF 'mcp__*__deleteJiraIssue | mcp__*__executeDestructive) _PJD_MODE="destructive" ;;' "$_hook" \
     || { _fail "mutant_stale" "matcher nao encontrado no hook — repo mudou"; return 1; }
-  sed 's/mcp__\*__deleteJiraIssue | mcp__\*__executeDestructive) ;;/mcp__nunca-casa__x) ;;/' "$_hook" > "$_hook.mut" && mv "$_hook.mut" "$_hook"
-  grep -q 'mcp__nunca-casa__x) ;;' "$_hook" || { _fail "mutant_apply" "sed nao aplicou a mutacao"; return 1; }
+  sed 's/mcp__\*__deleteJiraIssue | mcp__\*__executeDestructive) _PJD_MODE="destructive" ;;/mcp__nunca-casa__x) _PJD_MODE="destructive" ;;/' "$_hook" > "$_hook.mut" && mv "$_hook.mut" "$_hook"
+  grep -qF 'mcp__nunca-casa__x) _PJD_MODE="destructive" ;;' "$_hook" || { _fail "mutant_apply" "sed nao aplicou a mutacao"; return 1; }
   chmod +x "$_hook"
 
   capture sh -c 'printf "%s" "$1" | "$2"' _ "$_J" "$_hook"
@@ -874,6 +875,122 @@ EOF
     "$_sy" links --feature demo >/dev/null 2>&1
   [ "$(_curl_call_count)" != "0" ] \
     || { _fail "mutant_zero_calls" "esperado >=1 chamada R17 (regressao: idempotencia perdida), obtido 0"; return 1; }
+  return 0
+}
+
+# ==== 19.1.9 (r02 FASE 19): SEC-9 uso unico de --consent-block ====
+
+# Stub de bloqueios.sh (runtime agente-00c-runtime) via CSTK_LIB, mesmo
+# idioma de _install_state_rw_stub — le um fixture JSON fixo por block-id
+# em $TMPDIR_TEST/bloqueios-fixture-<ID>.json.
+_install_bloqueios_stub_mut() {
+  _ibsm_dir="$TMPDIR_TEST/stubroot-bloq/skills/agente-00c-runtime/scripts"
+  mkdir -p "$TMPDIR_TEST/stubroot-bloq/lib" "$_ibsm_dir"
+  cat > "$_ibsm_dir/bloqueios.sh" <<EOF
+#!/bin/sh
+[ "\$1" = "get" ] || exit 2
+shift
+_bid=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    --block-id) _bid=\$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+_f="$TMPDIR_TEST/bloqueios-fixture-\$_bid.json"
+[ -f "\$_f" ] || exit 1
+cat "\$_f"
+EOF
+  chmod +x "$_ibsm_dir/bloqueios.sh"
+  export CSTK_LIB="$TMPDIR_TEST/stubroot-bloq/lib"
+}
+
+# 19.1.9: reverter a checagem de reuso unico de
+# runtime/consumed-consents.tsv (19.1.3(d), jira-setup.sh
+# _js_cmd_create_project) faz o cenario de 19.1.8 (2o uso do MESMO
+# block-NNN) falhar — o mutante cria o projeto de novo (exit 0) em vez de
+# recusar (exit 2).
+scenario_mutation_19_1_9_sec9_uso_unico() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/cstk-jira/.lock"
+  _install_bloqueios_stub_mut
+  mkdir -p "./.claude/cstk-jira/runtime"
+  printf 'block-777\n' > "./.claude/cstk-jira/runtime/consumed-consents.tsv"
+
+  _sha=$(printf '%s' "Meu Projeto" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  cat > "$TMPDIR_TEST/bloqueios-fixture-block-777.json" <<EOF
+{"id":"block-777","status":"respondido","question":"Marcador: cstk-jira:create-project key=NEW name-sha256=$_sha template=com.pyxis.greenhopper.jira:gh-simplified-agility-kanban","human_answer":"criar-projeto"}
+EOF
+
+  _mapa="https://example.atlassian.net/rest/api/3/project/NEW|404|{}
+https://example.atlassian.net/rest/api/3/myself|200|{\"accountId\":\"acc-1\"}
+https://example.atlassian.net/rest/api/3/project|201|{\"id\":\"1\",\"key\":\"NEW\"}"
+
+  # -- controle: original recusa reuso do bloqueio ja consumido (exit 2) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 2 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$ORIG_PLUGIN_DIR/scripts/jira-setup.sh" create-project --name "Meu Projeto" --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --consent-block block-777 || return 1
+
+  # -- mutante: neutraliza a checagem de uso unico --
+  _mp=$(_mut_copy_plugin)
+  _js="$_mp/scripts/jira-setup.sh"
+  grep -qF 'if [ -f "$_jscp_consumed_file" ] && grep -qxF "$_jscp_consent_block" "$_jscp_consumed_file"; then' "$_js" \
+    || { _fail "mutant_stale" "checagem de uso unico nao encontrada em jira-setup.sh"; return 1; }
+  sed 's/if \[ -f "\$_jscp_consumed_file" \] \&\& grep -qxF "\$_jscp_consent_block" "\$_jscp_consumed_file"; then/if false; then/' \
+    "$_js" > "$_js.mut" && mv "$_js.mut" "$_js"
+  grep -qF 'if false; then' "$_js" \
+    || { _fail "mutant_apply" "sed nao aplicou a mutacao em jira-setup.sh"; return 1; }
+  chmod +x "$_js"
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$_js" create-project --name "Meu Projeto" --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --consent-block block-777
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "esperado exit 0 (regressao: bloqueio ja consumido reutilizado), obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# ==== 19.2.4 (r02 FASE 19): dupla condicao do modo project-create ====
+
+_json_pretooluse_createproject() {
+  # $1 cwd
+  printf '{"cwd":"%s","hook_event_name":"PreToolUse","tool_name":"mcp__atlassian__createJiraProject","tool_input":{"name":"Demo"}}' "$1"
+}
+
+_active_lock_mut() {
+  mkdir -p "$1/.claude/feature-00c-state/cstk-jira/.lock"
+}
+
+# 19.2.4: reverter a dupla condicao de 19.2.2 (negar SO por execucao ativa,
+# ignorando a checagem de config presente da secao 3) faz o cenario
+# "execucao ativa SEM config" de 19.2.3 falhar — o mutante bloqueia
+# (exit 2) mesmo sem nenhum ProjectConfig no cwd.
+scenario_mutation_19_2_4_project_create_dupla_condicao() {
+  _active_lock_mut "$TMPDIR_TEST"
+  _J=$(_json_pretooluse_createproject "$TMPDIR_TEST")
+
+  # -- controle: original e no-op (exit 0) com execucao ativa mas SEM config --
+  assert_exit 0 sh -c 'printf "%s" "$1" | "$2"' _ "$_J" \
+    "$ORIG_PLUGIN_DIR/hooks/pretooluse-jira-deny-destructive.sh" || return 1
+
+  # -- mutante: remove o guard de config (secao 3) do arquivo mutado —
+  # simula "negar so por execucao ativa, ignorando config" --
+  _mp=$(_mut_copy_plugin)
+  _hook="$_mp/hooks/pretooluse-jira-deny-destructive.sh"
+  grep -qF '[ -f "$_PJD_CONFIG" ] || exit 0' "$_hook" \
+    || { _fail "mutant_stale" "guard de config nao encontrado em pretooluse-jira-deny-destructive.sh"; return 1; }
+  sed 's/\[ -f "\$_PJD_CONFIG" \] || exit 0/: /' "$_hook" > "$_hook.mut" && mv "$_hook.mut" "$_hook"
+  grep -qF '[ -f "$_PJD_CONFIG" ] || exit 0' "$_hook" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao em pretooluse-jira-deny-destructive.sh"; return 1; }
+  chmod +x "$_hook"
+
+  capture sh -c 'printf "%s" "$1" | "$2"' _ "$_J" "$_hook"
+  [ "$_CAPTURED_EXIT" = "2" ] \
+    || { _fail "mutant_exit" "esperado exit 2 (regressao: bloqueia project-create mesmo sem config), obtido $_CAPTURED_EXIT"; return 1; }
   return 0
 }
 

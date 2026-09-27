@@ -273,8 +273,8 @@ USO:
       e nao pode conter .. // \ @ # espaco CR/LF/controle (SEC-1).
       Autenticacao Basic (email + API token de Credential) enviada via
       arquivo de config temporario do cliente HTTP (SEC-4) — nunca em argv.
-      --op OP (opcional, R1..R13/R16/R17) informa a operacao para
-      classificar 403 (permission_denied em R1/R2, auth_failed nas
+      --op OP (opcional, R1..R13/R16/R17/R18) informa a operacao para
+      classificar 403 (permission_denied em R1/R2/R18, auth_failed nas
       demais/omitido), 400/409 (deferred em R4), 404 (linking_disabled em
       R16, permission_denied em R12/R17) e 413 (limit_exceeded em R17).
       401/429/5xx/rede/timeout tambem sao classificados
@@ -289,6 +289,11 @@ USO:
       Valida NAME (nome de Fix Version, R12/R13) contra a allowlist
       ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$ (SEC-6). Exit 2 se falhar. Nao
       exige jq/cliente HTTP.
+
+  jira-io.sh validate-project-key KEY
+      Valida KEY (project_key de R18) contra a regra do OpenAPI
+      ^[A-Z][A-Z0-9]{1,9}$ (SEC-1). Exit 2 se falhar. Nao exige jq/cliente
+      HTTP.
 
   jira-io.sh json-get FILTER
       Le JSON de stdin, aplica 'jq -r FILTER'. Wrapper de leitura (SEC-3);
@@ -384,6 +389,20 @@ USO:
       MUST casar a allowlist [A-Za-z0-9_-] (SEC-1). Bloqueador =
       outwardIssue, bloqueado = inwardIssue (direcao confirmada por
       roundtrip, contracts/jira-rest.md R17). Nunca `comment`/`type.name`.
+
+  jira-io.sh json-build project --name N --key K --lead-account-id ID
+                               --template T
+      Monta o corpo de R18 (criar projeto, FR-024, SO com gate humano
+      externo a este arquivo — ver jira-setup.sh create-project):
+      {"key":K,"name":N,"leadAccountId":ID,"projectTypeKey":"software",
+      "projectTemplateKey":T}. K passa pela allowlist [A-Za-z0-9_-]
+      (SEC-1, defesa em profundidade — a regra completa do OpenAPI
+      ^[A-Z][A-Z0-9]{1,9}$ e responsabilidade de `jira-setup.sh
+      validate-project-key`, chamada ANTES por quem monta este corpo).
+      N/ID/T sao texto livre, escapados via jq --arg (ID pode conter ':',
+      T pode conter '.'/':' — nenhuma allowlist restritiva se aplica a
+      eles). projectTypeKey e SEMPRE "software" (fixo — o board kanban de
+      US2 usa a Agile API do Jira Software, R10).
 
   jira-io.sh sha256-stdin
       Le stdin, imprime o SHA-256 hex (sha256sum ou shasum -a 256, o que
@@ -484,14 +503,15 @@ _ji_cred_cleanup() {
 
 # _ji_op_allowed OP — allowlist FECHADA da flag `--op` (3.4, dec-073); r02
 # FASE 16 task 16.1.3 estende para R12/R13; r02 FASE 18 task 18.4.1/18.4.2
-# estende para R16/R17 (contracts/jira-rest.md). R14/R15 NUNCA aparecem
-# aqui — sao extensoes de corpo de R1/R2/R3 (contracts/jira-rest.md),
-# nunca chamadas de rede proprias com `--op` distinto (nenhum chamador do
-# motor passa `--op R14`/`--op R15`). OP MUST ser uma das operacoes
-# R1-R13/R16-R17 documentadas em contracts/jira-rest.md.
+# estende para R16/R17; r02 FASE 19 task 19.1.5 estende para R18
+# (contracts/jira-rest.md). R14/R15 NUNCA aparecem aqui — sao extensoes de
+# corpo de R1/R2/R3 (contracts/jira-rest.md), nunca chamadas de rede
+# proprias com `--op` distinto (nenhum chamador do motor passa
+# `--op R14`/`--op R15`). OP MUST ser uma das operacoes R1-R13/R16-R18
+# documentadas em contracts/jira-rest.md.
 _ji_op_allowed() {
   case "$1" in
-    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11|R12|R13|R16|R17) return 0 ;;
+    R1|R2|R3|R4|R5|R6|R7|R8|R9|R10|R11|R12|R13|R16|R17|R18) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -670,7 +690,7 @@ _ji_cmd_request() {
   # (deferred em R4). Fora da allowlist fechada => uso incorreto (exit 2).
   if [ -n "$_jir_op" ]; then
     _ji_op_allowed "$_jir_op" || _ji_die_usage \
-      "--op invalido: $_jir_op (permitido: R1..R13, R16, R17 — contracts/jira-rest.md)"
+      "--op invalido: $_jir_op (permitido: R1..R13, R16, R17, R18 — contracts/jira-rest.md)"
   fi
 
   _ji_method_allowed "$_jir_method" || _ji_die_usage \
@@ -849,9 +869,18 @@ _ji_cmd_request() {
       elif [ "$_jir_op" = "R12" ]; then
         _ji_fail_status "$_jir_status" permission_denied 7 \
           "resposta 403 em R12 (permission_denied) — falta Administer Jira/Administer Projects para criar Fix Version; projeto ja resolvido nesta execucao (R2-4), NUNCA reconfigurar credencial: $_jir_method $_jir_path"
+      elif [ "$_jir_op" = "R18" ]; then
+        # r02 FASE 19 task 19.1.5 (contracts/jira-rest.md R18; FR-024):
+        # 403 em createProject = credencial valida SEM a permissao global
+        # *Administer Jira* — NUNCA credencial invalida. O chamador
+        # (jira-setup.sh create-project) MUST orientar criacao manual (UI
+        # do Jira ou createJiraProject do Rovo MCP por um admin) ao ver
+        # este exit 7, nunca pedir para reconfigurar a credencial.
+        _ji_fail_status "$_jir_status" permission_denied 7 \
+          "resposta 403 em R18 (permission_denied) — falta a permissao global Administer Jira para criar projeto; NUNCA reconfigurar credencial: $_jir_method $_jir_path"
       else
         _ji_fail_status "$_jir_status" auth_failed 4 \
-          "resposta 403 fora de R1/R2/R12 (sem fonte que distinga) — tratado como auth_failed ate nova fonte: $_jir_method $_jir_path"
+          "resposta 403 fora de R1/R2/R12/R18 (sem fonte que distinga) — tratado como auth_failed ate nova fonte: $_jir_method $_jir_path"
       fi
       ;;
     404)
@@ -970,6 +999,35 @@ _ji_cmd_validate_version_name() {
   return 0
 }
 
+# _ji_cmd_validate_project_key KEY — r02 FASE 19 tarefa 19.1.1
+# (contracts/jira-rest.md R18 `CreateProjectDetails.key`, SEC-1):
+# regra EXATA do OpenAPI ("start with an uppercase letter followed by one
+# or more uppercase alphanumeric characters", max 10 chars) =>
+# ^[A-Z][A-Z0-9]{1,9}$ (2 a 10 caracteres no total). Nao exige jq/cliente
+# HTTP (mesma disciplina de validate-segment/validate-version-name). Exit 2
+# (via _ji_die_usage) se falhar; NUNCA aceita minusculas/digito inicial.
+_ji_cmd_validate_project_key() {
+  [ "$#" -eq 1 ] || _ji_die_usage "validate-project-key requer exatamente 1 KEY"
+  _jivpk_key="$1"
+
+  case "$_jivpk_key" in
+    [A-Z]*) : ;;
+    *) _ji_die_usage "validate-project-key: fora da allowlist ^[A-Z][A-Z0-9]{1,9}\$ (regra do OpenAPI R18) — deve comecar com letra MAIUSCULA" ;;
+  esac
+
+  _jivpk_len=${#_jivpk_key}
+  if [ "$_jivpk_len" -lt 2 ] || [ "$_jivpk_len" -gt 10 ]; then
+    _ji_die_usage "validate-project-key: fora da allowlist ^[A-Z][A-Z0-9]{1,9}\$ (regra do OpenAPI R18) — deve ter 2 a 10 caracteres"
+  fi
+
+  case "$_jivpk_key" in
+    *[!A-Z0-9]*)
+      _ji_die_usage "validate-project-key: fora da allowlist ^[A-Z][A-Z0-9]{1,9}\$ (regra do OpenAPI R18) — so letras MAIUSCULAS e digitos apos a 1a letra"
+      ;;
+  esac
+  return 0
+}
+
 # _ji_cmd_json_get FILTER — 3.5 (SEC-3): le JSON de stdin, aplica
 # `jq -r FILTER`. Wrapper de LEITURA — restringe `jq` a este arquivo (nenhum
 # outro script do plugin invoca `jq` diretamente). So exige `jq` (nunca o
@@ -1018,11 +1076,14 @@ _ji_cmd_json_build() {
     link)
       _ji_cmd_json_build_link "$@"
       ;;
+    project)
+      _ji_cmd_json_build_project "$@"
+      ;;
     '')
-      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update, version, link)"
+      _ji_die_usage "json-build requer MODE (issue, filter, board, transition, marker, issue-update, version, link, project)"
       ;;
     *)
-      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update, version, link)"
+      _ji_die_usage "json-build: MODE desconhecido: $_jib_mode (validos: issue, filter, board, transition, marker, issue-update, version, link, project)"
       ;;
   esac
 }
@@ -1677,6 +1738,65 @@ _ji_cmd_json_build_link() {
     '{type: {id: $type_id}, outwardIssue: {key: $outward_key}, inwardIssue: {key: $inward_key}}'
 }
 
+# _ji_cmd_json_build_project --name N --key K --lead-account-id ID
+#                            --template T
+# — r02 FASE 19 task 19.1.4 (contracts/jira-rest.md R18
+# `POST /rest/api/3/project`, contracts/plugin-scripts.md `json-build
+# project`, FR-024): monta {"key":K,"name":N,"leadAccountId":ID,
+# "projectTypeKey":"software","projectTemplateKey":T}. `projectTypeKey` e
+# SEMPRE "software" (fixo, nunca flag — o board kanban de US2 usa a Agile
+# API do Jira Software, R10). `--key` MUST casar a allowlist
+# [A-Za-z0-9_-] (SEC-1, defesa em profundidade — a regra COMPLETA do
+# OpenAPI ^[A-Z][A-Z0-9]{1,9}$ e responsabilidade exclusiva de
+# `jira-setup.sh validate-project-key`, chamada pelo motor ANTES de montar
+# este corpo). `--name`/`--lead-account-id`/`--template` sao texto livre
+# escapado via jq --arg (SEM allowlist restritiva: leadAccountId pode
+# conter ':', projectTemplateKey sempre contem '.'/':' no formato oficial
+# "com.pyxis.greenhopper.jira:gh-simplified-*" — nenhum dos dois e
+# segmento de PATH nem entra em JQL).
+_ji_cmd_json_build_project() {
+  _jbp_name=""
+  _jbp_key=""
+  _jbp_lead=""
+  _jbp_template=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name)
+        [ "$#" -ge 2 ] || _ji_die_usage "--name requer argumento"
+        _jbp_name="$2"; shift 2 ;;
+      --key)
+        [ "$#" -ge 2 ] || _ji_die_usage "--key requer argumento"
+        _jbp_key="$2"; shift 2 ;;
+      --lead-account-id)
+        [ "$#" -ge 2 ] || _ji_die_usage "--lead-account-id requer argumento"
+        _jbp_lead="$2"; shift 2 ;;
+      --template)
+        [ "$#" -ge 2 ] || _ji_die_usage "--template requer argumento"
+        _jbp_template="$2"; shift 2 ;;
+      *)
+        _ji_die_usage "json-build project: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$_jbp_name" ] || _ji_die_usage "json-build project requer --name"
+  [ -n "$_jbp_key" ] || _ji_die_usage "json-build project requer --key"
+  [ -n "$_jbp_lead" ] || _ji_die_usage "json-build project requer --lead-account-id"
+  [ -n "$_jbp_template" ] || _ji_die_usage "json-build project requer --template"
+
+  _ji_charset_ok "$_jbp_key" \
+    || _ji_die_usage "--key fora da allowlist [A-Za-z0-9_-] (SEC-1)"
+
+  _ji_require_jq
+  jq -n \
+    --arg key "$_jbp_key" \
+    --arg name "$_jbp_name" \
+    --arg lead "$_jbp_lead" \
+    --arg template "$_jbp_template" \
+    '{key: $key, name: $name, leadAccountId: $lead, projectTypeKey: "software", projectTemplateKey: $template}'
+}
+
 # --- dispatcher ---------------------------------------------------------
 
 _ji_sub="${1:-}"
@@ -1696,6 +1816,9 @@ case "$_ji_sub" in
   validate-version-name)
     _ji_cmd_validate_version_name "$@"
     ;;
+  validate-project-key)
+    _ji_cmd_validate_project_key "$@"
+    ;;
   request)
     _ji_cmd_request "$@"
     ;;
@@ -1709,6 +1832,6 @@ case "$_ji_sub" in
     _ji_cmd_sha256_stdin "$@"
     ;;
   *)
-    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, validate-version-name, json-get, json-build, sha256-stdin)"
+    _ji_die_usage "subcomando desconhecido: $_ji_sub (validos: deps-check, request, validate-segment, validate-version-name, validate-project-key, json-get, json-build, sha256-stdin)"
     ;;
 esac

@@ -1865,4 +1865,41 @@ scenario_request_body_dentro_do_teto_passthrough() {
     JIRA_IO_MAX_BODY_BYTES=10485760 "$SCRIPT" request GET /rest/api/3/issueLinkType --op R16 || return 1
 }
 
+# ==== validate-project-key (r02 FASE 19 tarefa 19.1.1) ====
+
+scenario_validate_project_key_valido_exit0() {
+  assert_exit 0 "$SCRIPT" validate-project-key CSTK || return 1
+  assert_exit 0 "$SCRIPT" validate-project-key AB || return 1
+  assert_exit 0 "$SCRIPT" validate-project-key ABCDEFGHIJ || return 1
+}
+
+scenario_validate_project_key_minusculo_exit2() {
+  assert_exit 2 "$SCRIPT" validate-project-key cstk || return 1
+  assert_stderr_contains "letra MAIUSCULA" || return 1
+}
+
+scenario_validate_project_key_digito_inicial_exit2() {
+  assert_exit 2 "$SCRIPT" validate-project-key 1CSTK || return 1
+  assert_stderr_contains "letra MAIUSCULA" || return 1
+}
+
+scenario_validate_project_key_muito_curto_exit2() {
+  assert_exit 2 "$SCRIPT" validate-project-key A || return 1
+  assert_stderr_contains "2 a 10 caracteres" || return 1
+}
+
+scenario_validate_project_key_muito_longo_exit2() {
+  assert_exit 2 "$SCRIPT" validate-project-key ABCDEFGHIJK || return 1
+  assert_stderr_contains "2 a 10 caracteres" || return 1
+}
+
+scenario_validate_project_key_caractere_invalido_exit2() {
+  assert_exit 2 "$SCRIPT" validate-project-key "CS-TK" || return 1
+  assert_stderr_contains "so letras MAIUSCULAS e digitos" || return 1
+}
+
+scenario_validate_project_key_uso_incorreto_sem_args_exit2() {
+  assert_exit 2 "$SCRIPT" validate-project-key || return 1
+}
+
 run_all_scenarios

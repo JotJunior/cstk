@@ -105,4 +105,40 @@ scenario_prefixo_arbitrario_bloqueia() {
   return 0
 }
 
+# ==== modo project-create (r02 FASE 19 tarefa 19.2, FR-024) ====
+#
+#   PJD-6 createJiraProject + execucao 00c ativa + config presente -> exit 2
+#   PJD-7 createJiraProject sem execucao ativa (sessao interativa pura) +
+#         config presente -> exit 0 (o gate e o prompt do Claude Code + a
+#         confirmacao da skill jira-setup)
+#   PJD-8 createJiraProject + execucao ativa SEM config -> exit 0
+#         (FR-017/SC-006: plugin nao configurado nao muda comportamento)
+
+_active_lock() {
+  mkdir -p "$1/.claude/feature-00c-state/cstk-jira/.lock"
+}
+
+scenario_create_project_com_execucao_ativa_e_config_bloqueia() {
+  _config_present "$TMPDIR_TEST"
+  _active_lock "$TMPDIR_TEST"
+  _J=$(_json_pretooluse "$TMPDIR_TEST" "mcp__atlassian__createJiraProject")
+  assert_exit 2 _run_hook "$_J" || return 1
+  assert_stderr_contains "FR-024" || return 1
+  return 0
+}
+
+scenario_create_project_sem_execucao_ativa_no_op() {
+  _config_present "$TMPDIR_TEST"
+  _J=$(_json_pretooluse "$TMPDIR_TEST" "mcp__atlassian__createJiraProject")
+  assert_exit 0 _run_hook "$_J" || return 1
+  return 0
+}
+
+scenario_create_project_execucao_ativa_sem_config_no_op() {
+  _active_lock "$TMPDIR_TEST"
+  _J=$(_json_pretooluse "$TMPDIR_TEST" "mcp__atlassian__createJiraProject")
+  assert_exit 0 _run_hook "$_J" || return 1
+  return 0
+}
+
 run_all_scenarios

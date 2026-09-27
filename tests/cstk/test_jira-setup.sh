@@ -277,4 +277,284 @@ scenario_resolve_link_type_stdin_vazio_no_link_type() {
   assert_stderr_contains "unrepresentable reason=no_link_type" || return 1
 }
 
+# ==== create-project (r02 FASE 19 tarefa 19.1) ====
+#
+#   JS-20..24 validate-project-key (regra OpenAPI R18 ^[A-Z][A-Z0-9]{1,9}$)
+#   JS-25     consent-question imprime marcador SEC-9 com sha256 correto
+#   JS-26..28 create-project 19.1.7 (uso incorreto/reuse, ZERO chamadas
+#             extras alem do pre-check quando aplicavel)
+#   JS-29..31 create-project 19.1.8 (SEC-9: assunto errado, uso unico,
+#             sucesso completo com merge de write-config)
+#
+# Estrategia de rede (mesma disciplina de test_jira-sync.sh/
+# test_jira-conflict-view.sh, duplicada aqui porque cada arquivo de teste e
+# standalone): stub de `curl` por FILA. `bloqueios.sh` (runtime
+# agente-00c-runtime) tambem e stubado via CSTK_LIB (mesmo idioma de
+# test_jira-sync.sh::_install_state_rw_stub) — nenhum cenario depende do
+# runtime globalmente instalado.
+
+_init_queue_stub() {
+  _stub_dir="$TMPDIR_TEST/bin-queue"
+  mkdir -p "$_stub_dir"
+  : > "$TMPDIR_TEST/queue-curl-queue.tsv"
+  : > "$TMPDIR_TEST/queue-curl-calls.log"
+  cat > "$_stub_dir/curl" <<STUB
+#!/bin/sh
+_url=""
+_out=""
+_method="GET"
+_prev=""
+for _a in "\$@"; do
+  case "\$_prev" in
+    -o) _out="\$_a" ;;
+    -X) _method="\$_a" ;;
+  esac
+  case "\$_a" in
+    https://*) _url="\$_a" ;;
+  esac
+  _prev="\$_a"
+done
+_qfile="$TMPDIR_TEST/queue-curl-queue.tsv"
+_callsfile="$TMPDIR_TEST/queue-curl-calls.log"
+_n=\$(wc -l < "\$_callsfile" 2>/dev/null | tr -d ' ')
+_n=\$((_n + 1))
+printf '%s %s\n' "\$_method" "\$_url" >> "\$_callsfile"
+_line=\$(sed -n "\${_n}p" "\$_qfile")
+if [ -z "\$_line" ]; then
+  exit 22
+fi
+_code=\${_line%%|*}
+_body=\${_line#*|}
+[ -n "\$_out" ] && printf '%s' "\$_body" > "\$_out"
+printf '%s' "\$_code"
+exit 0
+STUB
+  chmod +x "$_stub_dir/curl"
+  printf '%s' "$_stub_dir"
+}
+
+_queue_push() {
+  printf '%s|%s\n' "$1" "$2" >> "$TMPDIR_TEST/queue-curl-queue.tsv"
+}
+
+_queue_calls_count() {
+  [ -f "$TMPDIR_TEST/queue-curl-calls.log" ] || { printf '0'; return; }
+  wc -l < "$TMPDIR_TEST/queue-curl-calls.log" | tr -d ' '
+}
+
+_cp_write_full_config() {
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/config" <<'EOF'
+config_version=1
+site_host=cstk-test.atlassian.net
+project_key=OLD
+board_id=1
+issue_type_epic=10001
+issue_type_task=10004
+issue_type_subtask=10002
+status_pending=To Do
+status_in_progress=In Progress
+status_pass=Done
+status_fail=Failed
+sync_autonomous=on
+EOF
+}
+
+_cp_write_credential() {
+  mkdir -p "$TMPDIR_TEST/xdg/cstk-jira"
+  printf 'site_host=%s\nemail=%s\napi_token=%s\n' \
+    "cstk-test.atlassian.net" "tester@example.com" "tok-FAKE-000" \
+    > "$TMPDIR_TEST/xdg/cstk-jira/credentials"
+  chmod 600 "$TMPDIR_TEST/xdg/cstk-jira/credentials"
+}
+
+# _cp_active_lock: simula execucao feature-00c ATIVA no cwd (mesma
+# deteccao de .lock de hooks/posttooluse-jira-sync.sh) — cria so o dir
+# .lock, conteudo de state.json e irrelevante para _js_detect_00c_active.
+_cp_active_lock() {
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/cstk-jira/.lock"
+}
+
+# _cp_install_bloqueios_stub: stub de `bloqueios.sh get` via CSTK_LIB
+# (mesmo idioma de test_jira-sync.sh::_install_state_rw_stub) — le um
+# fixture JSON por block-id em $TMPDIR_TEST/bloqueios-fixture-<ID>.json
+# (escrito por _cp_write_block_fixture); ausente = "nao encontrado" (exit 1).
+_cp_install_bloqueios_stub() {
+  _cpib_dir="$TMPDIR_TEST/stubroot/skills/agente-00c-runtime/scripts"
+  mkdir -p "$TMPDIR_TEST/stubroot/lib" "$_cpib_dir"
+  cat > "$_cpib_dir/bloqueios.sh" <<EOF
+#!/bin/sh
+[ "\$1" = "get" ] || exit 2
+shift
+_bid=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    --block-id) _bid=\$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+_f="$TMPDIR_TEST/bloqueios-fixture-\$_bid.json"
+[ -f "\$_f" ] || exit 1
+cat "\$_f"
+EOF
+  chmod +x "$_cpib_dir/bloqueios.sh"
+  export CSTK_LIB="$TMPDIR_TEST/stubroot/lib"
+}
+
+# _cp_write_block_fixture ID STATUS QUESTION ANSWER -> grava o JSON que o
+# stub de bloqueios.sh devolve para `get --block-id ID`.
+_cp_write_block_fixture() {
+  _cpwbf_answer_json="null"
+  [ -n "$4" ] && _cpwbf_answer_json="\"$4\""
+  cat > "$TMPDIR_TEST/bloqueios-fixture-$1.json" <<EOF
+{"id":"$1","status":"$2","question":"$3","human_answer":$_cpwbf_answer_json}
+EOF
+}
+
+# NOTA: validate-project-key vive em jira-io.sh (contracts/plugin-scripts.md
+# lista-a junto de validate-segment/validate-version-name) — testada em
+# tests/cstk/test_jira-io.sh, nao aqui. create-project delega a ela
+# internamente (ver scenario_create_project_* abaixo).
+
+# ---- consent-question (19.1.6) ----
+
+scenario_consent_question_imprime_marcador_com_sha_correto() {
+  _sha=$(printf '%s' "Meu Projeto" | "$JIRA_IO" sha256-stdin)
+  capture "$SCRIPT" consent-question --name "Meu Projeto" --key CSTK --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "js25_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *"cstk-jira:create-project key=CSTK name-sha256=$_sha template=com.pyxis.greenhopper.jira:gh-simplified-agility-kanban"*) : ;;
+    *) _fail "js25_marker" "marcador ausente/incorreto no stdout: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDOUT" in
+    *criar-projeto*) : ;;
+    *) _fail "js25_resposta" "resposta afirmativa fixa 'criar-projeto' ausente do stdout"; return 1 ;;
+  esac
+}
+
+# ---- create-project: uso incorreto / reuse (19.1.7) ----
+
+scenario_create_project_confirm_key_diferente_exit2_zero_rede() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  PATH="$_bin:$PATH" assert_exit 2 "$SCRIPT" create-project --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --confirm-key OUTRAKEY || return 1
+  [ "$(_queue_calls_count)" = "0" ] \
+    || { _fail "confirm_key_diferente_zero_rede" "esperado 0 chamadas, obtido $(_queue_calls_count)"; return 1; }
+}
+
+scenario_create_project_confirm_key_com_execucao_ativa_exit2_modo_errado() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  _cp_active_lock
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  PATH="$_bin:$PATH" assert_exit 2 "$SCRIPT" create-project --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --confirm-key NEW || return 1
+  assert_stderr_contains "SO --consent-block e aceito" || return 1
+  [ "$(_queue_calls_count)" = "0" ] \
+    || { _fail "confirm_key_execucao_ativa_zero_rede" "esperado 0 chamadas, obtido $(_queue_calls_count)"; return 1; }
+}
+
+scenario_create_project_get_project_200_exit1_zero_r18() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"id":"10099","key":"NEW"}'
+  PATH="$_bin:$PATH" assert_exit 1 "$SCRIPT" create-project --name Demo --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --confirm-key NEW || return 1
+  assert_stderr_contains "ja existe" || return 1
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "get_project_200_1_chamada" "esperado 1 chamada (getProject), obtido $(_queue_calls_count)"; return 1; }
+}
+
+# ---- create-project: SEC-9 (19.1.8, mutation-tested) ----
+
+# JS-29: bloqueio respondido, mas de OUTRO assunto (marcador nao bate) —
+# NUNCA autoriza, mesmo com status=respondido e resposta=criar-projeto.
+scenario_create_project_sec9_marcador_de_outro_assunto_nunca_autoriza() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  _cp_active_lock
+  _cp_install_bloqueios_stub
+  _cp_write_block_fixture "block-001" "respondido" \
+    "Autorizar criacao de outro projeto? Marcador: cstk-jira:create-project key=OUTRO name-sha256=$(printf '%s' 'Outro Nome' | "$JIRA_IO" sha256-stdin) template=com.pyxis.greenhopper.jira:gh-simplified-agility-kanban" \
+    "criar-projeto"
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 404 '{}'
+  PATH="$_bin:$PATH" assert_exit 2 "$SCRIPT" create-project --name "Meu Projeto" --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --consent-block block-001 || return 1
+  assert_stderr_contains "marcador SEC-9" || return 1
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "sec9_outro_assunto_1_chamada" "esperado 1 chamada (so getProject), obtido $(_queue_calls_count)"; return 1; }
+}
+
+# JS-30: 2o uso do MESMO block-NNN apos sucesso -> exit 2 SEM chamar R18
+# (nem myself), mesmo com o bloqueio ainda 'respondido' no state (consumido
+# = fato local, nunca desfeito pelo state remoto). getProject (pre-check de
+# reuse, passo 2 do fluxo — SEMPRE roda ANTES da verificacao de
+# consentimento, contracts/plugin-scripts.md `create-project`) e a UNICA
+# chamada de rede feita.
+scenario_create_project_sec9_bloqueio_ja_consumido_exit2_sem_requisicao() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  _cp_active_lock
+  _cp_install_bloqueios_stub
+  mkdir -p "./.claude/cstk-jira/runtime"
+  printf 'block-002\n' > "./.claude/cstk-jira/runtime/consumed-consents.tsv"
+  _sha=$(printf '%s' "Meu Projeto" | "$JIRA_IO" sha256-stdin)
+  _cp_write_block_fixture "block-002" "respondido" \
+    "Autorizar? Marcador: cstk-jira:create-project key=NEW name-sha256=$_sha template=com.pyxis.greenhopper.jira:gh-simplified-agility-kanban" \
+    "criar-projeto"
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 404 '{}'
+  PATH="$_bin:$PATH" assert_exit 2 "$SCRIPT" create-project --name "Meu Projeto" --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --consent-block block-002 || return 1
+  assert_stderr_contains "uso unico" || return 1
+  [ "$(_queue_calls_count)" = "1" ] \
+    || { _fail "sec9_ja_consumido_1_chamada" "esperado 1 chamada (so getProject; myself/R18 NUNCA chamados), obtido $(_queue_calls_count)"; return 1; }
+}
+
+# JS-31: caminho de sucesso completo — getProject 404, SEC-9 OK, myself,
+# POST 201 -> exit 0, key impressa, write-config grava project_key (merge:
+# demais campos do config original preservados), block-NNN marcado
+# consumido.
+scenario_create_project_sucesso_grava_config_e_consome_bloqueio() {
+  cd "$TMPDIR_TEST" || return 1
+  _cp_write_full_config
+  _cp_write_credential
+  _cp_active_lock
+  _cp_install_bloqueios_stub
+  _sha=$(printf '%s' "Meu Projeto" | "$JIRA_IO" sha256-stdin)
+  _cp_write_block_fixture "block-003" "respondido" \
+    "Autorizar? Marcador: cstk-jira:create-project key=NEW name-sha256=$_sha template=com.pyxis.greenhopper.jira:gh-simplified-agility-kanban" \
+    "criar-projeto"
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 404 '{}'
+  _queue_push 200 '{"accountId":"acc-123"}'
+  _queue_push 201 '{"id":"10100","key":"NEW","self":"https://cstk-test.atlassian.net/rest/api/3/project/10100"}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" create-project --name "Meu Projeto" --key NEW \
+    --template com.pyxis.greenhopper.jira:gh-simplified-agility-kanban --consent-block block-003 || return 1
+  assert_stdout_contains "NEW" || return 1
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sucesso_3_chamadas" "esperado 3 chamadas (getProject+myself+R18), obtido $(_queue_calls_count)"; return 1; }
+  grep -q '^project_key=NEW$' "./.claude/cstk-jira/config" \
+    || { _fail "sucesso_project_key" "project_key nao atualizado no config"; return 1; }
+  grep -q '^board_id=1$' "./.claude/cstk-jira/config" \
+    || { _fail "sucesso_merge_preserva" "merge apagou campo ja configurado (board_id)"; return 1; }
+  grep -qx "block-003" "./.claude/cstk-jira/runtime/consumed-consents.tsv" \
+    || { _fail "sucesso_consumido" "block-003 nao marcado como consumido"; return 1; }
+}
+
 run_all_scenarios

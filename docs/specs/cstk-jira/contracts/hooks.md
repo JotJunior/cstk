@@ -93,13 +93,19 @@ comportamento vedada por FR-017/SC-006.
 
 ## Round r02 (2026-09-26) — mudancas (FR-023, FR-024, FR-020..FR-025)
 
-`[PROPOSTA — a validar na implementacao]`, ADITIVO ao desenho acima.
+`[PROPOSTA — a validar na implementacao]` para os itens ainda pendentes
+(FASE 20, `jira-config.sh resolve-path`); a entrada de `hooks.json` abaixo
+(FASE 19 tarefa 19.2) **JA ESTA IMPLEMENTADA** — `pretooluse-jira-deny-
+destructive.sh` deriva o modo (`destructive`/`project-create`) do
+`tool_name` casado internamente, sem flag posicional de modo; coberta por
+`tests/test_pretooluse-jira-deny-destructive.sh` (PJD-6/7/8) e mutation
+test `tests/cstk/test_jira-mutation.sh::scenario_mutation_19_2_4_project_create_dupla_condicao`.
 
 **`hooks.json` — entrada nova**
 
 | Evento | matcher (regex) | Script | async | Papel |
 |--------|-----------------|--------|-------|-------|
-| `PreToolUse` | `mcp__.*__createJiraProject` | `hooks/pretooluse-jira-deny-destructive.sh` (modo `project-create`) | nao | FR-024: nega (exit 2) criacao de projeto via Rovo MCP quando ha execucao 00c ATIVA no cwd (mesma deteccao de `.lock` do passo 2 abaixo) E o plugin esta configurado. Sessao interativa sem execucao ativa: nao interfere (o prompt de permissao do proprio Claude Code + a confirmacao da skill `jira-setup` sao o gate) |
+| `PreToolUse` | `mcp__.*__createJiraProject` | `hooks/pretooluse-jira-deny-destructive.sh` (modo `project-create`, derivado do `tool_name`) | nao | FR-024: nega (exit 2) criacao de projeto via Rovo MCP quando ha execucao 00c ATIVA no cwd (mesma deteccao de `.lock` do passo 2 abaixo) E o plugin esta configurado. Sessao interativa sem execucao ativa: nao interfere (o prompt de permissao do proprio Claude Code + a confirmacao da skill `jira-setup` sao o gate) |
 
 Limite honesto: sem ProjectConfig a guarda segue no-op (FR-017/SC-006 — o
 plugin nao pode mudar o comportamento de quem nunca o configurou), entao o
