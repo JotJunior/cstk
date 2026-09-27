@@ -29,6 +29,79 @@
   Principio VI da constitution (Zero Fabricacao: sem fonte oficial do
   Jira, nao supor mecanismo/capacidades).
 
+### Session 2026-09-26 (round r02 — incremento FR-020 a FR-025)
+
+- Q: FR-020/FR-021 — o marco (Fix Version) e sempre por release do
+  toolkit, sempre por round de reabertura, ou depende do contexto? E
+  quem cria a Fix Version quando ela nao existe, e o que acontece se
+  a criacao falhar por permissao insuficiente? → A: a granularidade e
+  decidida pela presenca de um round ativo no state da execucao — marco
+  = round de reabertura (ex.: `r02`) quando `.previous_round`/
+  `rounds/rNN` estiver presente (feature reaberta); marco = release do
+  toolkit (versao SemVer do CHANGELOG) quando nao houver round ativo
+  (primeira execucao da feature). Nunca os dois simultaneamente para o
+  mesmo Epic. O proprio plugin cria a Fix Version ausente
+  automaticamente (idempotente: busca por nome exato antes de criar,
+  mesmo criterio de FR-021), sem gate humano — e um artefato de
+  agrupamento analogo ao Epic, coberto pelo mesmo criterio de
+  automacao de FR-005. Quando a criacao falhar por permissao
+  insuficiente (HTTP 403), o sistema trata como credencial/permissao
+  invalida (mesmo tratamento de FR-016): sinaliza explicitamente e
+  suspende a sincronizacao daquele marco, sem repetir silenciosamente
+  nem criar Epic/Task orfaos sem marco associado.
+- Q: FR-022 — que charset/formato o label de FASE deve seguir para ser
+  compativel tanto com a allowlist de seguranca do plugin quanto com o
+  Jira? → A: o label reusa a MESMA allowlist de charset ja definida
+  para segmentos de path/JQL (`[A-Za-z0-9_-]`, plan.md SEC-1,
+  `validate-segment` em `contracts/plugin-scripts.md`) — nenhuma
+  allowlist nova e introduzida. Formato: prefixo `phase-<N>` (ex.:
+  `phase-3`), onde `<N>` e o numero da FASE extraido do heading
+  `### FASE N` de `tasks.md`.
+- Q: FR-024 — a criacao do projeto Jira (`POST /rest/api/3/project`)
+  pode acontecer autonomamente do mesmo jeito que Epics/Tasks/Fix
+  Versions, ou exige confirmacao humana explicita? → A: exige gate
+  humano OBRIGATORIO antes de qualquer chamada a
+  `POST /rest/api/3/project` — criar um projeto Jira novo e uma acao de
+  blast radius muito maior que sincronizar artefatos dentro de um
+  projeto ja existente (Epic/Task/Fix Version), e o escopo de
+  automacao sem confirmacao de FR-005 cobre apenas sincronizacao
+  DENTRO de um projeto ja configurado, nunca a criacao do proprio
+  container do projeto. O fluxo de configuracao guiada (FR-007)
+  apresenta o gate (nome/key/tipo do projeto) antes de disparar a
+  chamada. O tipo/template minimo concreto (`projectTypeKey` ou
+  equivalente) fica adiado para a pesquisa do `/plan` — a OpenAPI
+  oficial ja confirma apenas `key` e `name` como obrigatorios em
+  `CreateProjectDetails`, mesmo padrao de adiamento ja usado em
+  FR-006/FR-019-INFRA-REFRESH desta spec (Principio VI).
+- Q: FR-025 — qual tipo de link (`issueLinkType`) o sistema deve
+  escolher quando a instancia Jira tiver mais de um tipo cadastrado?
+  → A: nunca hardcodear um `name` fixo (ex.: "Blocks") — o sistema
+  busca dinamicamente, via `GET /rest/api/3/issueLinkType`, um tipo
+  cujas frases `inward`/`outward` correspondam semanticamente a
+  "bloqueia"/"e bloqueado por" (comparacao case-insensitive contra as
+  frases retornadas pela propria instancia, nunca um literal fixo). Se
+  nenhum tipo corresponder de forma inequivoca (zero candidatos ou
+  multiplos candidatos ambiguos), aplica-se o fallback ja definido em
+  FR-025: sinalizar a dependencia como nao-representavel, sem escolher
+  arbitrariamente entre candidatos ambiguos.
+- Q: FR-023 — quando a sincronizacao roda dentro de UMA execucao
+  `feature-00c` (sem roadmap), como o sistema sabe que ha "multiplas
+  features do roadmap", e o que acontece quando nao ha roadmap algum?
+  → A: cada execucao `feature-00c` opera sobre exatamente UMA feature
+  (seu proprio `short_name`, em `.claude/feature-00c-state/<short-
+  name>/`) — nao existe campo no state runtime de uma execucao que
+  liste "todas as features do roadmap". O artefato agregador e
+  `docs/roadmap.md` (mais o flag `.roadmap_mode_enabled` do
+  `agente-00c`), consumido por comandos separados
+  (`roadmap-wave`/`roadmap-parallel-launch`) que lancam execucoes
+  paralelas independentes, uma por feature. FR-023 descreve, portanto,
+  um comportamento AGREGADO entre execucoes paralelas distintas (cada
+  uma sincronizando seu proprio Epic) — nunca uma unica execucao
+  decidindo por N features. Quando nao ha `docs/roadmap.md`/roadmap
+  mode, o comportamento e identico ao caso base de FR-001 (1 feature =
+  1 Epic); FR-023 nao exige branch adicional nesse caso, apenas nao se
+  aplica.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Converter feature em Epic/Tasks/Subtasks no Jira (Priority: P1)
@@ -317,7 +390,14 @@ Epic no roadmap, criacao de projeto e dependencias como links.
   Subtasks) sincronizado que pertenca ao mesmo marco. Um marco
   corresponde a uma release do toolkit ou a um round de reabertura de
   uma feature, conforme a granularidade em que a sincronizacao esta
-  operando.
+  operando: round ativo (`.previous_round`/`rounds/rNN` presente no
+  state da execucao) decide marco=round; ausencia de round ativo decide
+  marco=release do toolkit. O sistema MUST criar a Fix Version ausente
+  automaticamente (sem gate humano, mesmo criterio de automacao de
+  FR-005) e MUST tratar falha de criacao por permissao insuficiente
+  (HTTP 403) como credencial/permissao invalida (FR-016), suspendendo
+  a sincronizacao daquele marco em vez de repetir silenciosamente (ver
+  Clarifications, sessao 2026-09-26).
 - **FR-021**: O sistema MUST reusar o marco (Release/Fix Version) ja
   existente com o mesmo identificador de release/round em vez de criar
   um marco duplicado quando a sincronizacao rodar novamente sobre a
@@ -325,12 +405,20 @@ Epic no roadmap, criacao de projeto e dependencias como links.
 - **FR-022**: O sistema MUST aplicar, a cada Task e Subtask sincronizada
   no Jira, uma marcacao (label) que identifique a FASE do backlog local
   a que ela pertence, permitindo agrupar/filtrar issues por fase
-  diretamente no Jira.
+  diretamente no Jira. O label MUST usar a mesma allowlist de charset
+  de SEC-1 (`[A-Za-z0-9_-]`, plan.md) e o formato `phase-<N>` (`<N>` =
+  numero da FASE em `tasks.md`) — sem introduzir uma allowlist nova
+  (ver Clarifications, sessao 2026-09-26).
 - **FR-023**: Quando a sincronizacao for disparada a partir de uma
   execucao que abrange multiplas features do roadmap de um
   projeto-alvo, o sistema MUST criar/atualizar um Epic por FEATURE do
   roadmap sincronizada, em vez de consolidar todas as features do mesmo
-  projeto-alvo num unico Epic compartilhado.
+  projeto-alvo num unico Epic compartilhado. Este comportamento e
+  AGREGADO entre execucoes `feature-00c` paralelas independentes (cada
+  execucao so conhece a propria `short_name`); quando nao ha
+  `docs/roadmap.md`/`.roadmap_mode_enabled`, aplica-se o caso base de
+  FR-001 (1 feature = 1 Epic), sem branch adicional (ver
+  Clarifications, sessao 2026-09-26).
 - **FR-024**: Quando o usuario ainda nao possuir um projeto Jira
   dedicado para o board do CSTK (FR-002/FR-007), o sistema MUST
   oferecer a criacao desse projeto como parte do fluxo de configuracao
@@ -339,7 +427,13 @@ Epic no roadmap, criacao de projeto e dependencias como links.
   mecanismo escolhido nao suportar a criacao do projeto no tipo
   desejado, o sistema MUST orientar explicitamente o usuario a criar o
   projeto manualmente (MCP/UI do Jira) antes de prosseguir, em vez de
-  falhar silenciosamente.
+  falhar silenciosamente. A criacao do projeto (`POST /rest/api/3/
+  project`) MUST NUNCA ocorrer autonomamente — MUST exigir gate humano
+  explicito (confirmacao de nome/key/tipo) antes de qualquer chamada,
+  distinto do restante da sincronizacao (Epic/Task/Fix Version) que
+  MUST permanecer sem confirmacao manual por item (FR-005); o
+  tipo/template minimo concreto fica adiado para o `/plan` (ver
+  Clarifications, sessao 2026-09-26).
 - **FR-025**: O sistema MUST representar cada dependencia declarada na
   Matriz de Dependencias do backlog local como um link entre os issues
   Jira correspondentes, quando a instancia Jira do usuario tiver um
@@ -347,7 +441,10 @@ Epic no roadmap, criacao de projeto e dependencias como links.
   quando nenhum tipo de link compativel existir na instancia Jira
   configurada, o sistema MUST sinalizar essa dependencia como
   nao-representavel nesse Jira em vez de criar ou forcar um tipo de
-  link inexistente.
+  link inexistente. A escolha do tipo de link MUST ser dinamica, via
+  `GET /rest/api/3/issueLinkType`, comparando as frases `inward`/
+  `outward` retornadas pela propria instancia — nunca um `name`
+  hardcoded (ver Clarifications, sessao 2026-09-26).
 
 ### Key Entities
 
