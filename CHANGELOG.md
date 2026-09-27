@@ -5,6 +5,32 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.9.0] - 2026-09-27
+
+A primeira versão da `/presentation` herdava o vocabulário técnico dos
+artefatos de origem: nomes de script, comandos, caminhos e siglas. Este
+release faz a apresentação falar com quem decide: linguagem de produto,
+tecnologia só como ilustração e rastreabilidade preservada sem poluir a
+leitura.
+
+### Changed
+
+- **Linguagem de produto, sem tecniquês**: o deck fala com quem decide.
+  O validador bloqueia no texto narrativo trechos de código, URLs,
+  endpoints, flags, caminhos e nomes de arquivo, e avisa (sem bloquear)
+  sobre termos de um glossário técnico (`references/jargon.txt`), com
+  isenção por `vocabulary:` no frontmatter. Nome técnico indispensável
+  vem com tradução curta na mesma frase; como ilustração, vira selo
+  discreto via `@tag` (até 3 por slide). O rodapé mostra rótulos
+  amigáveis (caminhos só no tooltip e no apêndice) e a linha do tempo
+  usa os títulos narrativos dos slides.
+- Rótulos de métrica, esqueleto `templates/story.md` e fixture de testes
+  reescritos em linguagem comum ("Tarefas entregues", "Dúvidas
+  esclarecidas").
+
+Spec: `docs/specs/presentation/` (reabertura: sessão de clarify
+2026-09-26, FR-018 a FR-022).
+
 ## [10.8.0] - 2026-09-25
 
 Até agora, contar a história de um projeto para quem decide exigia
@@ -38,15 +64,6 @@ humanizado.
   escuro, modo slides (teclado, progresso, deep link) com auto-ajuste
   tipográfico por slide para caber no canvas 16:9, modo relatório com
   sumário e impressão com um slide por página.
-- **Linguagem de produto, sem tecniquês**: o deck fala com quem decide.
-  O validador bloqueia no texto narrativo trechos de código, URLs,
-  endpoints, flags, caminhos e nomes de arquivo, e avisa (sem bloquear)
-  sobre termos de um glossário técnico (`references/jargon.txt`), com
-  isenção por `vocabulary:` no frontmatter. Nome técnico indispensável
-  vem com tradução curta na mesma frase; como ilustração, vira selo
-  discreto via `@tag` (até 3 por slide). O rodapé mostra rótulos
-  amigáveis (caminhos só no tooltip e no apêndice) e a linha do tempo
-  usa os títulos narrativos dos slides.
 - Referências da skill: `slide-grammar.md`, `narrative-guide.md`,
   `source-mapping.md` e o esqueleto `templates/story.md`.
 - Testes: `tests/test_scan-project-docs.sh`,
@@ -8336,6 +8353,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.9.0]: https://github.com/JotJunior/cstk/releases/tag/v10.9.0
 [10.8.0]: https://github.com/JotJunior/cstk/releases/tag/v10.8.0
 [10.7.0]: https://github.com/JotJunior/cstk/releases/tag/v10.7.0
 [10.6.6]: https://github.com/JotJunior/cstk/releases/tag/v10.6.6
