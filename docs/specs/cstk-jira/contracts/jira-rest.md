@@ -434,14 +434,20 @@ documentado) E `404` como `permission_denied` (exit 7), porque o
 `project_key` ja foi resolvido por `getProject` na mesma execucao (o ramo
 "projeto nao encontrado" ja teria falhado antes); o motor suspende a
 sincronizacao daquele marco (FR-020). O status real devolvido por falta de
-permissao e **a confirmar por roundtrip no execute-task**.
+permissao **continua a confirmar por roundtrip** — CHK022 (2a credencial sem
+*Administer Projects*/*Administer Jira*) ficou bloqueado por falta de
+credencial de teste disponivel nesta execucao (onda-006, ver bloqueio
+humano registrado nesta mesma onda); o tratamento de desenho acima
+permanece a classificacao aplicada ate resposta do operador.
 
-**Nome duplicado (corrida entre execucoes paralelas, FR-023)**: o schema diz
-que `name` e "unique", mas o status HTTP de uma tentativa com nome ja
-existente NAO esta documentado (so ha `400` generico). Tratamento: apos
-qualquer `400` em R12 o motor refaz R13 e, se achar nome EXATO, reusa o `id`
-encontrado (nunca repete R12). Status real **a confirmar por roundtrip no
-execute-task**.
+**Nome duplicado (corrida entre execucoes paralelas, FR-023) — CONFIRMADO
+(roundtrip onda-006, r02 FASE 15 task 15.1.1)**: `POST /rest/api/3/version`
+com o MESMO `name` de uma versao ja existente no projeto `SCRUM` devolveu
+`400` com corpo
+`{"errorMessages":[],"errors":{"name":"A version with this name already exists in this project."}}`
+— bate com o tratamento de desenho ja descrito (refazer R13, reusar `id`
+por nome EXATO, nunca repetir R12); nenhuma correcao de contrato necessaria
+aqui.
 
 ### R13 — listar versoes: `GET /rest/api/3/project/{projectIdOrKey}/versions` (operationId `getProjectVersions`)
 
@@ -468,10 +474,10 @@ observado; reabrir via `/clarify` se aparecer.
 
 | Elemento | Valor | Situacao | Path JSON |
 |----------|-------|----------|-----------|
-| criar com versao | `fields.fixVersions`: array de `{"id": "<id da versao>"}` (exemplo oficial `"fixVersions":[{"id":"10001"}]`) | citado (exemplo) | `P:./rest/api/3/issue.post.requestBody.content.application/json.example.fields.fixVersions` |
-| criar com label | `fields.labels`: array de string (exemplo oficial `"labels":["bugfix","blitz_test"]`) | citado (exemplo) | `...example.fields.labels` |
-| editar label sem clobber | `update.labels`: lista de operacoes `{"add": "<label>"}` / `{"remove": "<label>"}` (exemplo oficial `"labels":[{"add":"triaged"},{"remove":"blocker"}]`) | citado (exemplo de `editIssue`) | `P:./rest/api/3/issue/{issueIdOrKey}.put.requestBody.content.application/json.example.update.labels` |
-| editar versao sem clobber | `update.fixVersions` com `{"add": {"id": "<id>"}}` / `{"remove": {"id": "<id>"}}` | **a confirmar por roundtrip no execute-task** — o OpenAPI so documenta `update` genericamente ("A Map containing the field field name and a list of operations to perform on the issue screen field"), sem exemplo para `fixVersions` | `S:.IssueUpdateDetails.properties.update.description` |
+| criar com versao | `fields.fixVersions`: array de `{"id": "<id da versao>"}` (exemplo oficial `"fixVersions":[{"id":"10001"}]`) | **CONFIRMADO (roundtrip onda-006, task 15.2.1)** — `POST /rest/api/3/issue` com `fields.fixVersions:[{"id":"10000"}]` criou `SCRUM-7` (`201`) | `P:./rest/api/3/issue.post.requestBody.content.application/json.example.fields.fixVersions` |
+| criar com label | `fields.labels`: array de string (exemplo oficial `"labels":["bugfix","blitz_test"]`) | **CONFIRMADO (roundtrip onda-006, task 15.2.1)** — `fields.labels:["cstk-jira-roundtrip"]` no mesmo `POST` | `...example.fields.labels` |
+| editar label sem clobber | `update.labels`: lista de operacoes `{"add": "<label>"}` / `{"remove": "<label>"}` (exemplo oficial `"labels":[{"add":"triaged"},{"remove":"blocker"}]`) | **CONFIRMADO (roundtrip onda-006, task 15.2.2)** — `update.labels:[{"add":"cstk-jira-roundtrip-2"},{"remove":"cstk-jira-roundtrip"}]` devolveu `204` e a releitura mostrou SO `["cstk-jira-roundtrip-2"]` | `P:./rest/api/3/issue/{issueIdOrKey}.put.requestBody.content.application/json.example.update.labels` |
+| editar versao sem clobber | `update.fixVersions` com `{"add": {"id": "<id>"}}` / `{"remove": {"id": "<id>"}}` | **CONFIRMADO (roundtrip onda-006, r02 FASE 15 task 15.2.2)** — `PUT /rest/api/3/issue/SCRUM-7` com `update.fixVersions:[{"remove":{"id":"10000"}},{"add":{"id":"10001"}}]` devolveu `204` e a releitura via R15 mostrou SO a versao `10001` (a `10000` foi removida sem clobber de nenhum outro valor) | `S:.IssueUpdateDetails.properties.update.description` |
 | exclusividade `fields` x `update` | "Fields included in here cannot be included in `update`." / "Note that fields included in here cannot be included in `fields`." — o motor NUNCA manda o mesmo campo nos dois | citado | `S:.IssueUpdateDetails.properties.fields.description`, `...update.description` |
 | operacoes suportadas por campo | `FieldCreateMetadata.operations` (obrigatorio no schema) em R8 `GET .../issuetypes/{issueTypeId}` — o setup confere, POR TIPO de issue, se `fixVersions`/`labels` estao na tela de criacao e quais operacoes aceitam | citado (R8) | `S:.FieldCreateMetadata.required` |
 
@@ -491,7 +497,7 @@ humano a preservar, entao `fields.*` e usado. Se o roundtrip reprovar
 | Campo | Fonte | Situacao |
 |-------|-------|----------|
 | `issuelinks` | exemplo de `200` de `getIssue`: elemento `{"id":"10001","outwardIssue":{"id":...,"key":"PR-2","self":...,"fields":{...}},"type":{"id":"10000","inward":"depends on","name":"Dependent","outward":"is depended by"}}`; schema `S:.IssueLink` (`required`: `inwardIssue`, `outwardIssue`, `type`; props `id`, `self`) | citado (exemplo + schema) |
-| `labels`, `fixVersions` | nomes como id de campo so no exemplo de CRIACAO (R14); NAO aparecem em `S:.Fields` nem no exemplo de `200` de `getIssue` | **a confirmar por roundtrip no execute-task** (nome e shape na RESPOSTA) |
+| `labels`, `fixVersions` | nomes como id de campo so no exemplo de CRIACAO (R14); NAO aparecem em `S:.Fields` nem no exemplo de `200` de `getIssue` | **CONFIRMADO (roundtrip onda-006, task 15.2.1)** — `GET /rest/api/3/issue/SCRUM-7?fields=labels,fixVersions,issuelinks` devolveu `fields.labels` como array de STRING pura (`["cstk-jira-roundtrip"]`, mesmo shape do corpo de criacao) e `fields.fixVersions` como array do objeto `Version` COMPLETO (`{"self","id","description","name","archived","released"}`, mais rico que o `{"id":...}` enviado na escrita) |
 
 Uso: conferir, antes de escrever, se a versao/label/link que o plugin
 pretende aplicar ja esta la (idempotencia FR-021/FR-022/FR-025) e achar o
@@ -512,6 +518,16 @@ ficam `unrepresentable` (FR-025), sem erro fatal. Os valores `name`/`inward`/
 escolha do tipo segue a regra dinamica de `data-model.md` §IssueLink, nunca um
 literal destes exemplos.
 
+**Valores reais do site de teste — CONFIRMADO (roundtrip onda-006, task
+15.3.1)**: `GET /rest/api/3/issueLinkType` em `cstk.atlassian.net` devolveu
+4 tipos, TODOS diferentes do exemplo ilustrativo do OpenAPI (confirma que
+os nomes/frases sao configuracao por site, nao literal fixo): `id=10000
+name="Blocks" inward="is blocked by" outward="blocks"`; `id=10001
+name="Cloners" inward="is cloned by" outward="clones"`; `id=10002
+name="Duplicate" inward="is duplicated by" outward="duplicates"`; `id=10003
+name="Relates" inward="relates to" outward="relates to"`. O tipo `Blocks`
+(`id=10000`) foi usado no roundtrip de R17 abaixo.
+
 ### R17 — criar link: `POST /rest/api/3/issueLink` (operationId `linkIssues`)
 
 | Elemento | Valor | Path JSON |
@@ -525,14 +541,21 @@ literal destes exemplos.
 | erros | `400` (comentario nao criado), `401`, `404` ("issue linking is disabled" ou usuario sem ver uma das issues), `413` "per-issue limit for issue links has been breached" | `...issueLink.post.responses` |
 | permissao | *Browse project* nos projetos das duas issues + *Link issues* "on the project containing the from (outward) issue" | `...issueLink.post.description` |
 
-**Direcao (a confirmar por roundtrip no execute-task)**: o OpenAPI chama o
-`outwardIssue` de issue "from" (comentario e permissao *Link issues* vao para
-ela), mas NAO afirma qual frase (`inward`/`outward`) se le a partir de qual
-issue. O desenho envia o BLOQUEADOR como `outwardIssue` e o BLOQUEADO como
-`inwardIssue`; o roundtrip MUST criar 1 link e ler R15 das duas pontas para
-confirmar que o bloqueador exibe a frase `outward` e o bloqueado a `inward`.
-Se o roundtrip contradizer, inverte-se a atribuicao NO CONTRATO antes do
-codigo (Principio VI).
+**Direcao — CONFIRMADO (roundtrip onda-006, tasks 15.3.2/15.3.3), desenho
+VALIDADO sem inversao**: `POST /rest/api/3/issueLink` com
+`{"type":{"id":"10000"},"outwardIssue":{"key":"SCRUM-5"},"inwardIssue":{"key":"SCRUM-6"}}`
+(SCRUM-5 = bloqueador, SCRUM-6 = bloqueado, exatamente o desenho do
+contrato) devolveu `201` sem corpo. A releitura via R15 confirmou: em
+`SCRUM-5` (enviado como `outwardIssue`) o link aparece com `inwardIssue`
+apontando para `SCRUM-6` e a frase aplicavel a `SCRUM-5` e a `outward`
+(`"blocks"`); em `SCRUM-6` (enviado como `inwardIssue`) o link aparece com
+`outwardIssue` apontando para `SCRUM-5` e a frase aplicavel a `SCRUM-6` e a
+`inward` (`"is blocked by"`) — bate byte-a-byte com o desenho ("bloqueador
+exibe outward, bloqueado exibe inward"); NENHUMA inversao foi necessaria no
+contrato. Repetir o MESMO `POST` (mesmo par, mesmo tipo) devolveu `201` de
+novo (sem corpo) e o `issuelinks` de `SCRUM-5` continuou com exatamente 1
+elemento (`id=10000`) — confirma "duplicata nao cria 2o link" sem exigir
+verificacao previa do motor.
 
 `413`: classificado como `permission_denied`-like por item (o link vira
 `unrepresentable` com motivo `limit`), nunca retry.
@@ -575,11 +598,51 @@ para o gate. `GET /rest/api/3/project/search` (`searchProjects`, query
 `keys`, `query`, ...) continua disponivel para LISTAR projetos ao operador
 (rota ja exercitada no roundtrip onda-011).
 
+## Roundtrip real onda-006 (FASE 15 tasks 15.1.1/15.2.1-2/15.3.1-3 — round
+r02, resolve CHK021/CHK023/CHK024/CHK025)
+
+Executado contra o MESMO site de teste (`cstk.atlassian.net`, projeto
+`SCRUM`), credencial classica via `.env` (`ATLASIAN_TOKEN`, Basic auth
+`jot@jot.com.br`, nunca impressa/logada), sem `jira-io.sh` (o mecanismo de
+credencial global do script — `jira-config.sh credential-check` +
+`ProjectConfig.site_host` — nao esta provisionado nesta worktree; chamado
+direto via `curl -K` com as mesmas protecoes SEC-4/SEC-5: arquivo `-K`
+temporario `umask 077` + `trap` de remocao, host unico, sem `-L`, `DELETE`
+nunca usado). Resumo dos 5 pontos fechados nesta onda (detalhe inline nas
+secoes R12/R14/R15/R16/R17 acima):
+
+- R12 nome duplicado: `400` confirmado, corpo
+  `{"errorMessages":[],"errors":{"name":"A version with this name already exists in this project."}}`.
+- R14 `update.fixVersions` add/remove: `204`, efeito confirmado sem clobber.
+- R15 `labels`/`fixVersions` na resposta: `labels` = array de string;
+  `fixVersions` = array do objeto `Version` completo.
+- R16 tipos de link reais do site: `Blocks`/`Cloners`/`Duplicate`/`Relates`
+  (ids `10000`-`10003`), todos diferentes do exemplo ilustrativo do OpenAPI.
+- R17 direcao inward/outward: desenho do contrato (bloqueador=`outwardIssue`
+  exibe `outward`, bloqueado=`inwardIssue` exibe `inward`) CONFIRMADO sem
+  necessidade de inversao; duplicata do MESMO par devolveu `201` de novo sem
+  criar 2o link.
+
+Issues/versoes de teste criadas nesta onda (nenhum `DELETE`, FR-012 —
+arquivamento manual do operador, mesma nota de risco aceito 0.1.6 do
+roundtrip onda-011): Fix Version `id=10000`
+(`cstk-jira-r02-roundtrip-20260927T005619Z`), Fix Version `id=10001`
+(`cstk-jira-r02-roundtrip-b-20260927T005659Z`), Task `SCRUM-7` (`id=10006`,
+labels/fixVersions de teste), issueLink `id=10000` (tipo `Blocks` entre
+`SCRUM-5`→`SCRUM-6`, ja existentes do roundtrip onda-011).
+
+**Pendente (nao coberto nesta onda)**: status real de falta de permissao em
+R12 (`403` vs `404` documentado) — CHK022 ficou sem 2a credencial de teste
+disponivel, bloqueio humano registrado na mesma onda; se o template de R18
+cria board (sem roundtrip de `createProject`, CHK026, tambem sob bloqueio
+humano nesta onda).
+
 ### Continua fora do contrato apos o plan r02
 
-Status HTTP de nome de versao duplicado em R12; status real de falta de
-permissao em R12 (documentado como `404`, spec fala em `403`); forma
-`update.fixVersions` (add/remove); nome/shape de `labels`/`fixVersions` na
-RESPOSTA de R3; direcao inward/outward de R17; se o template de R18 cria
-board. Todos entram na tarefa bloqueante de roundtrip do round r02
-(quickstart cenario 12) antes de o codigo depender deles.
+Status real de falta de permissao em R12 (documentado como `404`, spec fala
+em `403` — CHK022, pendente de 2a credencial); se o template de R18 cria
+board (CHK026, pendente de decisao sobre roundtrip manual de
+`createProject`). Os demais 5 pontos desta secao (nome duplicado em R12,
+forma `update.fixVersions`, nome/shape de `labels`/`fixVersions` na resposta
+de R3/R15, direcao inward/outward de R17) foram CONFIRMADOS pelo roundtrip
+onda-006 acima (task 15.1-15.3) e nao entram mais nesta lista.

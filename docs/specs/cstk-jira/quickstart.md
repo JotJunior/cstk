@@ -227,18 +227,35 @@ impressa), num projeto de teste JA existente (R18 fica FORA deste roundtrip:
 criar projeto real exige gate humano proprio):
 
 1. R13; R12 com nome de teste; R12 de novo com o MESMO nome (registrar o
-   status real de duplicata).
+   status real de duplicata). **Executado (onda-006, r02): `400` com corpo
+   `{"errors":{"name":"A version with this name already exists in this
+   project."}}`.**
+   - 1.bis (CHK022, `{humano}`, **pendente**): repetir R12 com uma 2a
+     credencial de teste SEM *Administer Projects*/*Administer Jira* para
+     registrar o status real de permissao negada (`403` vs `404`
+     documentado) — nao executado na onda-006 por falta de credencial
+     restrita disponivel; bloqueio humano registrado no state da execucao.
 2. R1 com `fields.fixVersions` e `fields.labels`; R3 com
    `?fields=labels,fixVersions,issuelinks` (registrar nome/shape real).
+   **Executado (onda-006): `labels` = array de string; `fixVersions` =
+   array do objeto `Version` completo.**
 3. R2 com `update.fixVersions` add/remove e `update.labels` add/remove.
+   **Executado (onda-006): `204`, efeito confirmado sem clobber nos dois
+   campos.**
 4. R16; R17 entre duas issues de teste; R3 `issuelinks` nas DUAS pontas
    (confirmar direcao inward/outward); R17 repetido (confirmar duplicata).
+   **Executado (onda-006): tipos de link reais
+   `Blocks`/`Cloners`/`Duplicate`/`Relates`; direcao do desenho
+   (bloqueador=outward/bloqueado=inward) CONFIRMADA sem inversao; repeticao
+   nao criou 2o link.**
 
 **Expected**: cada item "a confirmar por roundtrip" de `contracts/jira-rest.md`
 §"Continua fora do contrato apos o plan r02" e fechado com evidencia literal
 ou CORRIGIDO no contrato antes do codigo (Principio VI). Nenhum `DELETE`;
 issues/versoes de teste ficam para arquivamento manual (mesma nota 0.1.6 do
-r01).
+r01). Passos 1-4 fechados na onda-006 (ver `contracts/jira-rest.md`
+"Roundtrip real onda-006"); passo 1.bis (CHK022) e R18/board (CHK026)
+seguem pendentes de decisao humana.
 
 ## Cenario 13 — Execucoes paralelas do roadmap (FR-023)
 

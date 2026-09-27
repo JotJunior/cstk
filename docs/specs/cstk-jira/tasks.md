@@ -1836,7 +1836,7 @@ credencial da FASE 0 (`. ./.env` + `-K`, nunca em log). Nenhum `DELETE`.
 Ref: quickstart.md Cenario 12 passo 1; contracts/jira-rest.md R12/R13
 (L413-465); checklists/api.md CHK021/CHK022.
 
-- [ ] 15.1.1 `GET /rest/api/3/project/{projectIdOrKey}/versions` (R13) sobre
+- [x] 15.1.1 `GET /rest/api/3/project/{projectIdOrKey}/versions` (R13) sobre
       o projeto `SCRUM` e `POST /rest/api/3/version` (R12) com um nome de
       teste unico (SEC-6) via `jira-io.sh json-build version` +
       `jira-io.sh request --op R12`; repetir R12 com o MESMO nome e
@@ -1859,20 +1859,20 @@ Ref: quickstart.md Cenario 12 passo 1; contracts/jira-rest.md R12/R13
 Ref: quickstart.md Cenario 12 passos 2-3; contracts/jira-rest.md R14/R15
 (L467-498); checklists/api.md CHK023/CHK024.
 
-- [ ] 15.2.1 `POST /rest/api/3/issue` (R1) com `fields.fixVersions`/
+- [x] 15.2.1 `POST /rest/api/3/issue` (R1) com `fields.fixVersions`/
       `fields.labels` via `jira-io.sh json-build issue --fix-version-id
       --label` sobre uma Task de teste nova; `GET` com
       `?fields=labels,fixVersions,issuelinks` (R15) e registrar o
       nome/shape REAL desses 2 campos na resposta (CHK024) — corrigir
       `contracts/jira-rest.md` R15 se o nome/shape divergir da suposicao
       de R14
-- [ ] 15.2.2 `PUT /rest/api/3/issue/{issueIdOrKey}` (R2) com
+- [x] 15.2.2 `PUT /rest/api/3/issue/{issueIdOrKey}` (R2) com
       `update.fixVersions` `[{"add":{"id":...}}]`/`[{"remove":{"id":...}}]`
       e `update.labels` add/remove via `jira-io.sh json-build
       issue-update` sobre a mesma issue; reler com R15 e confirmar que a
       forma `add`/`remove` produziu o efeito esperado sem clobber
       (CHK023) — corrigir `contracts/jira-rest.md` R14 se a forma divergir
-- [ ] 15.2.3 Registrar Decisao auditavel (`--score 3 --evidencia "<corpo/
+- [x] 15.2.3 Registrar Decisao auditavel (`--score 3 --evidencia "<corpo/
       resposta literal observada>"`) por achado; atualizar
       `contracts/jira-rest.md` "Continua fora do contrato apos o plan r02"
       removendo os 2 itens fechados
@@ -1882,18 +1882,18 @@ Ref: quickstart.md Cenario 12 passos 2-3; contracts/jira-rest.md R14/R15
 Ref: quickstart.md Cenario 12 passo 4; contracts/jira-rest.md R16/R17
 (L500-538); checklists/api.md CHK025.
 
-- [ ] 15.3.1 `GET /rest/api/3/issueLinkType` (R16) sobre a instancia de
+- [x] 15.3.1 `GET /rest/api/3/issueLinkType` (R16) sobre a instancia de
       teste e registrar os `id`/`name`/`inward`/`outward` REAIS
       devolvidos (nunca reusar os nomes do exemplo oficial "Blocks"/
       "Duplicate" como fato)
-- [ ] 15.3.2 `POST /rest/api/3/issueLink` (R17) entre 2 issues de teste com
+- [x] 15.3.2 `POST /rest/api/3/issueLink` (R17) entre 2 issues de teste com
       o BLOQUEADOR como `outwardIssue` e o BLOQUEADO como `inwardIssue`
       (desenho do contrato); `GET` R15 (`issuelinks`) nas DUAS pontas e
       confirmar qual frase (`inward`/`outward`) aparece em qual issue
       (CHK025) — se o roundtrip CONTRADIZER o desenho, inverter a
       atribuicao em `contracts/jira-rest.md` R17 ANTES de qualquer codigo
       (Principio VI)
-- [ ] 15.3.3 Repetir R17 com o MESMO par de issues e confirmar que a
+- [x] 15.3.3 Repetir R17 com o MESMO par de issues e confirmar que a
       resposta indica duplicata sem criar um 2o link (comportamento
       documentado); registrar Decisao auditavel (`--score 3 --evidencia
       "<resposta literal>"`) consolidando os achados de 15.3.1-15.3.3
@@ -1904,7 +1904,7 @@ Ref: checklists/api.md CHK026; contracts/jira-rest.md R18 "Template padrao
 proposto" (L558-564); quickstart.md Cenario 12 (exclui R18) e Cenario 11
 (stub).
 
-- [ ] 15.4.1 Registrar bloqueio humano (`bloqueios.sh register`)
+- [x] 15.4.1 Registrar bloqueio humano (`bloqueios.sh register`)
       apresentando as 2 opcoes de CHK026 ao operador: (a) aceitar que o
       reuso de board via R11 torna moot se `createProject` cria board
       junto, reclassificando o ponto para fora da lista de pendentes; ou
