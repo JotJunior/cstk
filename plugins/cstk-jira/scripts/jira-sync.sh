@@ -1560,11 +1560,31 @@ _js_cmd_links() {
     rm -f "$_jsl_body_file"
 
     if [ "$_jsl_r17_ec" -eq 0 ]; then
-      rm -f "$_jsl_r17_err"
-      "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
-        --blocker-key "$_jsl_blocker_key" --blocked-key "$_jsl_blocked_key" \
-        --type-id "$_jsl_type_id" --state active
-      _jsl_active_count=$((_jsl_active_count + 1))
+      # 24.4.1: `jira-io.sh` so classifica 404/413 de R17 (exit 7); o 400
+      # documentado em contracts/jira-rest.md:548 chega em passthrough (exit
+      # 0, mesma linha `http_status=` gravada em sucesso E passthrough,
+      # jira-io.sh ~956). Sem checar `http_status` aqui, um 400 gravaria
+      # `active` para uma aresta que nunca foi criada no Jira — a proxima
+      # execucao a conta como representada e nunca tenta R17 de novo
+      # (~1531-1536), violando FR-025 em silencio (achado 24.4). Nao-2xx em
+      # passthrough NUNCA vira `unrepresentable` aqui (falta a prova de
+      # 404/413) — cai no `rm -f "$_jsl_r17_err"` final sem gravar nada,
+      # mesmo tratamento de falha generica: a proxima `links` tenta de novo.
+      _jsl_r17_status=$(grep '^http_status=' "$_jsl_r17_err" | tail -n 1 | cut -d= -f2)
+      case "$_jsl_r17_status" in
+        2??)
+          rm -f "$_jsl_r17_err"
+          "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
+            --blocker-key "$_jsl_blocker_key" --blocked-key "$_jsl_blocked_key" \
+            --type-id "$_jsl_type_id" --state active
+          _jsl_active_count=$((_jsl_active_count + 1))
+          ;;
+        *)
+          printf '%s: R17 retornou http_status=%s (passthrough, exit 0) para %s->%s — aresta NAO gravada como active, nova tentativa na proxima execucao\n' \
+            "$_JS_NAME" "${_jsl_r17_status:-?}" "$_jsl_blocker_key" "$_jsl_blocked_key" >&2
+          rm -f "$_jsl_r17_err"
+          ;;
+      esac
       continue
     fi
 
@@ -2119,6 +2139,13 @@ _js_maybe_update_mapped_issue() {
 
   _jsu_written_sha=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_summary_sha256')
   _jsu_written_status=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_status')
+  # 24.3.2: preservar written_fix_version_id/written_phase_label lidos do
+  # marker atual — o R6 PUT abaixo substitui o valor INTEIRO da propriedade
+  # (mesma disciplina de _js_process_one_event 24.2.1/~3244-3245); sem isto,
+  # todo `convert` que mude titulo/descricao apagaria o marco do Epic ou o
+  # label de fase da Task, mesmo sem tocar em nenhum dos dois.
+  _jsu_written_fixver=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_fix_version_id? // ""')
+  _jsu_written_phase_label=$(printf '%s' "$_jsu_prop_resp" | "$_jsu_io" json-get '.value.written_phase_label? // ""')
   _jsu_conflict="no"
   if [ "$_jsu_cur_sha" != "$_jsu_written_sha" ] || [ "$_jsu_cur_status" != "$_jsu_written_status" ]; then
     _jsu_conflict="yes"
@@ -2160,14 +2187,31 @@ _js_maybe_update_mapped_issue() {
   _jsu_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jsu_body" > "$_jsu_body_file"
+  _jsu_r2_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
   if "$_jsu_io" request PUT "/rest/api/3/issue/$_jsu_jkey" \
-      --body-file "$_jsu_body_file" --op R2 >/dev/null 2>/dev/null; then
-    rm -f "$_jsu_body_file"
+      --body-file "$_jsu_body_file" --op R2 >/dev/null 2>"$_jsu_r2_err"; then
+    _jsu_ec=0
   else
     _jsu_ec=$?
-    rm -f "$_jsu_body_file"
-    printf '%s: falha ao atualizar summary de %s via R2 (exit %s) — mapeamento/SyncMarker inalterados, tentar novamente na proxima convert\n' \
-      "$_JS_NAME" "$_jsu_jkey" "$_jsu_ec" >&2
+  fi
+  rm -f "$_jsu_body_file"
+  # 24.3.1: `--op R2` so classifica 401/403/429/5xx-deferred (jira-io.sh
+  # ~857-935); 400/404/409/422 chegam em passthrough com exit 0
+  # (contracts/jira-rest.md:121) — sem checar `http_status`, um 400/404/409/
+  # 422 seguiria para o R6 abaixo e gravaria uma baseline falsa (summary/
+  # descricao NOVOS sem terem sido aplicados), abrindo `manual_edit` espurio
+  # na proxima checagem (achado 24.3). Mesma forma de
+  # `_js_reconcile_phase_label` (~1836-1845).
+  _jsu_r2_status=$(grep '^http_status=' "$_jsu_r2_err" | tail -n 1 | cut -d= -f2)
+  rm -f "$_jsu_r2_err"
+  case "$_jsu_r2_status" in
+    2??) : ;;
+    *) [ "$_jsu_ec" -eq 0 ] && _jsu_ec=1 ;;
+  esac
+  if [ "$_jsu_ec" -ne 0 ]; then
+    printf '%s: falha ao atualizar summary de %s via R2 (exit %s, http_status=%s) — mapeamento/SyncMarker inalterados, tentar novamente na proxima convert\n' \
+      "$_JS_NAME" "$_jsu_jkey" "$_jsu_ec" "${_jsu_r2_status:-?}" >&2
     return 0
   fi
 
@@ -2189,6 +2233,12 @@ _js_maybe_update_mapped_issue() {
     _jsu_new_desc_sha=$(printf '%s' "$_jsu_new_description" | "$_jsu_io" sha256-stdin)
     set -- "$@" --written-description-sha256 "$_jsu_new_desc_sha"
   fi
+  # 24.3.2: carry-forward de written_fix_version_id/written_phase_label
+  # (lidos acima do marker atual) — mesma disciplina do desc_sha imediatamente
+  # acima; ausentes no marker atual (kind sem marco/label) => permanecem
+  # vazios, sem `set --`.
+  [ -n "${_jsu_written_fixver:-}" ] && set -- "$@" --written-fix-version-id "$_jsu_written_fixver"
+  [ -n "${_jsu_written_phase_label:-}" ] && set -- "$@" --written-phase-label "$_jsu_written_phase_label"
   _jsu_marker_body=$("$_jsu_io" json-build marker "$@")
   _jsu_marker_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1

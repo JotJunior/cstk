@@ -3324,9 +3324,9 @@ do achado anterior, agora pelo caminho de `convert` quando o titulo ou a
 descricao (criticidade/dependencias, 12.5.1) muda. (b) foi confirmado pela
 leitura do codigo, com o mesmo mecanismo medido no achado anterior.
 
-- [ ] 24.3.1 Tratar `http_status` nao-2xx do R2 (~2139) como falha: SyncMarker inalterado, diagnostico em stderr com o status, mesma forma de `_js_reconcile_phase_label`
-- [ ] 24.3.2 Carregar adiante `written_fix_version_id`/`written_phase_label` do marker lido no `json-build marker` (~2152-2157)
-- [ ] 24.3.3 Testes (stub): R2 => 400 => nenhum R6 PUT e a proxima checagem nao abre `manual_edit`; titulo alterado com marker contendo `written_phase_label` => R6 PUT preserva o campo. Mutation: remover a checagem de `http_status` MUST falhar o cenario 400
+- [x] 24.3.1 Tratar `http_status` nao-2xx do R2 (~2139) como falha: SyncMarker inalterado, diagnostico em stderr com o status, mesma forma de `_js_reconcile_phase_label`
+- [x] 24.3.2 Carregar adiante `written_fix_version_id`/`written_phase_label` do marker lido no `json-build marker` (~2152-2157)
+- [x] 24.3.3 Testes (stub): R2 => 400 => nenhum R6 PUT e a proxima checagem nao abre `manual_edit`; titulo alterado com marker contendo `written_phase_label` => R6 PUT preserva o campo. Mutation: remover a checagem de `http_status` MUST falhar o cenario 400
 
 <!-- converge-key: 081aa21de382 -->
 
@@ -3346,8 +3346,8 @@ dependencia ou sinalizar que ela nao e representavel; aqui nenhuma das
 duas acontece, em silencio. O `stderr` do R17 ja e capturado em
 `_jsl_r17_err`, mas `http_status` nunca e lido no ramo de sucesso.
 
-- [ ] 24.4.1 Ler `http_status` de `_jsl_r17_err` e so gravar `active` com 2xx. Nao-2xx em passthrough => aresta fora de `active` (nao conta em `links_active`), diagnostico em stderr e nova tentativa na proxima execucao. Nunca marcar `unrepresentable` sem a prova de 404/413
-- [ ] 24.4.2 Testes (stub): R17 => 400 => nenhuma linha `active` para a aresta, `links_active=0` e a 2a execucao tenta o R17 de novo. Mutation: remover a checagem de `http_status` MUST falhar
+- [x] 24.4.1 Ler `http_status` de `_jsl_r17_err` e so gravar `active` com 2xx. Nao-2xx em passthrough => aresta fora de `active` (nao conta em `links_active`), diagnostico em stderr e nova tentativa na proxima execucao. Nunca marcar `unrepresentable` sem a prova de 404/413
+- [x] 24.4.2 Testes (stub): R17 => 400 => nenhuma linha `active` para a aresta, `links_active=0` e a 2a execucao tenta o R17 de novo. Mutation: remover a checagem de `http_status` MUST falhar
 
 <!-- converge-key: 3d148f121adb -->
 

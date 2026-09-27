@@ -1306,4 +1306,159 @@ EOF2
   return 0
 }
 
+# scenario_mutation_24_3_1_maybe_update_mapped_issue_http_status — r02 FASE
+# 24 tarefa 24.3.1/24.3.3 (achado 24.3): mira DIRETAMENTE a checagem de
+# `http_status` do R2 PUT de `_js_maybe_update_mapped_issue` (jira-sync.sh,
+# `case "$_jsu_r2_status" in 2??) : ;; *) [ "$_jsu_ec" -eq 0 ] && _jsu_ec=1
+# ;; esac`, mesmo idioma de `_js_reconcile_phase_label` ja coberto por
+# 24.1.4). `--op R2` so classifica 401/403/429/5xx (jira-io.sh); 400
+# (contracts/jira-rest.md:121) chega em passthrough (exit 0) — sem esta
+# checagem, o 400 e tratado como sucesso e o R6 PUT regrava o SyncMarker
+# com o hash do titulo NOVO sem ele ter sido de fato aplicado (baseline
+# falsa, achado 24.3). Sinal observavel: 1 PUT extra as properties da
+# issue (marker) que o controle NUNCA faz.
+scenario_mutation_24_3_1_maybe_update_mapped_issue_http_status() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Novo titulo `[A]`
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf 'demo\tepic\t20001\tDEMO-1\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  _sha_antigo=$(printf '%s' "[FASE 1] 1.1 Titulo antigo" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/myself|200|{\"accountId\":\"acc-1\"}
+https://example.atlassian.net/rest/api/3/project/DEMO|200|{\"id\":\"10000\",\"key\":\"DEMO\"}
+https://example.atlassian.net/rest/api/3/issue/DEMO-1?fields=summary,status|200|{\"fields\":{\"summary\":\"demo\",\"status\":{\"name\":\"To Do\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status,description|200|{\"fields\":{\"summary\":\"[FASE 1] 1.1 Titulo antigo\",\"status\":{\"name\":\"To Do\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2|400|{\"errorMessages\":[\"invalid body\"]}"
+
+  # -- controle: R2 responde 400 (passthrough exit 0); a checagem de
+  # http_status converte em falha -> mapeamento/SyncMarker inalterados,
+  # ZERO PUT ao marker --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" convert --feature demo || return 1
+  _ctrl_props_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _ctrl_props_puts=0
+  [ "$_ctrl_props_puts" = "0" ] \
+    || { _fail "controle_marker_put" "esperado ZERO PUT ao marker no controle (R2 400 deveria propagar falha), obtido $_ctrl_props_puts"; return 1; }
+
+  # -- mutante: neutraliza a checagem de http_status do R2 em
+  # _js_maybe_update_mapped_issue --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '    *) [ "$_jsu_ec" -eq 0 ] && _jsu_ec=1 ;;' "$_sy" \
+    || { _fail "mutant_stale" "checagem de http_status de _js_maybe_update_mapped_issue nao encontrada — repo mudou"; return 1; }
+  sed 's/    \*) \[ "\$_jsu_ec" -eq 0 \] && _jsu_ec=1 ;;/    *) : ;;/' "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF '    *) [ "$_jsu_ec" -eq 0 ] && _jsu_ec=1 ;;' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de http_status"; return 1; }
+  chmod +x "$_sy"
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" convert --feature demo
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "convert deveria continuar saindo 0 (mutante nao introduz abort), obtido $_CAPTURED_EXIT"; return 1; }
+  _mut_props_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _mut_props_puts=0
+  [ "$_mut_props_puts" = "1" ] \
+    || { _fail "mutant_marker_put_missing" "esperado 1 PUT ao marker no mutante (regressao: 400 em passthrough tratado como sucesso, baseline falsa gravada), obtido $_mut_props_puts"; return 1; }
+  return 0
+}
+
+# scenario_mutation_24_4_1_cmd_links_r17_http_status — r02 FASE 24 tarefa
+# 24.4.1/24.4.2 (achado 24.4): mira DIRETAMENTE a checagem de `http_status`
+# de `_js_cmd_links` no ramo de sucesso (exit 0) do R17 POST — `--op R17`
+# so classifica 404/413 (jira-io.sh, exit 7); 400
+# (contracts/jira-rest.md:548) chega em passthrough (exit 0). Sem a
+# checagem, o `link-put --state active` e gravado mesmo sem o link ter
+# sido criado no Jira (FR-025 violada em silencio). Reverter a checagem
+# MUST falhar este teste — sinal observavel: `jira-links.tsv` ganha uma
+# linha `active` que o controle NUNCA grava.
+scenario_mutation_24_4_1_cmd_links_r17_http_status() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  cat >> "$TMPDIR_TEST/.claude/cstk-jira/config" <<'EOF'
+link_type_id=10000
+EOF
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Primeira `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [x] 1.1.1 Sub um
+
+## FASE 2 - Segunda `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 Sub dois
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Primeira]
+    F2[FASE 2 - Segunda]
+    F1 --> F2
+```
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '2.1\ttask\t20003\tDEMO-3\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  _mapa="https://example.atlassian.net/rest/api/3/issueLink|400|{\"errorMessages\":[\"invalid link\"]}"
+
+  # -- controle: R17 responde 400 (passthrough exit 0); a checagem de
+  # http_status impede a gravacao de `active` -- jira-links.tsv fica SEM a
+  # aresta (aresta NAO representada, sem prova de sucesso) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" links --feature demo || return 1
+  _links_file="$TMPDIR_TEST/docs/specs/demo/jira-links.tsv"
+  _ctrl_active=$(awk -F '\t' 'NR>1 && $6=="active"' "$_links_file" 2>/dev/null | wc -l | tr -d ' ') || _ctrl_active=0
+  [ "$_ctrl_active" = "0" ] \
+    || { _fail "controle_links_active" "esperado ZERO arestas active no controle (R17 400 deveria propagar falha), obtido $_ctrl_active: $(cat "$_links_file" 2>/dev/null)"; return 1; }
+
+  # -- mutante: neutraliza a checagem de http_status do R17 em
+  # _js_cmd_links (ramo de sucesso/exit 0) --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '        2??)' "$_sy" \
+    || { _fail "mutant_stale" "checagem de http_status de _js_cmd_links (R17) nao encontrada — repo mudou"; return 1; }
+  python3 - "$_sy" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    text = f.read()
+needle = '      _jsl_r17_status=$(grep \'^http_status=\' "$_jsl_r17_err" | tail -n 1 | cut -d= -f2)\n      case "$_jsl_r17_status" in\n        2??)\n'
+if needle not in text:
+    sys.stderr.write("MUTANT_STALE\n")
+    sys.exit(1)
+replacement = '      _jsl_r17_status=$(grep \'^http_status=\' "$_jsl_r17_err" | tail -n 1 | cut -d= -f2)\n      case "yes" in\n        yes)\n'
+text = text.replace(needle, replacement, 1)
+with open(path, "w") as f:
+    f.write(text)
+PYEOF
+  [ "$?" = "0" ] || { _fail "mutant_stale" "python3 nao localizou o case de http_status do R17 — repo mudou"; return 1; }
+  chmod +x "$_sy"
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" links --feature demo
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "links deveria continuar saindo 0 (mutante nao introduz abort), obtido $_CAPTURED_EXIT"; return 1; }
+  _mut_active=$(awk -F '\t' 'NR>1 && $6=="active"' "$_links_file" 2>/dev/null | wc -l | tr -d ' ') || _mut_active=0
+  [ "$_mut_active" -ge "1" ] \
+    || { _fail "mutant_regression" "regressao: nenhuma aresta active gravada no mutante (esperado >=1, 400 em passthrough tratado como sucesso), obtido $_mut_active: $(cat "$_links_file" 2>/dev/null)"; return 1; }
+  return 0
+}
+
 run_all_scenarios

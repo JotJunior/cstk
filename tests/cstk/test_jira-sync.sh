@@ -2470,6 +2470,96 @@ scenario_convert_criticidade_mudada_atualiza_description_via_r2_sem_conflito() {
   return 0
 }
 
+# r02 FASE 24 tarefa 24.3.1/24.3.3 (achado 24.3): R2 PUT de summary de
+# `_js_maybe_update_mapped_issue` responde 400 — `--op R2` so classifica
+# 401/403/429/5xx (jira-io.sh); 400/404/409/422 ficam em passthrough (exit
+# 0, contracts/jira-rest.md:121) — sem checar `http_status`, o 400 seria
+# tratado como sucesso e o SyncMarker regravado com o hash do summary NOVO
+# sem ele ter sido de fato aplicado (baseline falsa). MUST: ZERO R6 PUT do
+# marker apos o 400 (fase 1), e a proxima `convert` da MESMA feature —
+# summary real AINDA o antigo (R2 nunca aplicou), SyncMarker AINDA com o
+# hash antigo (R6 PUT nunca ocorreu) — NUNCA abre `manual_edit` espurio
+# (fase 2), apenas retenta o R2.
+scenario_convert_r2_400_nao_grava_baseline_falsa_nem_abre_manual_edit() {
+  _write_full_config
+  _write_tasks_titulo_mudado
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _sha_antigo=$(printf '%s' "[FASE 1] 1.1 Titulo antigo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+
+  # Fase 1: R2 falha com 400 -> ZERO R6 PUT.
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\"}}"
+  _queue_push 400 '{"errorMessages":["invalid body"]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "6" ] \
+    || { _fail "sy24_3_1_calls" "esperado 6 chamadas (myself+project+R3epic+R3task+R6get+R2put[400]), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*issue/DEMO-2/properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy24_3_1_no_marker_put" "R6 PUT do marker NAO deveria ocorrer apos R2 400 (baseline falsa)"; return 1; }
+  [ -f "$(_conflicts_file)" ] && grep -q 'manual_edit' "$(_conflicts_file)" \
+    && { _fail "sy24_3_1_no_manual_edit_fase1" "fase 1 nao deveria abrir manual_edit"; return 1; }
+
+  # Fase 2: 2a convert da MESMA feature (mesma fila, continuacao) — o
+  # summary real permanece "Titulo antigo" (R2 nunca aplicou) e o
+  # SyncMarker ainda tem o hash antigo (R6 PUT nunca ocorreu) -> sha bate,
+  # ZERO manual_edit, apenas retenta o R2.
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\"}}"
+  _queue_push 400 '{"errorMessages":["invalid body"]}'
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ -f "$(_conflicts_file)" ] && grep -q 'manual_edit' "$(_conflicts_file)" \
+    && { _fail "sy24_3_1_no_manual_edit_fase2" "a proxima checagem NUNCA deveria abrir manual_edit apos R2 400 (baseline preservada): $(cat "$(_conflicts_file)" 2>/dev/null)"; return 1; }
+  _r2_calls=$(grep -cE '^PUT .*api/3/issue/DEMO-2$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r2_calls=0
+  [ "$_r2_calls" -ge "2" ] \
+    || { _fail "sy24_3_1_retry" "esperado pelo menos 2 tentativas de R2 PUT (retry), obtido $_r2_calls: $(cat "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# r02 FASE 24 tarefa 24.3.2/24.3.3 (achado 24.3): o R6 PUT de
+# `_js_maybe_update_mapped_issue` substitui o valor INTEIRO da entity
+# property (mesma disciplina de `_js_process_one_event` 24.2.1). MUST:
+# `written_phase_label` lido do marker atual e carregado adiante no R6 PUT
+# regravado apos um R2 (summary) bem-sucedido — sem isto, todo `convert`
+# que mude o titulo apagaria o label de fase da Task.
+scenario_convert_titulo_mudado_preserva_written_phase_label_no_r6() {
+  _write_full_config
+  _write_tasks_titulo_mudado
+  _write_credential
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _sha_antigo=$(printf '%s' "[FASE 1] 1.1 Titulo antigo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"accountId":"acc-1"}'
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '{"fields":{"summary":"demo"}}'
+  _queue_push 200 '{"fields":{"summary":"[FASE 1] 1.1 Titulo antigo","status":{"name":"To Do"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_antigo\",\"written_status\":\"To Do\",\"written_phase_label\":\"phase-1\"}}"
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" convert --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "7" ] \
+    || { _fail "sy24_3_2_calls" "esperado 7 chamadas (myself+project+R3epic+R3task+R6get+R2put+R6put), obtido $(_queue_calls_count)"; return 1; }
+  _marker_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-7.json")
+  [ "$_marker_label" = "phase-1" ] \
+    || { _fail "sy24_3_2_phase_label" "esperado written_phase_label preservado 'phase-1' no R6 PUT, obtido '$_marker_label'"; return 1; }
+  return 0
+}
+
 # SY-46 (FASE 11 tarefa 11.1.1, FR-011): end-to-end convert -> drain. Antes
 # de 11.1.1, `convert` nunca gravava o SyncMarker inicial das issues criadas
 # -> o 1o `drain` de qualquer issue recem-criada lia R6=404 e virava
@@ -4461,6 +4551,47 @@ scenario_links_413_r17_reason_limit() {
     || { _fail "sy90_unrep" "esperado links_unrepresentable=1, obtido: $_out"; return 1; }
   awk -F '\t' 'NR>1 && $7=="limit" { f=1 } END { exit(f?0:1) }' "$(_links_file)" \
     || { _fail "sy90_row" "reason=limit ausente em jira-links.tsv: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+}
+
+# r02 FASE 24 tarefa 24.4.1/24.4.2 (achado 24.4): R17 POST responde 400 —
+# `jira-io.sh` so classifica 404/413 de R17 (exit 7); 400
+# (contracts/jira-rest.md:548) chega em passthrough (exit 0) — sem checar
+# `http_status` no ramo de sucesso, a aresta seria gravada `active` sem o
+# link ter sido de fato criado no Jira (FR-025 violada em silencio,
+# nenhuma prova de 404/413 para justificar `unrepresentable`). MUST:
+# `links_active=0`, ZERO linha na aresta em jira-links.tsv (nem `active`
+# nem `unrepresentable` — falha generica, mesmo tratamento de
+# auth_failed/deferred), e a 2a execucao TENTA o R17 de novo (nada
+# persistido que a impeca).
+scenario_links_r17_400_passthrough_nao_grava_active_retenta() {
+  _write_full_config
+  _append_config_line "link_type_id=10000"
+  _write_credential
+  _write_two_phase_deps
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  _bin="$(_init_queue_stub)"
+  _queue_push 400 '{"errorMessages":["invalid link"]}'
+
+  _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy24_4_1_exit" "links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_active=0" \
+    || { _fail "sy24_4_1_active" "esperado links_active=0 (400 em passthrough NUNCA conta como active), obtido: $_out"; return 1; }
+  _rows=$(awk -F '\t' 'NR>1' "$(_links_file)" 2>/dev/null | wc -l | tr -d ' ') || _rows=0
+  [ "$_rows" = "0" ] \
+    || { _fail "sy24_4_1_no_row" "esperado ZERO linhas em jira-links.tsv (nem active nem unrepresentable), obtido $_rows: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+
+  # 2a execucao: nada foi persistido -> a aresta e tratada como NOVA de
+  # novo -> R17 tentado outra vez. Desta vez responde 201 (sucesso real).
+  _queue_push 201 ''
+  _out2=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
+    || { _fail "sy24_4_1_exit2" "2a execucao de links deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out2" | grep -qx "links_active=1" \
+    || { _fail "sy24_4_1_retry" "esperado links_active=1 na 2a execucao (retry do R17 apos 400 na 1a), obtido: $_out2"; return 1; }
+  _r17_calls=$(grep -c 'POST .*api/3/issueLink$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r17_calls=0
+  [ "$_r17_calls" = "2" ] \
+    || { _fail "sy24_4_1_r17_twice" "esperado exatamente 2 tentativas de R17 (1a=400, 2a=201), obtido $_r17_calls"; return 1; }
+  return 0
 }
 
 # SY-91 links: 404 simulado em R16 (link_type_id vazio) -> TODAS as
