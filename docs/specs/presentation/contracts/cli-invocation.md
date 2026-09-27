@@ -36,12 +36,14 @@ scan-project-docs.sh diff --old FILE --new FILE
 ## `validate-presentation.sh`
 
 ```
-validate-presentation.sh --story FILE --inventory FILE [--root DIR]
+validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE]
 ```
 
 - `--root`: base para resolver `@source` (default: diretorio atual).
+- `--jargon`: glossario tecnico (default: `references/jargon.txt` da skill).
+- Avisos (G-12) saem em stderr com prefixo `aviso:` e nao alteram o exit.
 - Violacoes em stderr, uma por linha, `FILE:LINHA: mensagem`; ultima
-  linha em stdout: `RESULT|slides=N|specs=C/T|errors=E`.
+  linha em stdout: `RESULT|slides=N|specs=C/T|errors=E|warnings=W`.
 - Exit 0 sem violacao, 1 com violacao, 2 uso.
 
 ## `render-presentation.sh`

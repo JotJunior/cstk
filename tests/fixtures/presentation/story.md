@@ -4,6 +4,7 @@ subtitle: Reservas simples para hotéis independentes
 project: Atlas
 lang: pt-BR
 generated: 2026-03-02
+vocabulary: checkout
 ---
 
 <!-- slide: cover -->
@@ -49,7 +50,7 @@ O esboço inicial do produto.
 ### Como foi pensada
 Uma conversa sobre o problema, antes de qualquer solução.
 ### Como foi enriquecida
-Ainda sem rodadas de clarify.
+Ainda sem rodadas de perguntas.
 ### Como foi implementada
 Arquivada como referência, sem backlog próprio.
 @metric Estágio | stage
@@ -63,12 +64,14 @@ Autenticação por **link mágico**, sem senha.
 ### Como foi pensada
 A pesquisa comparou senha, código único e link.
 ### Como foi enriquecida
-As perguntas de clarify fecharam expiração, dispositivos e limite de envio.
+As perguntas de refinamento fecharam expiração, dispositivos e limite de envio.
 ### Como foi implementada
-Backlog concluído e convergido.
+Tudo entregue e conferido contra o combinado.
 @metric Tarefas | tasks
-@metric Perguntas de clarify | clarify-questions
-@metric Converge | converge
+@metric Dúvidas esclarecidas | clarify-questions
+@metric Revisão final | converge
+@tag Link mágico por e-mail
+@tag Expiração automática
 @source docs/specs/_archived/2026-01-10-login/spec.md
 
 <!-- slide: chapter -->
@@ -110,7 +113,7 @@ Em produção.
 ## O projeto em números
 @metric Specs | specs
 @metric Tarefas concluídas | tasks
-@metric Perguntas de clarify | clarify-questions
+@metric Dúvidas esclarecidas | clarify-questions
 
 <!-- slide: closing -->
 ## O que vem a seguir

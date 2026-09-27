@@ -77,8 +77,8 @@ scenario_sem_recurso_de_rede() {
 scenario_arquivo_legivel_por_todos() {
   _rp_setup || return 2
   _rp_run
-  _perm=$(ls -l "$TMPDIR_TEST/index.html" | cut -c1-10)
-  [ "$_perm" = "-rw-r--r--" ] || { _fail "mode" "permissao inesperada: $_perm"; return 1; }
+  _found=$(find "$TMPDIR_TEST/index.html" -perm -0644)
+  [ -n "$_found" ] || { _fail "mode" "index.html nao e legivel por todos (esperado 644)"; return 1; }
 }
 
 scenario_deterministico() {
@@ -147,7 +147,7 @@ scenario_timeline_e_indice_de_fontes() {
   _rp_has '<span class="timeline__date">Origens</span>' || return 1
   _rp_has '<span class="timeline__date">2026-01-10</span>' || return 1
   _rp_has '<span class="timeline__date">Em andamento</span>' || return 1
-  _rp_has '<code>docs/specs/current/login.md</code><span>login</span>' || return 1
+  _rp_has '<code>docs/specs/current/login.md</code><span>Login, hoje</span>' || return 1
 }
 
 scenario_capitulos_numerados() {
@@ -183,6 +183,38 @@ scenario_comentario_html_ignorado() {
 <!-- nota do redator: revisar com o time -->/'
   _rp_run
   _rp_hasnt "nota do redator" || return 1
+}
+
+scenario_tags_ilustrativos() {
+  _rp_setup || return 2
+  _rp_run
+  _rp_has '<div class="tags"><span class="tags__label">Por tr&aacute;s</span><span class="tag">Link mágico por e-mail</span><span class="tag">Expiração automática</span></div>' || return 1
+}
+
+scenario_rodape_amigavel_com_caminho_no_tooltip() {
+  _rp_setup || return 2
+  _rp_run
+  _rp_has '<span class="src" title="docs/specs/_archived/2026-01-10-login/spec.md">Entrar sem atrito</span>' || return 1
+  _rp_has '<span class="src" title="docs/briefing.md">Briefing</span>' || return 1
+  _rp_hasnt '<footer class="slide__footer"><span class="slide__footer-label">Fonte</span><code>' || return 1
+}
+
+scenario_rodape_agrupa_arquivos_da_mesma_spec() {
+  _rp_setup || return 2
+  _rp_edit 's|^@source docs/specs/checkout-flow/spec.md$|@source docs/specs/checkout-flow/spec.md\
+@source docs/specs/checkout-flow/plan.md\
+@source docs/outro.md|'
+  _rp_run
+  _rp_has '<span class="slide__footer-label">Fontes</span><span class="src" title="docs/specs/checkout-flow/spec.md; docs/specs/checkout-flow/plan.md">Pagar em uma tela</span>' || return 1
+  _rp_has '<span class="src" title="docs/outro.md">Documenta&ccedil;&atilde;o do projeto</span>' || return 1
+}
+
+scenario_timeline_usa_titulo_narrativo() {
+  _rp_setup || return 2
+  _rp_run
+  _rp_has '<li class="stage-implemented">Entrar sem atrito</li>' || return 1
+  _rp_hasnt '<li class="stage-implemented">Login por link magico</li>' || return 1
+  _rp_has '<code>docs/specs/checkout-flow/spec.md</code><span>Pagar em uma tela</span>' || return 1
 }
 
 scenario_sem_argumentos_exit2() {

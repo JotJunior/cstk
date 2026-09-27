@@ -166,7 +166,8 @@ function start_slide(hdr,   body, n, parts, i) {
   for (i = 2; i <= n; i++) if (parts[i] ~ /^key=/) skey = substr(parts[i], 5)
   nslide++
   h1 = ""; h1plain_cur = ""; h2 = ""; h2plain = ""; sub2 = ""; lead = ""; tagline = ""; ncards = 0
-  metrics = ""; nmetrics = 0; sources = ""; special = ""
+  metrics = ""; nmetrics = 0; special = ""; tags = ""
+  nsrc = 0; delete src_seen; delete src_lbl; delete src_title
   par = ""; inlist = 0; quote = ""; in_slide = 1
   delete card_title; delete card_body; delete card_strong
 }
@@ -184,6 +185,31 @@ function eyebrow() {
   return L(stype)
 }
 
+# titulo narrativo (## do slide da spec) quando ja visto; senao o do inventario
+function spec_title(k) { return (k in slide_title) ? slide_title[k] : esc(S_title[k]) }
+
+# rotulo amigavel de uma fonte: briefing, constituicao, titulo da spec dona
+# do arquivo, ou "documentacao do projeto"
+function src_label(t,   k) {
+  if (t == briefing_path) return L("briefing")
+  if (t == const_path) return L("constitution")
+  for (k in S_dir) {
+    if (t == S_dir[k] || index(t, S_dir[k] "/") == 1) {
+      if (stype == "spec" && k == skey && h2plain != "") return h2plain
+      return spec_title(k)
+    }
+  }
+  return L("docs")
+}
+
+function footer_html(   i, out) {
+  out = "<footer class=\"slide__footer\"><span class=\"slide__footer-label\">" ((nsrc > 1) ? L("sources") : L("source")) "</span>"
+  for (i = 1; i <= nsrc; i++) {
+    out = out ((i > 1) ? "<span class=\"src__sep\">&middot;</span>" : "") "<span class=\"src\" title=\"" src_title[i] "\">" src_lbl[i] "</span>"
+  }
+  return out "</footer>\n"
+}
+
 function timeline_html(   i, k, out, cur, grp, open) {
   out = "<ol class=\"timeline\">\n"; cur = ""; open = 0
   for (i = 1; i <= nspec; i++) {
@@ -196,7 +222,7 @@ function timeline_html(   i, k, out, cur, grp, open) {
       out = out "<li class=\"timeline__group\"><span class=\"timeline__date\">" grp "</span><ul class=\"timeline__specs\">"
       cur = grp; open = 1
     }
-    out = out "<li class=\"stage-" esc(S_stage[k]) "\">" esc(S_title[k]) "</li>"
+    out = out "<li class=\"stage-" esc(S_stage[k]) "\">" spec_title(k) "</li>"
   }
   if (open) out = out "</ul></li>\n"
   return out "</ol>\n"
@@ -214,7 +240,7 @@ function sources_html(   i, k, out) {
     out = out "<section><h3>" L("specs") "</h3><ul>"
     for (i = 1; i <= nspec; i++) {
       k = S_order[i]
-      out = out "<li><code>" esc(S_path[k]) "</code><span>" esc(S_title[k]) "</span></li>"
+      out = out "<li><code>" esc(S_path[k]) "</code><span>" spec_title(k) "</span></li>"
     }
     out = out "</ul></section>\n"
   }
@@ -225,6 +251,7 @@ function end_slide(   i, cls, attrs, title, out, stage, body_cls) {
   if (!in_slide) return
   flush_all()
   if (stype == "chapter") { nchapter++; chapter_title = h2plain }
+  if (stype == "spec" && skey != "" && h2plain != "") slide_title[skey] = h2plain
   title = (h1plain_cur != "") ? h1plain_cur : h2plain
   cls = "slide slide--" esc(stype)
   attrs = ""
@@ -261,8 +288,9 @@ function end_slide(   i, cls, attrs, title, out, stage, body_cls) {
   }
   if (special != "") out = out special
   if (metrics != "") out = out "<div class=\"metrics metrics--" nmetrics "\">\n" metrics "</div>\n"
+  if (tags != "") out = out "<div class=\"tags\"><span class=\"tags__label\">" L("tags") "</span>" tags "</div>\n"
   out = out "</div>\n"
-  if (sources != "") out = out "<footer class=\"slide__footer\"><span class=\"slide__footer-label\">" L("source") "</span>" sources "</footer>\n"
+  if (nsrc > 0) out = out footer_html()
   out = out "</div>\n</section>\n"
   printf "%s", out
   in_slide = 0
@@ -279,6 +307,8 @@ BEGIN {
   PT["closing"] = "Horizonte";              EN["closing"] = "Horizon"
   PT["sources"] = "Fontes";                 EN["sources"] = "Sources"
   PT["source"] = "Fonte";                   EN["source"] = "Source"
+  PT["docs"] = "Documenta&ccedil;&atilde;o do projeto"; EN["docs"] = "Project documentation"
+  PT["tags"] = "Por tr&aacute;s";           EN["tags"] = "Under the hood"
   PT["foundation"] = "Funda&ccedil;&atilde;o"; EN["foundation"] = "Foundation"
   PT["specs"] = "Specs";                    EN["specs"] = "Specs"
   PT["origins"] = "Origens";                EN["origins"] = "Origins"
@@ -308,6 +338,7 @@ FNR == NR {
     S_status[k] = $3; S_date[k] = $4; S_stage[k] = $5; S_arts[k] = $6
     S_cs[k] = $7; S_cq[k] = $8; S_done[k] = $9; S_total[k] = $10
     S_conv[k] = $11; S_path[k] = $13; S_title[k] = $14
+    S_dir[k] = $13; sub(/\/spec\.md$/, "", S_dir[k])
   }
   next
 }
@@ -371,7 +402,14 @@ line == "" { flush_all(); next }
 /^@source[ \t]/ {
   flush_all()
   t = trim(substr(line, 8))
-  sources = sources "<code>" esc(t) "</code>"
+  lb = src_label(t)
+  if (lb in src_seen) src_title[src_seen[lb]] = src_title[src_seen[lb]] "; " esc(t)
+  else { nsrc++; src_seen[lb] = nsrc; src_lbl[nsrc] = lb; src_title[nsrc] = esc(t) }
+  next
+}
+/^@tag[ \t]/ {
+  flush_all()
+  tags = tags "<span class=\"tag\">" esc(trim(substr(line, 5))) "</span>"
   next
 }
 /^@timeline[ \t]*$/ { flush_all(); special = special timeline_html(); next }

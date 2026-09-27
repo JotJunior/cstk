@@ -4,6 +4,7 @@ subtitle: {{PROMESSA EM UMA FRASE}}
 project: {{NOME DO PROJETO}}
 lang: pt-BR
 generated: {{AAAA-MM-DD}}
+vocabulary: {{termos do proprio produto, separados por virgula, ou apague a linha}}
 ---
 
 <!-- Esqueleto canonico da skill presentation. Gramatica: references/slide-grammar.md -->
@@ -55,11 +56,12 @@ generated: {{AAAA-MM-DD}}
 ### Como foi pensada
 {{O problema e a escolha central, com o motivo.}}
 ### Como foi enriquecida
-{{O que clarify, checklist e converge mudaram.}}
+{{Duvidas que viraram decisao e lacunas que viraram garantia.}}
 ### Como foi implementada
-{{O que foi entregue e o estado real.}}
-@metric Tarefas | tasks
-@metric Perguntas de clarify | clarify-questions
+{{O que foi entregue e o estado real, pelo resultado, sem tecniques.}}
+@metric Tarefas entregues | tasks
+@metric Duvidas esclarecidas | clarify-questions
+@tag {{Tecnologia so como ilustracao, opcional, ate 3}}
 @source {{docs/specs/.../spec.md}}
 
 <!-- slide: timeline -->
@@ -70,8 +72,8 @@ generated: {{AAAA-MM-DD}}
 <!-- slide: numbers -->
 ## {{O projeto em numeros}}
 @metric Specs | specs
-@metric Tarefas concluidas | tasks
-@metric Perguntas de clarify | clarify-questions
+@metric Tarefas entregues | tasks
+@metric Duvidas esclarecidas | clarify-questions
 @metric Principios | principles
 
 <!-- slide: closing -->

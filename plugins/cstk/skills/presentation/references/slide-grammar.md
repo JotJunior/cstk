@@ -13,6 +13,7 @@ subtitle: Frase curta sob o titulo      # opcional
 project: Nome do projeto                # opcional (default: inventario)
 lang: pt-BR                             # [V] obrigatorio: pt-BR | en
 generated: 2026-09-25                   # opcional, AAAA-MM-DD, vai para o rodape
+vocabulary: skill, pipeline             # opcional: termos do proprio produto, isentos do aviso G-12
 ---
 ```
 
@@ -76,7 +77,8 @@ tabelas, listas aninhadas, listas numeradas.
 | Diretiva | Onde | Efeito |
 |----------|------|--------|
 | `@metric Rotulo \| chave` | qualquer slide | chip (ou tile em `numbers`) com o valor resolvido do inventario. **[V]** chave valida para o escopo |
-| `@source caminho` | qualquer slide | rodape de fontes. **[V]** o arquivo existe; **[V]** obrigatorio em `briefing`, `constitution`, `spec` |
+| `@source caminho` | qualquer slide | rodape de fontes com **rotulo amigavel** ("Briefing", "Constituicao", titulo narrativo da spec dona do arquivo, ou "Documentacao do projeto"); o caminho fica no tooltip e no apendice. **[V]** o arquivo existe; **[V]** obrigatorio em `briefing`, `constitution`, `spec` |
+| `@tag Texto` | qualquer slide | selo discreto "Por tras: Texto", unico lugar para nome tecnico sem explicacao. **[V]** no maximo 3 por slide |
 | `@timeline` | `timeline` | cronologia gerada do inventario (arquivadas por data, depois ativas) |
 | `@sources` | `sources` | indice de todas as fontes do inventario |
 
@@ -97,6 +99,17 @@ escreva o numero voce mesmo: a chave existe justamente para isso.
 - Placeholders: `{{`, `TODO`, `TBD`, `[PREENCHER`, `NEEDS CLARIFICATION`,
   `lorem ipsum`.
 - Diretiva desconhecida (linha iniciada por `@` fora da tabela acima).
+- **Tecniques estrutural** (G-11) em qualquer linha de texto (titulos,
+  paragrafos, listas, citacoes; nao em `@source`/`@tag`/`@metric`):
+  trecho entre crases, URL, endpoint (`GET /...`), flag (`--algo`),
+  caminho de arquivo e nome de arquivo com extensao tecnica.
+
+## Avisos (nao bloqueiam)
+
+- **Termo do glossario** (G-12, `references/jargon.txt`, palavra inteira,
+  sem diferenciar maiusculas): reescreva, traduza na mesma frase com uma
+  descricao curta, mova para `@tag` ou declare em `vocabulary:`.
+  Ver "Linguagem de produto" em `narrative-guide.md`.
 
 ## Exemplo minimo
 
@@ -117,13 +130,14 @@ O login deixou de ser uma barreira.
 ### O que e
 Autenticacao por link magico.
 ### Como foi pensada
-A pesquisa comparou senha, OTP e link.
+A pesquisa comparou senha, codigo unico e link.
 ### Como foi enriquecida
-Tres perguntas de clarify fecharam o escopo.
+As perguntas de refinamento fecharam o escopo.
 ### Como foi implementada
-Backlog concluido e convergido.
-@metric Tarefas | tasks
-@metric Perguntas de clarify | clarify-questions
+Tudo entregue e conferido contra o combinado.
+@metric Tarefas entregues | tasks
+@metric Duvidas esclarecidas | clarify-questions
+@tag Link magico por e-mail
 @source docs/specs/_archived/2026-01-10-login/spec.md
 
 <!-- slide: sources -->

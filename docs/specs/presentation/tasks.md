@@ -105,6 +105,38 @@ Ref: quickstart.md cenarios 11-12; spec.md §SC-001..SC-005
       console limpo, prints para o dono do produto
 - [x] 5.1.3 Suite completa, `--check-coverage`, gates de manifest
 
+## FASE 6 - Linguagem de Produto (reabertura 2026-09-26)
+
+### 6.1 Validador sem tecniques `[A]`
+
+Ref: spec.md §FR-018, §FR-019, §FR-020; contracts/slide-grammar.md G-11..G-13
+
+- [x] 6.1.1 G-11: bloquear crases, URL, endpoint, flag, caminho e arquivo
+      no texto narrativo, com o trecho na mensagem
+- [x] 6.1.2 G-12: aviso de glossario (`references/jargon.txt`,
+      `--jargon`), `vocabulary:` no frontmatter e `warnings=N` no RESULT
+- [x] 6.1.3 G-13: `@tag` aceito, no maximo 3 por slide
+- [x] 6.1.4 Cenarios em `tests/test_validate-presentation.sh`
+
+### 6.2 Render e template `[A]`
+
+Ref: spec.md §FR-020, §FR-021, §FR-022; contracts/slide-grammar.md R-06..R-08
+
+- [x] 6.2.1 `@tag` como selos "Por tras" e estilo `.tags`
+- [x] 6.2.2 Rodape com rotulo amigavel e caminho no tooltip
+- [x] 6.2.3 Timeline e apendice com titulo narrativo
+- [x] 6.2.4 Cenarios em `tests/test_render-presentation.sh`
+
+### 6.3 Redator e dogfooding `[A]`
+
+Ref: spec.md §User Story 4
+
+- [x] 6.3.1 `narrative-guide.md` (Linguagem de produto), `slide-grammar.md`,
+      `templates/story.md`, `SKILL.md` (etapa 5 e Gotcha)
+- [x] 6.3.2 Fixture em linguagem de produto com `@tag`
+- [x] 6.3.3 Reescrever a story do cstk sem tecniques, validar e enviar
+      prints ao dono do produto
+
 ---
 
 ## Matriz de Dependencias
@@ -122,6 +154,7 @@ flowchart TD
     F3 --> F4
     F3 --> F5
     F4 --> F5
+    F5 --> F6[Fase 6 - Linguagem de produto]
 ```
 
 ## Resumo Quantitativo
@@ -133,7 +166,8 @@ flowchart TD
 | FASE 3 - Template e skill | 2 | 6 | A |
 | FASE 4 - Registro e release | 2 | 5 | A/M |
 | FASE 5 - Dogfooding e verificacao | 1 | 3 | A |
-| **Total** | **9** | **24** | A |
+| FASE 6 - Linguagem de produto | 3 | 11 | A |
+| **Total** | **12** | **35** | A |
 
 ## Escopo Coberto
 
