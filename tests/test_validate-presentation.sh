@@ -210,6 +210,17 @@ scenario_barra_simples_nao_e_caminho() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "e/ou nao deveria reprovar; stderr=$_CAPTURED_STDERR"; return 1; }
 }
 
+scenario_tecniques_caminho_sem_prefixo() {
+  _vp_tech 'O motor mora em motor/reservas/regras hoje.' 'caminho "motor/reservas/regras"' || return 1
+}
+
+scenario_data_nao_e_caminho() {
+  _vp_setup || return 2
+  _vp_edit 's|^Menos telas, menos passos.$|Lancado em 26/09/2026, com reservas de 1/2/3 noites.|'
+  _vp_run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "data nao deveria reprovar; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
 scenario_source_e_tag_podem_ter_tecniques() {
   _vp_setup || return 2
   _vp_edit 's|^@tag Expiração automática$|@tag `sqlite3` e config.json|'

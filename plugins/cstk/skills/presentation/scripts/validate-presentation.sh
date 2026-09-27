@@ -80,11 +80,21 @@ awk -F '\t' -v JARGON="$JARGON" '
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function err(ln, msg) { printf "ERR\t%d\t%s\n", ln, msg }
 function wrn(ln, msg) { printf "WRN\t%d\t%s\n", ln, msg }
-function tech(ln, kind, re,   t) {
-  if (match(t_line, re)) {
-    t = trim(substr(t_line, RSTART, RLENGTH))
-    err(ln, "tecniques: " kind " \"" t "\" (reescreva em linguagem de produto ou use @tag)")
-    return 1
+function tech_err(ln, kind, t) {
+  err(ln, "tecniques: " kind " \"" trim(t) "\" (reescreva em linguagem de produto ou use @tag)")
+}
+function tech(ln, kind, re) {
+  if (match(t_line, re)) { tech_err(ln, kind, substr(t_line, RSTART, RLENGTH)); return 1 }
+  return 0
+}
+# como tech, mas so reprova ocorrencia com ao menos uma letra: datas
+# (26/09/2026) e sequencias numericas (1/2/3) nao sao caminho
+function tech_alpha(ln, kind, re,   s, t) {
+  s = t_line
+  while (match(s, re)) {
+    t = substr(s, RSTART, RLENGTH)
+    if (t ~ /[A-Za-z]/) { tech_err(ln, kind, t); return 1 }
+    s = substr(s, RSTART + RLENGTH)
   }
   return 0
 }
@@ -96,7 +106,7 @@ function check_tech(ln) {
   if (tech(ln, "endpoint", "(GET|POST|PUT|PATCH|DELETE) /[^ ]*")) return
   if (tech(ln, "flag", "(^|[ (])--[a-z][a-z0-9-]*")) return
   if (tech(ln, "caminho", "(^|[ (])(\\.\\.?/|~/|/[A-Za-z_]|docs/)[^ ]*")) return
-  if (tech(ln, "caminho", "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+")) return
+  if (tech_alpha(ln, "caminho", "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+")) return
   tech(ln, "arquivo", "[A-Za-z0-9_-]+\\.(md|sh|json|js|mjs|ts|tsx|jsx|go|py|rb|java|cs|yml|yaml|toml|sql|db|html|css|txt|tsv|csv|lock|env|ini|xml)([^A-Za-z0-9]|$)")
 }
 # G-12: termos do glossario (aviso)
