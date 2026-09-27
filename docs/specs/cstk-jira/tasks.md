@@ -3542,7 +3542,7 @@ cenario o executa. Mutante medido: em `plugins/cstk-jira/scripts/jira-sync.sh`
 ~829-830, trocar a leitura de `written_fix_version_id`/`written_phase_label`
 do R6 GET por atribuicao vazia => o cenario passa de `ok` para `not ok`.
 
-- [ ] 27.1.1 Adicionar `scenario_mutation_21_1_2_rebaseline_marker_carryforward` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (as 2 linhas `json-get '.value.written_fix_version_id? // ""'`/`'.value.written_phase_label? // ""'` de `_js_rebaseline_marker` nao encontradas), mutacao que as troca por atribuicao vazia, checagem de que a mutacao foi aplicada, controle no plugin original (`resolve --choice keep_jira` de um `manual_edit` com marker contendo as 2 chaves => corpo do R6 PUT preserva as 2) e o mutante (corpo do R6 PUT MUST NOT conter as 2 chaves)
+- [x] 27.1.1 Adicionar `scenario_mutation_21_1_2_rebaseline_marker_carryforward` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (as 2 linhas `json-get '.value.written_fix_version_id? // ""'`/`'.value.written_phase_label? // ""'` de `_js_rebaseline_marker` nao encontradas), mutacao que as troca por atribuicao vazia, checagem de que a mutacao foi aplicada, controle no plugin original (`resolve --choice keep_jira` de um `manual_edit` com marker contendo as 2 chaves => corpo do R6 PUT preserva as 2) e o mutante (corpo do R6 PUT MUST NOT conter as 2 chaves)
 
 <!-- converge-key: a929b705f52b -->
 
@@ -3558,7 +3558,7 @@ Mutante medido: trocar `_jsl_reason="visibility_or_disabled"` (~1607) por
 `scenario_links_404_r17_isolado_vira_unrepresentable_por_aresta_sem_cascata`
 (`tests/cstk/test_jira-sync.sh` ~4519) passa de `ok` para `not ok`.
 
-- [ ] 27.2.1 Adicionar `scenario_mutation_21_2_2_links_r17_404_sem_cascata` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (`_jsl_reason="visibility_or_disabled"` nao encontrado), mutacao que reintroduz a cascata (seta `_jsl_linking_disabled="yes"` no ramo do 404 de R17), checagem de que a mutacao foi aplicada, controle no original (3 arestas, R16 200, R17 da 1a aresta 404 e das demais 201 => 1 `unrepresentable` + 2 `active`) e o mutante (MUST NOT resultar em 2 `active`)
+- [x] 27.2.1 Adicionar `scenario_mutation_21_2_2_links_r17_404_sem_cascata` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (`_jsl_reason="visibility_or_disabled"` nao encontrado), mutacao que reintroduz a cascata (seta `_jsl_linking_disabled="yes"` no ramo do 404 de R17), checagem de que a mutacao foi aplicada, controle no original (3 arestas, R16 200, R17 da 1a aresta 404 e das demais 201 => 1 `unrepresentable` + 2 `active`) e o mutante (MUST NOT resultar em 2 `active`)
 
 <!-- converge-key: af4ba7c8e617 -->
 
@@ -3574,7 +3574,7 @@ medido: em `plugins/cstk-jira/scripts/jira-sync.sh` ~1270, trocar
 `scenario_milestone_ensure_blocked_repetido_zero_chamadas` (~3350) passa
 de `ok` para `not ok`.
 
-- [ ] 27.3.1 Adicionar `scenario_mutation_22_1_3_milestone_ensure_blocked_guard` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (condicao `"$_jsme_blocked_state" = "blocked"` nao encontrada), mutacao que neutraliza a guarda, checagem de que a mutacao foi aplicada, controle no original (2a `ensure` com sidecar `blocked` => exit 7 e 0 chamadas ao stub) e o mutante (2a `ensure` MUST NOT sair exit 7 com 0 chamadas)
+- [x] 27.3.1 Adicionar `scenario_mutation_22_1_3_milestone_ensure_blocked_guard` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (condicao `"$_jsme_blocked_state" = "blocked"` nao encontrada), mutacao que neutraliza a guarda, checagem de que a mutacao foi aplicada, controle no original (2a `ensure` com sidecar `blocked` => exit 7 e 0 chamadas ao stub) e o mutante (2a `ensure` MUST NOT sair exit 7 com 0 chamadas)
 
 <!-- converge-key: f571448fd758 -->
 
@@ -3591,6 +3591,6 @@ choices caem na re-derivacao de `keep_jira`) =>
 `scenario_resolve_overwrite_label_drift_sem_phase_reaplica_fase_local`
 (`tests/cstk/test_jira-sync.sh` ~4165) passa de `ok` para `not ok`.
 
-- [ ] 27.4.1 Adicionar `scenario_mutation_22_2_2_overwrite_label_drift_reaplica_fase_local` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (`if [ "$_jrm_choice" = "overwrite" ]; then` nao encontrado), mutacao que faz o `overwrite` voltar a re-derivar, checagem de que a mutacao foi aplicada, controle no original (issue sem `phase-*` + `resolve --choice overwrite` => `update.labels` com `add` do `phase-<N>` local e marker com `written_phase_label`) e o mutante (MUST NOT emitir o R2 de `add` nem gravar `written_phase_label`)
+- [x] 27.4.1 Adicionar `scenario_mutation_22_2_2_overwrite_label_drift_reaplica_fase_local` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (`if [ "$_jrm_choice" = "overwrite" ]; then` nao encontrado), mutacao que faz o `overwrite` voltar a re-derivar, checagem de que a mutacao foi aplicada, controle no original (issue sem `phase-*` + `resolve --choice overwrite` => `update.labels` com `add` do `phase-<N>` local e marker com `written_phase_label`) e o mutante (MUST NOT emitir o R2 de `add` nem gravar `written_phase_label`)
 
 <!-- converge-key: 586da1a6bebe -->

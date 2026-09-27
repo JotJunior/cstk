@@ -139,6 +139,62 @@ STUB
   printf '%s' "$_stub_dir"
 }
 
+# _make_curl_stub_seq MAPA — variante FIFO de _make_curl_stub: quando MAIS
+# DE UMA linha do mapa casa a MESMA URL (ex.: R17 POST /rest/api/3/issueLink
+# chamado uma vez por aresta, sempre com a mesma URL — o corpo difere mas
+# _make_curl_stub so casa por URL), consome as linhas EM ORDEM DE
+# DECLARACAO: a Na chamada aquela URL recebe a Na linha do mapa que a casa
+# (a linha consumida e removida do mapa, nunca reaproveitada). Para URLs
+# que aparecem uma unica vez o comportamento e identico a _make_curl_stub
+# (retrocompativel). Usada SO por
+# scenario_mutation_21_2_2_links_r17_404_sem_cascata (task 27.2.1), que
+# precisa diferenciar 404 (1a aresta) de 201 (2a/3a aresta) na MESMA URL.
+_make_curl_stub_seq() {
+  _stub_dir="$TMPDIR_TEST/bin-seq"
+  mkdir -p "$_stub_dir"
+  printf '%s\n' "$1" > "$TMPDIR_TEST/io-curl-map-seq"
+  : > "$TMPDIR_TEST/io-curl-calls.log"
+  cat > "$_stub_dir/curl" <<STUB
+#!/bin/sh
+_url=""
+_out=""
+_method="GET"
+_bodyfile=""
+_prev=""
+for _a in "\$@"; do
+  case "\$_prev" in
+    -o) _out="\$_a" ;;
+    -X) _method="\$_a" ;;
+  esac
+  case "\$_a" in
+    https://*) _url="\$_a" ;;
+    @*) _bodyfile="\${_a#@}" ;;
+  esac
+  _prev="\$_a"
+done
+_map="$TMPDIR_TEST/io-curl-map-seq"
+_n=\$(wc -l < "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null | tr -d ' ')
+_n=\$((_n + 1))
+if [ -n "\$_bodyfile" ] && [ -f "\$_bodyfile" ]; then
+  cp -- "\$_bodyfile" "$TMPDIR_TEST/io-curl-body-\$_n.json" 2>/dev/null
+fi
+printf '%s %s\n' "\$_method" "\$_url" >> "$TMPDIR_TEST/io-curl-calls.log"
+_matched_line=\$(awk -F'|' -v url="\$_url" '\$1==url{print NR; exit}' "\$_map")
+if [ -n "\$_matched_line" ]; then
+  _full_line=\$(sed -n "\${_matched_line}p" "\$_map")
+  _code=\$(printf '%s' "\$_full_line" | cut -d'|' -f2)
+  _body=\$(printf '%s' "\$_full_line" | cut -d'|' -f3-)
+  [ -n "\$_out" ] && printf '%s' "\$_body" > "\$_out"
+  awk -v n="\$_matched_line" 'NR!=n' "\$_map" > "\$_map.tmp" && mv "\$_map.tmp" "\$_map"
+  printf '%s' "\$_code"
+  exit 0
+fi
+exit 22
+STUB
+  chmod +x "$_stub_dir/curl"
+  printf '%s' "$_stub_dir"
+}
+
 _curl_call_count() {
   [ -f "$TMPDIR_TEST/io-curl-calls.log" ] || { printf '0'; return; }
   wc -l < "$TMPDIR_TEST/io-curl-calls.log" | tr -d ' '
@@ -1770,6 +1826,328 @@ PYEOF
   _mut_active=$(awk -F '\t' 'NR>1 && $6=="active"' "$_links_file" 2>/dev/null | wc -l | tr -d ' ') || _mut_active=0
   [ "$_mut_active" -ge "1" ] \
     || { _fail "mutant_regression" "regressao: nenhuma aresta active gravada no mutante (esperado >=1, 400 em passthrough tratado como sucesso), obtido $_mut_active: $(cat "$_links_file" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# ==== FASE 27 (r02 ciclo 7, achados 27.1-27.4): mutation faltante de ====
+# ==== tarefas ja marcadas [x] (mesma classe de 25.2/26.1)             ====
+
+# scenario_mutation_21_1_2_rebaseline_marker_carryforward — r02 FASE 27
+# tarefa 27.1.1 (achado 27.1: a parte de mutation da tarefa 21.1.2 nunca
+# foi escrita). Mira o carry-forward de `written_fix_version_id`/
+# `written_phase_label` lido do R6 GET em `_js_rebaseline_marker`
+# (jira-sync.sh ~829-830, task 21.1.1): reason=manual_edit (nem
+# milestone_drift nem label_drift) preserva as 2 chaves do marker ANTIGO
+# tal-e-qual no corpo do R6 PUT. Mutante medido: trocar a leitura por
+# atribuicao vazia (`_jrm_written_fixver=""`/`_jrm_written_phase_label=""`)
+# — o corpo do R6 PUT deixa de conter as 2 chaves.
+scenario_mutation_21_1_2_rebaseline_marker_carryforward() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo" "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status,description,fixVersions,labels|200|{\"fields\":{\"summary\":\"Titulo editado a mao no Jira\",\"status\":{\"name\":\"In Progress\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"value\":{\"written_summary_sha256\":\"old\",\"written_status\":\"To Do\",\"written_fix_version_id\":\"10099\",\"written_phase_label\":\"phase-3\"}}"
+
+  # -- controle: reason=manual_edit preserva as 2 chaves do marker antigo
+  # tal-e-qual no corpo do R6 PUT (3a chamada: R3+R6get+R6put) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "controle_calls_count" "esperado 3 chamadas (R3+R6get+R6put), obtido $(_curl_call_count)"; return 1; }
+  _ctrl_fixver=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_fix_version_id? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-3.json")
+  [ "$_ctrl_fixver" = "10099" ] \
+    || { _fail "controle_fixver" "controle: written_fix_version_id deveria ser preservado (10099), obtido: $_ctrl_fixver"; return 1; }
+  _ctrl_phase=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-3.json")
+  [ "$_ctrl_phase" = "phase-3" ] \
+    || { _fail "controle_phase" "controle: written_phase_label deveria ser preservado (phase-3), obtido: $_ctrl_phase"; return 1; }
+
+  # -- mutante: troca a leitura do R6 GET por atribuicao vazia (~829-830) --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '_jrm_written_fixver=$(printf' "$_sy" \
+    || { _fail "mutant_stale" "leitura de written_fix_version_id no R6 GET (_jrm_written_fixver) nao encontrada — repo mudou"; return 1; }
+  grep -qF '_jrm_written_phase_label=$(printf' "$_sy" \
+    || { _fail "mutant_stale" "leitura de written_phase_label no R6 GET (_jrm_written_phase_label) nao encontrada — repo mudou"; return 1; }
+  python3 - "$_sy" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = '''    _jrm_written_fixver=$(printf '%s' "$_jrm_prop_resp" | "$_jrm_io" json-get '.value.written_fix_version_id? // ""')
+    _jrm_written_phase_label=$(printf '%s' "$_jrm_prop_resp" | "$_jrm_io" json-get '.value.written_phase_label? // ""')'''
+new = '''    _jrm_written_fixver=""
+    _jrm_written_phase_label=""'''
+assert old in content, "padrao 21.1.1 (carry-forward do R6 GET) nao encontrado no source"
+content = content.replace(old, new, 1)
+with open(path, "w") as f:
+    f.write(content)
+PYEOF
+  _py_rc=$?
+  [ "$_py_rc" = "0" ] \
+    || { _fail "mutant_apply" "python3 falhou ao trocar o carry-forward por atribuicao vazia (rc=$_py_rc)"; return 1; }
+  grep -qF '_jrm_written_fixver=$(printf' "$_sy" \
+    && { _fail "mutant_apply" "leitura de written_fix_version_id (_jrm_written_fixver) ainda presente apos a mutacao"; return 1; }
+  chmod +x "$_sy"
+
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	manual_edit	pending
+EOF
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  _mut_fixver=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_fix_version_id? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-3.json")
+  [ "$_mut_fixver" = "AUSENTE" ] \
+    || { _fail "mutant_regression" "regressao: written_fix_version_id NAO deveria sobreviver ao rebaseline (carry-forward removido), obtido: $_mut_fixver"; return 1; }
+  _mut_phase=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-3.json")
+  [ "$_mut_phase" = "AUSENTE" ] \
+    || { _fail "mutant_regression" "regressao: written_phase_label NAO deveria sobreviver ao rebaseline (carry-forward removido), obtido: $_mut_phase"; return 1; }
+  return 0
+}
+
+# scenario_mutation_21_2_2_links_r17_404_sem_cascata — r02 FASE 27 tarefa
+# 27.2.1 (achado 27.2: a parte de mutation da tarefa 21.2.2 nunca foi
+# escrita). Mira o ramo de 404 ISOLADO em R17 de `_js_cmd_links`
+# (jira-sync.sh ~1591-1614, task 21.2.1/21.2.2): 404 sozinho (sem R16
+# confirmar linking desligado no site) NUNCA aciona a cascata
+# `_jsl_linking_disabled` — vira `unrepresentable reason=
+# visibility_or_disabled` SO da aresta que respondeu 404, as demais 2
+# seguem tentando R17 normalmente. Mutante medido: trocar
+# `_jsl_reason="visibility_or_disabled"` por `_jsl_reason="linking_disabled"`
+# + `_jsl_linking_disabled="yes"` — reintroduz a cascata (achado 21.2
+# original). Precisa do stub FIFO (`_make_curl_stub_seq`): as 3 arestas
+# batem a MESMA URL (POST issueLink), com respostas diferentes (404, 201,
+# 201) — `_make_curl_stub` (match por URL, sempre a 1a linha) nao
+# consegue diferenciar.
+scenario_mutation_21_2_2_links_r17_404_sem_cascata() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  printf 'link_type_id=10000\n' >> "$TMPDIR_TEST/.claude/cstk-jira/config"
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Primeira `[A]`
+
+### 1.1 Tarefa um `[A]`
+
+- [x] 1.1.1 Sub um
+
+## FASE 2 - Segunda `[A]`
+
+### 2.1 Tarefa dois `[A]`
+
+- [ ] 2.1.1 Sub dois
+
+## FASE 3 - Terceira `[A]`
+
+### 3.1 Tarefa tres `[A]`
+
+- [ ] 3.1.1 Sub tres
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Primeira]
+    F2[FASE 2 - Segunda]
+    F3[FASE 3 - Terceira]
+    F1 --> F2
+    F1 --> F3
+    F2 --> F3
+```
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20010\tDEMO-10\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '2.1\ttask\t20020\tDEMO-20\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '3.1\ttask\t20030\tDEMO-30\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  _links_file="$TMPDIR_TEST/docs/specs/demo/jira-links.tsv"
+
+  # 3 arestas (F1->F2, F1->F3, F2->F3, ordem de declaracao do mermaid): a
+  # 1a R17 responde 404 (visibilidade/desligado ambiguo, SO desta aresta);
+  # as 2 seguintes respondem 201 (linking segue ligado — nunca deveriam
+  # ser puladas por cascata).
+  _mapa="https://example.atlassian.net/rest/api/3/issueLink|404|{}
+https://example.atlassian.net/rest/api/3/issueLink|201|{}
+https://example.atlassian.net/rest/api/3/issueLink|201|{}"
+
+  # -- controle --
+  _bin=$(_make_curl_stub_seq "$_mapa")
+  _out=$(PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" links --feature demo) \
+    || { _fail "controle_exit" "links deveria sair exit 0 no original"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "linking=enabled" \
+    || { _fail "controle_linking" "404 isolado NUNCA prova linking desligado, esperado linking=enabled, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_active=2" \
+    || { _fail "controle_active" "esperado links_active=2 (sem cascata), obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=1" \
+    || { _fail "controle_unrep" "esperado links_unrepresentable=1 (SO a 1a aresta), obtido: $_out"; return 1; }
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "controle_r17_tres" "esperado 3 tentativas de R17 (sem cascata pulando nenhuma), obtido $(_curl_call_count)"; return 1; }
+  awk -F '\t' 'NR>1 && $7=="linking_disabled"' "$_links_file" | grep -q . \
+    && { _fail "controle_no_linking_disabled" "404 isolado NUNCA deveria gravar reason=linking_disabled: $(cat "$_links_file" 2>/dev/null)"; return 1; }
+
+  # -- mutante: reintroduz a cascata no ramo de 404 isolado (~1607) --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '_jsl_reason="visibility_or_disabled"' "$_sy" \
+    || { _fail "mutant_stale" "ramo de 404 isolado (visibility_or_disabled) nao encontrado — repo mudou"; return 1; }
+  sed 's/_jsl_reason="visibility_or_disabled"/_jsl_reason="linking_disabled"; _jsl_linking_disabled="yes"/' \
+    "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF '_jsl_reason="visibility_or_disabled"' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao do ramo de 404 isolado"; return 1; }
+  chmod +x "$_sy"
+
+  # sidecar de links precisa ser resetado (o controle ja gravou linhas).
+  rm -f "$_links_file"
+
+  _bin2=$(_make_curl_stub_seq "$_mapa")
+  _out_mut=$(PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" JIRA_IO_BACKOFF_SECONDS=0 \
+    "$_sy" links --feature demo) \
+    || { _fail "mutant_run" "mutante deveria sair exit 0"; return 1; }
+  printf '%s\n' "$_out_mut" | grep -qx "links_active=2" \
+    && { _fail "mutant_regression" "regressao: cascata reintroduzida deveria pular as 2 arestas seguintes (links_active NAO deveria ser 2), obtido: $_out_mut"; return 1; }
+  _mut_r17_calls=$(_curl_call_count)
+  [ "$_mut_r17_calls" != "3" ] \
+    || { _fail "mutant_regression_calls" "regressao: cascata deveria pular R17 das 2 arestas seguintes (esperado <3 chamadas), obtido $_mut_r17_calls"; return 1; }
+  return 0
+}
+
+# scenario_mutation_22_1_3_milestone_ensure_blocked_guard — r02 FASE 27
+# tarefa 27.3.1 (achado 27.3: a parte de mutation da tarefa 22.1.3 nunca
+# foi escrita). Mira o guard local de `_js_cmd_milestone_ensure` que evita
+# repetir R13/R12 quando o marco JA esta gravado `state=blocked` no
+# sidecar (jira-sync.sh ~1270, task 22.1.1). Mutante medido: neutralizar a
+# condicao (`if false; then`) faz a 2a chamada de `ensure` repetir TODA a
+# sequencia de rede (project+R13+R12) em vez de sair ZERO chamadas (FR-020
+# violado em silencio, mesmo bug do achado 22.1 original).
+scenario_mutation_22_1_3_milestone_ensure_blocked_guard() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r01"}}
+EOF
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+
+  _mapa="https://example.atlassian.net/rest/api/3/project/DEMO|200|{\"id\":\"10000\",\"key\":\"DEMO\"}
+https://example.atlassian.net/rest/api/3/project/DEMO/versions|200|[]
+https://example.atlassian.net/rest/api/3/version|403|{\"errorMessages\":[\"Forbidden\"]}"
+
+  # -- controle: 1a chamada grava blocked (exit 7, 3 chamadas); 2a chamada
+  # NAO repete nenhuma chamada de rede (guard local) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" milestone ensure --feature demo || return 1
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "controle_first_calls" "esperado 3 chamadas na 1a tentativa (project+R13+R12), obtido $(_curl_call_count)"; return 1; }
+  assert_exit 7 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" milestone ensure --feature demo || return 1
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "controle_no_repeat" "esperado ZERO chamadas novas na 2a tentativa (guard local), total continua 3, obtido $(_curl_call_count)"; return 1; }
+
+  # -- mutante: neutraliza a guarda `state=blocked` (~1270) --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF 'if [ "$_jsme_blocked_state" = "blocked" ]; then' "$_sy" \
+    || { _fail "mutant_stale" "guarda 22.1.1 (state=blocked) nao encontrada — repo mudou"; return 1; }
+  sed 's/if \[ "\$_jsme_blocked_state" = "blocked" \]; then/if false; then/' \
+    "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF 'if [ "$_jsme_blocked_state" = "blocked" ]; then' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao da guarda 22.1.1"; return 1; }
+  chmod +x "$_sy"
+
+  capture env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" milestone ensure --feature demo
+  [ "$(_curl_call_count)" != "3" ] \
+    || { _fail "mutant_regression" "regressao: guarda removida deveria repetir a sequencia de rede (esperado >3 chamadas acumuladas), obtido $(_curl_call_count)"; return 1; }
+  return 0
+}
+
+# scenario_mutation_22_2_2_overwrite_label_drift_reaplica_fase_local — r02
+# FASE 27 tarefa 27.4.1 (achado 27.4: a parte de mutation da tarefa 22.2.2
+# nunca foi escrita). Mira o ramo `overwrite` de `label_drift` em
+# `_js_rebaseline_marker` (jira-sync.sh ~861, task 22.2.1): issue SEM
+# nenhum label `phase-*` (humano removeu sem substituir) MUST reaplicar
+# `phase-<N>` da FASE LOCAL ATUAL via `_js_reconcile_phase_label` (SO
+# `add`, WRITTEN=""), nunca ficar com baseline vazia. Mutante medido:
+# neutralizar o ramo (`if false; then`) — ambos os choices caem na
+# re-derivacao de `keep_jira` (le os labels atuais da issue, nenhum
+# phase-* presente => written_phase_label fica vazio, ZERO R2 de add).
+scenario_mutation_22_2_2_overwrite_label_drift_reaplica_fase_local() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo" "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 5 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status,description,fixVersions,labels|200|{\"fields\":{\"summary\":\"Titulo da tarefa\",\"status\":{\"name\":\"Done\"},\"labels\":[\"prioridade-alta\"]}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2|204|"
+
+  # -- controle: overwrite de label_drift SEM nenhum label phase-* na
+  # issue reaplica phase-5 (FASE local atual) via update.labels SO `add`
+  # (4 chamadas: R3 + R6get + R2 + R6put) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+  [ "$(_curl_call_count)" = "4" ] \
+    || { _fail "controle_calls_count" "esperado 4 chamadas (R3+R6get+R2+R6put), obtido $(_curl_call_count)"; return 1; }
+  _ctrl_lbl=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.update.labels | tostring' < "$TMPDIR_TEST/io-curl-body-3.json")
+  [ "$_ctrl_lbl" = '[{"add":"phase-5"}]' ] \
+    || { _fail "controle_label_add" "controle: esperado SO add phase-5 (R2), obtido: $_ctrl_lbl"; return 1; }
+  _ctrl_marker=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-4.json")
+  [ "$_ctrl_marker" = "phase-5" ] \
+    || { _fail "controle_marker" "controle: esperado written_phase_label=phase-5 no R6 PUT final, obtido: $_ctrl_marker"; return 1; }
+
+  # -- mutante: neutraliza o ramo `overwrite` de label_drift (~861) —
+  # ambos choices caem na re-derivacao de keep_jira --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF 'if [ "$_jrm_choice" = "overwrite" ]; then' "$_sy" \
+    || { _fail "mutant_stale" "guarda 22.2.1 (ramo overwrite de label_drift) nao encontrada — repo mudou"; return 1; }
+  sed 's/if \[ "\$_jrm_choice" = "overwrite" \]; then/if false; then/' \
+    "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF 'if [ "$_jrm_choice" = "overwrite" ]; then' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao do ramo overwrite"; return 1; }
+  chmod +x "$_sy"
+
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/conflicts.tsv" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+  [ "$(_curl_call_count)" = "3" ] \
+    || { _fail "mutant_regression" "regressao: overwrite neutralizado deveria pular o R2 de add (esperado 3 chamadas: R3+R6get+R6put), obtido $(_curl_call_count)"; return 1; }
+  _mut_marker=$("$ORIG_PLUGIN_DIR/scripts/jira-io.sh" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/io-curl-body-3.json")
+  [ "$_mut_marker" = "AUSENTE" ] \
+    || { _fail "mutant_regression_marker" "regressao: written_phase_label NAO deveria ser gravado no marker (overwrite neutralizado), obtido: $_mut_marker"; return 1; }
   return 0
 }
 
