@@ -3603,6 +3603,58 @@ EOF
   return 0
 }
 
+# r02 FASE 23 tarefa 23.1.1 (achado 23.1 + regressao correlata, script roda
+# sob `set -eu`): mesmo cenario de troca de fase de sy84 acima, mas o R2 PUT
+# (update.labels) falha com 403. Antes desta tarefa, `_js_reconcile_phase_
+# label` sempre devolvia exit 0 (o proprio bug 23.1) — o chamador do drain
+# (`_jspr_new_phase_label=$(_js_reconcile_phase_label ...)`, SEM guarda)
+# nunca via uma falha genuina. Corrigido o exit code na propria funcao
+# (23.1.1), esta atribuicao NUA sob `set -eu` abortaria o `drain` INTEIRO
+# ao primeiro R2 que falhasse (medido: `sh -c 'set -eu; f(){ return 7; };
+# x=$(f); echo sobrevivi'` nunca imprime "sobrevivi") — uma regressao BEM
+# pior que o bug original. Este teste MUST continuar vendo `drain` sair 0
+# (a falha e absorvida, o item so nao muda de fase nesta passada, sem
+# nenhum R6 PUT do marker) — mutation (remover o guard `if cmd; then :;
+# else ...; fi` ao redor da chamada, voltando a atribuicao nua) MUST falhar
+# este teste (drain sairia com o exit code do R2, 7, em vez de 0).
+scenario_drain_reconcile_phase_label_r2_403_nao_aborta_drain_inteiro() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): idempotente puro (2 chamadas), igual a sy84.
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  # Task (DEMO-2): R3 + R6-GET (written_phase_label=phase-3) + R15 (labels
+  # atuais: phase-3 + humano) -- ate aqui identico a sy84.
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  _queue_push 200 '{"fields":{"labels":["phase-3","prioridade-alta"]}}'
+  # R2 (update.labels remove/add) falha com 403 -- permissao insuficiente.
+  _queue_push 403 '{"errorMessages":["forbidden"]}'
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "6" ] \
+    || { _fail "sy_drain_r2_403_calls" "esperado 6 chamadas (2 epic idempotente + 4 task: R3/R6get/R15/R2-403, SEM R6-PUT), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_drain_r2_403_no_marker_put" "R6 PUT do marker NAO deveria ocorrer apos falha do R2 (fase nao mudou nesta passada)"; return 1; }
+  return 0
+}
+
 # SY-85 drain reconcile (r02 FASE 17 task 17.3.3, plan.md SEC-10):
 # written_phase_label do marker (phase-3) NAO consta mais nos labels REAIS
 # da issue (R15 devolve so phase-9 — alguem removeu/trocou manualmente) ->
@@ -3813,6 +3865,133 @@ EOF
   _final_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-3.json")
   [ "$_final_label" = "AUSENTE" ] \
     || { _fail "sy94_baseline_vazia" "keep_jira deveria manter baseline vazia (nenhum phase-* na issue), obtido: $_final_label"; return 1; }
+  return 0
+}
+
+# r02 FASE 23 tarefa 23.1.1/23.1.3 (achado 23.1, converge-report Round r02
+# Ciclo 3 — regressao de 22.2.1): `overwrite` de `label_drift` reaplicando
+# phase-<N> local (mesmo cenario de sy93, issue SEM nenhum phase-*) quando o
+# R2 PUT (update.labels) falha com 403 (permission_denied) MUST propagar a
+# falha — NUNCA fechar o conflito como sucesso. Antes do fix, `_jrpl_ec=$?`
+# era lido DEPOIS de um `if...fi` sem `else` (sempre 0 por definicao POSIX
+# quando a condicao falha), mascarando o 403 e fazendo `overwrite` voltar a
+# ter o efeito de `keep_jira` (baseline vazia, conflito fechado igual).
+# Mutation (reintroduzir a leitura de "$?" apos o `fi` sem `else`) MUST
+# falhar este teste (resolve voltaria a sair 0).
+scenario_resolve_overwrite_label_drift_r2_403_nao_fecha_como_sucesso() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # R3 do rebaseline: issue SEM nenhum label phase-* (so um label humano).
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"},"labels":["prioridade-alta"]}}'
+  # R6 GET (marker atual).
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  # R2 (update.labels add phase-5) falha com 403 -- permissao insuficiente.
+  _queue_push 403 '{"errorMessages":["forbidden"]}'
+  PATH="$_bin:$PATH" assert_exit 1 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+
+  grep -q 'demo	1.1	DEMO-2	label_drift	pending$' "$(_conflicts_file)" \
+    || { _fail "sy_r2_403_conflict_still_pending" "ConflictRecord deveria continuar pending apos falha do R2 (403): $(cat "$(_conflicts_file)")"; return 1; }
+
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy_r2_403_calls" "esperado 3 chamadas (R3 rebaseline + R6get marker + R2 PUT 403), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_r2_403_no_marker_put" "R6 PUT do marker NAO deveria ocorrer apos falha do R2 (conflito nao fechado)"; return 1; }
+  return 0
+}
+
+# r02 FASE 23 tarefa 23.1.1/23.1.3 (achado 23.1): mesmo cenario acima, mas
+# o R2 PUT falha com 400 (corpo invalido) — `jira-io.sh` classifica 400 so
+# para `--op R4`/`--op R12` (contracts/plugin-scripts.md 3.4); para `--op
+# R2` fica em passthrough (exit 0). Sem checar `http_status` no chamador,
+# o 400 era tratado como sucesso e `written_phase_label=phase-5` era
+# gravado no marker SEM o label ter sido de fato aplicado (baseline
+# falsa que o drain nunca corrige, pois WRITTEN==TARGET vira no-op
+# imediato). Mutation (remover a checagem de `http_status` nao-2xx) MUST
+# falhar este teste (resolve voltaria a sair 0 e gravaria a baseline).
+scenario_resolve_overwrite_label_drift_r2_400_nao_grava_baseline_falsa() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"},"labels":["prioridade-alta"]}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  # R2 (update.labels add phase-5) responde 400 -- passthrough exit 0 em
+  # jira-io.sh; so o http_status na 1a linha de stderr denuncia a falha.
+  _queue_push 400 '{"errorMessages":["invalid label value"]}'
+  PATH="$_bin:$PATH" assert_exit 1 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+
+  grep -q 'demo	1.1	DEMO-2	label_drift	pending$' "$(_conflicts_file)" \
+    || { _fail "sy_r2_400_conflict_still_pending" "ConflictRecord deveria continuar pending apos falha do R2 (400): $(cat "$(_conflicts_file)")"; return 1; }
+
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy_r2_400_calls" "esperado 3 chamadas (R3 rebaseline + R6get marker + R2 PUT 400), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_r2_400_no_marker_put" "R6 PUT do marker (baseline falsa) NAO deveria ocorrer apos 400 em R2"; return 1; }
+  return 0
+}
+
+# r02 FASE 23 tarefa 23.1.2/23.1.3 (achado 23.1, data-model.md:406 "phase_
+# label vazio para Epic ou labels_enabled=off"): `overwrite` de `label_
+# drift` com `labels_enabled=off` MUST NUNCA emitir `update.labels` — o
+# ramo `overwrite` ignorava esta flag (so `convert`/`drain` a liam antes
+# desta tarefa). Baseline fica vazia (mesmo resultado de Epic/coluna
+# `phase` irreconhecivel), ZERO chamadas R2. Mutation (remover a guarda de
+# `labels_enabled`) MUST falhar este teste (uma chamada R2 extra apareceria
+# no lugar do R6 PUT final, e o grep de PUT plano em /issue/DEMO-2 casaria).
+scenario_resolve_overwrite_label_drift_labels_enabled_off_zero_r2() {
+  _write_full_config_labels_off
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"},"labels":["prioridade-alta"]}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  # R6 PUT do marker rebaselinado (SEM nenhum R2 antes, labels_enabled=off).
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
+
+  grep -q 'demo	1\.1	DEMO-2	label_drift	overwrite$' "$(_conflicts_file)" \
+    || { _fail "sy_labeloff_resolution" "resolution nao virou overwrite: $(cat "$(_conflicts_file)")"; return 1; }
+
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "sy_labeloff_calls" "esperado 3 chamadas (R3 + R6get marker + R6 marker, ZERO R2), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*api/3/issue/DEMO-2$' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_labeloff_no_r2" "R2 (update.labels) NAO deveria ocorrer com labels_enabled=off"; return 1; }
+
+  _final_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_final_label" = "AUSENTE" ] \
+    || { _fail "sy_labeloff_baseline_vazia" "written_phase_label deveria ficar vazio com labels_enabled=off, obtido: $_final_label"; return 1; }
   return 0
 }
 

@@ -625,13 +625,21 @@ scenario_mutation_17_1_4_label_allowlist() {
 # profundidade contra um estado corrompido) e a issue REAL (R15) confirma
 # esse mesmo valor presente. No original, `_jrpl_do_remove` fica "no"
 # (fora do padrao) -> so `--add-label phase-5` entra no corpo (charset
-# ok) -> `drain` conclui normalmente. No mutante, `_jrpl_do_remove` vira
-# "yes" incondicional -> `--remove-label "prioridade alta"` (espaco,
-# fora da allowlist SEC-1 de `_ji_charset_ok`) faz `json-build
-# issue-update` morrer com exit 2 DENTRO da substituicao de comando que
-# monta o corpo — sob `set -eu` (jira-sync.sh) isso aborta o processo
-# INTEIRO de `drain` (exit != 0), uma divergencia bem observavel do
-# `exit 0` do original.
+# ok) -> `drain` conclui normalmente com 1 PUT ao R2. No mutante,
+# `_jrpl_do_remove` vira "yes" incondicional -> `--remove-label "prioridade
+# alta"` (espaco, fora da allowlist SEC-1 de `_ji_charset_ok`) faz
+# `json-build issue-update` morrer com exit 2 DENTRO da substituicao de
+# comando que monta o corpo — ANTES de qualquer chamada de rede do R2.
+# r02 FASE 23 tarefa 23.1.1 (achado 23.1): o chamador do drain agora
+# ABSORVE a falha de `_js_reconcile_phase_label` (guarda `if cmd; then :;
+# else ...; fi`, nunca mais uma atribuicao nua sob `set -eu` que abortava o
+# processo INTEIRO — exigencia explicita da propria tarefa 23.1.1, "o
+# chamador do drain continua absorvendo a falha sem quebrar a reconciliacao
+# de status"). O oraculo deste teste NAO pode mais ser "processo aborta"
+# (ambos original e mutante agora saem `exit 0`) — o sinal observavel que
+# sobrevive e que o mutante NUNCA chega a fazer a chamada de rede do R2
+# (json-build falha antes dela), enquanto o original faz exatamente 1 PUT
+# ao R2.
 scenario_mutation_17_3_6_phase_label_sec10() {
   cd "$TMPDIR_TEST" || return 1
   _write_full_config_mut
@@ -665,10 +673,14 @@ https://example.atlassian.net/rest/api/3/issue/DEMO-2|204|
 https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|"
 
   # -- controle: written_phase_label fora do padrao phase-N -> do_remove=no
-  # -> so --add-label phase-5 (charset ok) -> drain conclui exit 0 --
+  # -> so --add-label phase-5 (charset ok) -> drain conclui exit 0 com
+  # exatamente 1 PUT ao R2 --
   _bin=$(_make_curl_stub "$_mapa")
   assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
     "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  _ctrl_r2_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-2$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _ctrl_r2_puts=0
+  [ "$_ctrl_r2_puts" = "1" ] \
+    || { _fail "controle_r2_put" "esperado exatamente 1 PUT ao R2 no controle (add-label phase-5), obtido $_ctrl_r2_puts"; return 1; }
 
   # -- mutante: neutraliza a guarda SEC-10 (17.3.2) — aceita remover
   # QUALQUER written_phase_label, mesmo fora do padrao phase-N --
@@ -690,8 +702,17 @@ EOF2
   _bin2=$(_make_curl_stub "$_mapa")
   capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
     "$_sy" drain --feature demo
-  [ "$_CAPTURED_EXIT" != "0" ] \
-    || { _fail "mutant_exit" "esperado exit != 0 (regressao: SEC-10 tenta remover \"prioridade alta\", label fora do padrao phase-N), obtido $_CAPTURED_EXIT"; return 1; }
+  # r02 FASE 23 tarefa 23.1.1: o chamador do drain agora ABSORVE a falha de
+  # `_js_reconcile_phase_label` (nunca mais uma atribuicao nua sob
+  # `set -eu` que abortava TODO o processo) — o oraculo deste teste deixou
+  # de ser "processo aborta" (ambos original/mutante saem exit 0 agora) e
+  # passou a ser a AUSENCIA da chamada de rede do R2: `json-build` falha
+  # por SEC-1 ANTES de qualquer PUT ser tentado.
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_control_regressed" "drain deveria continuar saindo 0 (falha absorvida, tarefa 23.1.1); obtido $_CAPTURED_EXIT"; return 1; }
+  _mut_r2_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-2$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _mut_r2_puts=0
+  [ "$_mut_r2_puts" = "0" ] \
+    || { _fail "mutant_r2_should_not_happen" "esperado ZERO PUT ao R2 (regressao: SEC-10 neutralizada deveria falhar em json-build ANTES da chamada de rede, mas o R2 foi chamado $_mut_r2_puts vez(es))"; return 1; }
   return 0
 }
 

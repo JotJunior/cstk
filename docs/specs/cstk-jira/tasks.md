@@ -3188,8 +3188,40 @@ gravado `labels_enabled=off` depois do conflito, `overwrite` ainda emite
 checagem de `http_status` em `_js_reconcile_phase_label`, guarda de
 `labels_enabled` no ramo `overwrite`).
 
-- [ ] 23.1.1 Corrigir `_js_reconcile_phase_label` (`plugins/cstk-jira/scripts/jira-sync.sh`) conforme task 22.2.1: capturar o exit code real do R2 PUT (e do R3/R15 com `if !`) com `else` explicito, e tratar `http_status` nao-2xx do R2 (ex.: 400 em passthrough) como falha — imprime WRITTEN inalterado e retorna nao-zero; conferir que o chamador do drain (~linha 2862) continua absorvendo a falha sem quebrar a reconciliacao de status (hoje so compara o valor impresso)
-- [ ] 23.1.2 Guardar o ramo `overwrite` de `label_drift` em `_js_rebaseline_marker` por `labels_enabled=on` (mesma leitura de `jira-config.sh get labels_enabled`, default `on`), conforme data-model.md:406; com `off`, baseline vazia e ZERO `update.labels`
-- [ ] 23.1.3 Testes em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `overwrite` de `label_drift` com R2 => 403 e com R2 => 400 => `resolve` exit 1, ConflictRecord continua `pending`, nenhum R6 PUT; `labels_enabled=off` => nenhuma chamada R2 e marker sem `written_phase_label`; mutation (voltar a ler `$?` apos o `fi`) MUST falhar
+- [x] 23.1.1 Corrigir `_js_reconcile_phase_label` (`plugins/cstk-jira/scripts/jira-sync.sh`) conforme task 22.2.1: capturar o exit code real do R2 PUT (e do R3/R15 com `if !`) com `else` explicito, e tratar `http_status` nao-2xx do R2 (ex.: 400 em passthrough) como falha — imprime WRITTEN inalterado e retorna nao-zero; conferir que o chamador do drain (~linha 2862) continua absorvendo a falha sem quebrar a reconciliacao de status (hoje so compara o valor impresso)
+- [x] 23.1.2 Guardar o ramo `overwrite` de `label_drift` em `_js_rebaseline_marker` por `labels_enabled=on` (mesma leitura de `jira-config.sh get labels_enabled`, default `on`), conforme data-model.md:406; com `off`, baseline vazia e ZERO `update.labels`
+- [x] 23.1.3 Testes em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `overwrite` de `label_drift` com R2 => 403 e com R2 => 400 => `resolve` exit 1, ConflictRecord continua `pending`, nenhum R6 PUT; `labels_enabled=off` => nenhuma chamada R2 e marker sem `written_phase_label`; mutation (voltar a ler `$?` apos o `fi`) MUST falhar
+
+Nota de execucao (onda-023): 23.1.1 tambem expos uma segunda falha real —
+o chamador do drain (`_jspr_new_phase_label=$(_js_reconcile_phase_label
+...)`, ~linha 2904, sem guarda) e uma atribuicao NUA sob `set -eu`; ao
+corrigir o exit code da funcao (antes sempre 0), essa atribuicao passaria a
+abortar o `drain` INTEIRO no primeiro R2 que falhasse (medido:
+`sh -c 'set -eu; f(){ return 7; }; x=$(f); echo sobrevivi'` nunca imprime
+"sobrevivi") — regressao pior que o bug original. Corrigido com
+`if cmd; then :; else fallback=WRITTEN; fi` no proprio chamador (mesma
+convencao ja documentada em `_js_cmd_milestone_ensure`), com teste dedicado
+(`scenario_drain_reconcile_phase_label_r2_403_nao_aborta_drain_inteiro`).
+Isso tambem obsoletou o oraculo de `scenario_mutation_17_3_6_phase_label_
+sec10` (dependia do processo abortar sob `set -eu`; agora ambos original e
+mutante saem exit 0) — atualizado para verificar a AUSENCIA da chamada de
+rede do R2 no mutante (json-build falha por SEC-1 antes dela), oraculo
+estritamente mais forte (testa a garantia real, nao um efeito colateral).
+Suites (uma a uma, `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`): test_jira-sync
+110/110 (+3 tarefa 23.1.3 + 1 regressao do drain), test_jira-setup 41/41,
+test_jira-map 44/44, test_jira-config 36/36, test_jira-io 129/129,
+test_jira-mutation 17/17 (oraculo de 17.3.6 atualizado), test_jira-contract
+8/8, test_posttooluse-jira-sync 21/21.
+
+Achado adicional (registrado, NAO corrigido nesta onda — fora do escopo
+literal de 23.1, ver Decisao da onda-023): `_js_reconcile_epic_milestone`
+(FR-020/FR-021, milestone_drift) tem o MESMO padrao `if cmd; then ...; fi`
+sem `else` no seu R2 PUT (~linha 1712, pre-23.1.1) — `_jrem_ec=$?` lido
+apos o `fi` tambem sempre 0. Diferente de `_js_reconcile_phase_label`, essa
+funcao NAO foi tocada nesta onda (converge-report Round r02 Ciclo 3 ja
+dispositou milestone como "fechado no caminho feliz", residual LOW
+aceito via dec-081 para uma questao distinta — overwrite==keep_jira); o
+exit-code-capture bug em si nao havia sido detectado antes. Recomendado
+para o proximo ciclo de `converge`.
 
 <!-- converge-key: ee0f64ae8684 -->

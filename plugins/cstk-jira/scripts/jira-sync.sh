@@ -866,25 +866,37 @@ _js_rebaseline_marker() {
         # `_js_process_reconcile_event` usa) via `_js_reconcile_phase_label`
         # com WRITTEN="" — forca um `update.labels` so de `add` (SEC-10,
         # nunca remove label humano).
-        _jrm_tasks_script="$(_js_script_dir)/jira-tasks.sh"
-        _jrm_phase=$("$_jrm_tasks_script" items --feature "$_jrm_feature" 2>/dev/null \
-          | awk -F '\t' -v k="$_jrm_lkey" '$1 == k { print $3; exit }')
-        _jrm_phase_num=$(printf '%s' "$_jrm_phase" | awk '{print $2}')
-        case "$_jrm_phase_num" in
-          ''|*[!0-9]*) _jrm_phase_num="" ;;
-        esac
+        # 23.1.2 (data-model.md:406 "phase_label vazio para Epic ou
+        # labels_enabled=off"): mesma leitura de `jira-config.sh get
+        # labels_enabled` que `convert` (~2290) e `drain` (~3370) ja usam —
+        # com `off`, ZERO chamada R2/R3 e baseline vazia (achado 23.1: o
+        # ramo `overwrite` ignorava esta flag).
+        _jrm_dir="$(_js_script_dir)"
+        _jrm_config="$_jrm_dir/jira-config.sh"
+        _jrm_labels_enabled=$("$_jrm_config" get labels_enabled 2>/dev/null) || _jrm_labels_enabled="on"
+        [ -n "$_jrm_labels_enabled" ] || _jrm_labels_enabled="on"
         _jrm_written_phase_label=""
-        if [ -n "$_jrm_phase_num" ]; then
-          if _jrm_written_phase_label=$(_js_reconcile_phase_label "$_jrm_feature" "$_jrm_lkey" "$_jrm_jkey" "" "phase-$_jrm_phase_num"); then
-            :
-          else
-            printf '%s: falha ao reaplicar label phase-%s em %s (overwrite de label_drift, R2 PUT) — rebaseline abortado, tente novamente\n' \
-              "$_JS_NAME" "$_jrm_phase_num" "$_jrm_jkey" >&2
-            return 1
+        if [ "$_jrm_labels_enabled" = "on" ]; then
+          _jrm_tasks_script="$(_js_script_dir)/jira-tasks.sh"
+          _jrm_phase=$("$_jrm_tasks_script" items --feature "$_jrm_feature" 2>/dev/null \
+            | awk -F '\t' -v k="$_jrm_lkey" '$1 == k { print $3; exit }')
+          _jrm_phase_num=$(printf '%s' "$_jrm_phase" | awk '{print $2}')
+          case "$_jrm_phase_num" in
+            ''|*[!0-9]*) _jrm_phase_num="" ;;
+          esac
+          if [ -n "$_jrm_phase_num" ]; then
+            if _jrm_written_phase_label=$(_js_reconcile_phase_label "$_jrm_feature" "$_jrm_lkey" "$_jrm_jkey" "" "phase-$_jrm_phase_num"); then
+              :
+            else
+              printf '%s: falha ao reaplicar label phase-%s em %s (overwrite de label_drift, R2 PUT) — rebaseline abortado, tente novamente\n' \
+                "$_JS_NAME" "$_jrm_phase_num" "$_jrm_jkey" >&2
+              return 1
+            fi
           fi
         fi
-        # Epic (sem FASE numerica) ou coluna `phase` irreconhecivel: nenhum
-        # label a proteger — baseline vazia, mesmo resultado de `keep_jira`.
+        # labels_enabled=off, Epic (sem FASE numerica) ou coluna `phase`
+        # irreconhecivel: nenhum label a proteger — baseline vazia, mesmo
+        # resultado de `keep_jira`.
       else
         _jrm_written_phase_label=""
         _jrm_cur_labels=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.labels[]?')
@@ -1750,7 +1762,16 @@ _js_reconcile_phase_label() {
   # com mais `fields` no querystring).
   _jrpl_do_remove="no"
   if [ -n "$_jrpl_written" ]; then
-    if ! _jrpl_resp=$("$_jrpl_io" request GET "/rest/api/3/issue/$_jrpl_jkey?fields=labels" --op R3 2>/dev/null); then
+    # 23.1.1: `if ! VAR=$(cmd); then ec=$?; fi` sempre le 0 aqui — o `!`
+    # nega o status ANTES de `$?` ficar disponivel (POSIX; medido:
+    # `if ! sh -c 'exit 5'; then echo $?; fi` => 0), mascarando qualquer
+    # falha real do R3 GET (401/403/429/5xx). Forma corrigida: `if VAR=$
+    # (cmd); then :; else ec=$?; fi` (sem negacao) — preserva o exit code
+    # genuino de jira-io.sh, mesmo padrao ja documentado em
+    # `_js_cmd_milestone_ensure` (~1287).
+    if _jrpl_resp=$("$_jrpl_io" request GET "/rest/api/3/issue/$_jrpl_jkey?fields=labels" --op R3 2>/dev/null); then
+      :
+    else
       _jrpl_ec=$?
       printf '%s' "$_jrpl_written"
       return "$_jrpl_ec"
@@ -1791,14 +1812,35 @@ _js_reconcile_phase_label() {
   _jrpl_body_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2lblbody.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
   printf '%s' "$_jrpl_body" > "$_jrpl_body_file"
+  _jrpl_err_file=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r2lblerr.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  # 23.1.1: `else` explicito — ler "$?" DEPOIS de um `if cmd; then ...; fi`
+  # sem ramo `else` e SEMPRE 0 por definicao POSIX quando a condicao falha
+  # ("If no compound-list is executed, the exit status shall be zero"),
+  # mesmo padrao ja documentado em `_js_cmd_milestone_ensure` (~1287) —
+  # mascarava qualquer 403/401/429/5xx do R2 PUT. Alem disso, `--op R2` so
+  # classifica 401/403/429/5xx-deferred (jira-io.sh ~857-935); 400 fica em
+  # passthrough (exit 0, contracts/plugin-scripts.md 3.4) — sem checar
+  # `http_status` aqui, um 400 gravaria `written_phase_label` sem o label
+  # ter sido de fato aplicado (baseline falsa, achado 23.1/converge-report
+  # Round r02 Ciclo 3).
   if "$_jrpl_io" request PUT "/rest/api/3/issue/$_jrpl_jkey" \
-      --body-file "$_jrpl_body_file" --op R2 >/dev/null 2>/dev/null; then
-    rm -f "$_jrpl_body_file"
+      --body-file "$_jrpl_body_file" --op R2 >/dev/null 2>"$_jrpl_err_file"; then
+    _jrpl_ec=0
+  else
+    _jrpl_ec=$?
+  fi
+  rm -f "$_jrpl_body_file"
+  _jrpl_status=$(grep '^http_status=' "$_jrpl_err_file" | tail -n 1 | cut -d= -f2)
+  rm -f "$_jrpl_err_file"
+  case "$_jrpl_status" in
+    2??) : ;;
+    *) [ "$_jrpl_ec" -eq 0 ] && _jrpl_ec=1 ;;
+  esac
+  if [ "$_jrpl_ec" -eq 0 ]; then
     printf '%s' "$_jrpl_target"
     return 0
   fi
-  _jrpl_ec=$?
-  rm -f "$_jrpl_body_file"
   printf '%s' "$_jrpl_written"
   return "$_jrpl_ec"
 }
@@ -2859,8 +2901,23 @@ _js_process_reconcile_event() {
       esac
       _jspr_target_label=""
       [ -n "$_jspr_phase_num" ] && _jspr_target_label="phase-$_jspr_phase_num"
-      _jspr_new_phase_label=$(_js_reconcile_phase_label "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" \
-        "${_jspr_written_phase_label:-}" "$_jspr_target_label")
+      # 23.1.1: `_js_reconcile_phase_label` agora devolve exit code GENUINO
+      # (antes sempre 0, mesmo bug corrigido na propria funcao) — sob
+      # `set -eu`, uma atribuicao NUA `var=$(cmd)` aborta o script inteiro
+      # se `cmd` falhar (medido: `sh -c 'set -eu; f(){ return 7; }; x=$(f);
+      # echo sobrevivi'` nunca imprime "sobrevivi"). Absorve a falha
+      # (R2/R3/R15 do label) SEM abortar o drain inteiro: em falha a propria
+      # funcao imprime WRITTEN inalterado (convencao documentada no
+      # cabecalho), entao o fallback do `else` reproduz exatamente esse
+      # valor — o item so nao muda de fase nesta passada, proximo drain
+      # tenta de novo (mesma degradacao de `_js_reconcile_epic_milestone`
+      # acima, que ainda devolve sempre 0).
+      if _jspr_new_phase_label=$(_js_reconcile_phase_label "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" \
+        "${_jspr_written_phase_label:-}" "$_jspr_target_label"); then
+        :
+      else
+        _jspr_new_phase_label="${_jspr_written_phase_label:-}"
+      fi
       if [ "$_jspr_new_phase_label" != "${_jspr_written_phase_label:-}" ]; then
         _jspr_written_phase_label="$_jspr_new_phase_label"
         _jspr_phase_changed="yes"
