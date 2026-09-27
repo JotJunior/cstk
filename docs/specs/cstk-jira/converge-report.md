@@ -170,3 +170,38 @@ Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`: t
 
 Gate MUST: `extract-must --coverage` => 5 principios, `cobertura de MUST: ok`. Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T19:06:53Z; actionable=5; tasks-digest=09017c961b85 -->
+
+## Round r02 — Ciclo 5 (onda-027) — actionable
+
+Conferencia da FASE 24 no CODIGO e nos testes:
+
+| achado c4 | veredito | evidencia |
+|-----------|----------|-----------|
+| 24.1 | fechado (codigo) | `jira-sync.sh` `_js_reconcile_epic_milestone`: R2 com `else` explicito e `http_status` nao-2xx => falha (~1754-1770), WRITTEN inalterado. O chamador do drain (~2978-2987) esta guardado: exit 4 => `_JSPE_BREAK`, demais => `_jspr_had_deferred`. Cenarios 400/403/401 verdes. Mutantes medidos fora do repo: sem a checagem de `http_status`, o cenario 400 falha; com a atribuicao nua no chamador, os 3 cenarios falham. A parte de mutation da 24.1.3 nao existe no mutation suite (achado 25.2) |
+| 24.2 | fechado | `_js_process_one_event` le e repassa `written_fix_version_id`/`written_phase_label` (~3289-3290, ~3398-3399). `scenario_mutation_24_2_1` verde |
+| 24.3 | fechado | `_js_maybe_update_mapped_issue`: `http_status` nao-2xx do R2 => sem R6 (~2206-2216); carry-forward no R6 (~2240-2241). `scenario_mutation_24_3_1` verde |
+| 24.4 | fechado | `_js_cmd_links`: `active` so com `2??` (~1573-1589). Nao-2xx nao grava nada. `scenario_mutation_24_4_1` verde |
+| 24.5 | fechado | `_js_process_reconcile_event`: as duas chamadas a `items` estao guardadas (~2806-2826). `scenario_mutation_24_5_1` verde |
+
+Varredura de regressao da FASE 24:
+
+- **Leitura de `http_status` de escrita.** As 4 implementacoes (`phase_label` ~1878, `epic_milestone` ~1761, `maybe_update` ~2206, `cmd_links` ~1573) usam o mesmo parse (`grep '^http_status=' | tail -n 1 | cut -d= -f2`, `case 2??`). Nas tres de R2, o nao-2xx so promove exit 0 para 1 e preserva o exit 4. Nenhum caminho que classificava `auth_failed` deixou de classificar.
+- **Chamador de `_js_reconcile_phase_label`.** E o unico dos quatro cujo chamador (~3026-3031) descarta o exit code. Medido com um probe fora do repo: R2 de labels com 401 => evento `done`, sem `auth_failed`; com 403 => `done`, sem `deferred`. O marco do Epic, no mesmo drain, da `auth_failed`/`deferred`. Isso e anterior a FASE 24 (vem da guarda 23.1), mas ficou evidente com a 24.1.2, e o comentario do chamador (~3024-3025) ficou falso. Virou o achado 25.1.
+- **R6 PUT do marker.** Sao 6 sitios (~938, ~2246, ~2324, ~3055, ~3127, ~3406). Os 5 que regravam um marker existente carregam `written_fix_version_id`/`written_phase_label`; o de ~2324 e a criacao. Nenhum outro script faz PUT em properties, e `resolve`/`relink`/`convert` passam por esses mesmos sitios.
+- **24.4 com 400 deterministico.** Nao ha loop dentro de uma execucao: cada `links` faz um R17 por aresta e segue (`continue`). Entre execucoes, a aresta e retentada a cada `links`, sem estado persistido. O data-model de links (~465-479) so tem `active`/`stale`/`unrepresentable`, e `unrepresentable` exige prova (404/413/R16/sem ancora), entao nao ha estado para "erro permanente". No drain, a saida de `links` e descartada (~3152, `>/dev/null 2>&1`), e a aresta nao aparece em `links_active` nem em `links_unrepresentable`. O 400 do R17 e documentado como "comentario nao criado" (contracts/jira-rest.md:548), e o motor nunca envia `comment`. **Residual LOW aceito.**
+- **24.1.2 com 4xx deterministico.** O evento `reconcile` fica `deferred` indefinidamente. Os eventos de reconcile nao sao coalescidos no enqueue, entao cada `close_wave` soma mais um. O R4 com 403/400 ja se comportava assim antes da FASE 24, e o estado fica visivel como `deferred=N` no resumo. **Residual LOW aceito.**
+- **`_js_maybe_update_mapped_issue`.** Trata 401 como "item pulado" com diagnostico em stderr, e nao como `auth_failed` (~2088-2094, ~2213). O `convert` e acionado pelo operador e esse comportamento e anterior a FASE 24. **Residual LOW aceito.**
+
+| # | tipo | severidade | path | origem |
+|---|------|------------|------|--------|
+| 25.1 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (chamador de `_js_reconcile_phase_label` em `_js_process_reconcile_event`) | FR-016 / task 17.3.1 |
+| 25.2 | partial | HIGH | `tests/cstk/test_jira-mutation.sh` (mutantes 24.1.1/24.1.2) | FR-020 / task 24.1.3 |
+
+Severidades calculadas por `severity.sh`, com `must-violated=false` e US3 P1: contradicts+P1 => HIGH e partial+P1 => HIGH.
+
+Cobertura de FR-020..FR-025, de ponta a ponta: FR-021, FR-023 e FR-024 nao tem gap novo; FR-020 tem o codigo fechado e falta so o guard de mutation (25.2); FR-022 esta fechado no carry-forward e com gap de classificacao no chamador (25.1); FR-025 tem so o residual LOW acima.
+
+Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`: test_jira-sync 116/116, test_jira-mutation 22/22, test_jira-map 44/44, test_jira-setup 41/41, test_jira-config 36/36, test_jira-tasks 29/29, test_jira-io 129/129, test_posttooluse-jira-sync 21/21.
+
+Gate MUST: `extract-must --coverage` => 5 principios (I, II, III, IV, VI), `cobertura de MUST: ok`. Principio II honrado: `sqlite3` so aparece no texto de usage (~239). Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T20:34:26Z; actionable=2; tasks-digest=f820af305787 -->

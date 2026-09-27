@@ -3374,3 +3374,86 @@ fila.
 - [x] 24.5.2 Teste (stub): `tasks.md` ausente com `reconcile` + evento por item na fila => `drain` exit 0, diagnostico "permanece na fila", evento por item processado. Mutation: reverter para a atribuicao nua MUST falhar
 
 <!-- converge-key: 205fc7f5234e -->
+
+## FASE 25 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 5 (onda-027): os 5 achados da FASE 24 foram conferidos
+> no CODIGO e nos testes e estao fechados, sem regressao nos sitios que a
+> FASE 24 tocou. Sobram dois achados. O primeiro e a unica das 4
+> implementacoes de "status nao-2xx em escrita = falha" cujo chamador
+> ainda nao classifica o exit code. O segundo e a parte de mutation da
+> tarefa 24.1.3, que nao foi escrita.
+
+### 25.1 `_js_process_reconcile_event`: o chamador de `_js_reconcile_phase_label` descarta o exit code (401 vira `done` em vez de `auth_failed`; 403/429/5xx vira `done` em vez de `deferred`) `[C]`
+
+Ref: FR-016 / task 17.3.1 _js_process_reconcile_event phase-label caller · tipo: `contradicts` · severidade: `HIGH`
+
+Em `plugins/cstk-jira/scripts/jira-sync.sh` ~3026-3031, o drain chama
+`_js_reconcile_phase_label` dentro de `if var=$(...); then :; else ...; fi`,
+mas o `else` so restaura WRITTEN. Ele nao le o exit code e nao marca
+`_JSPE_BREAK` nem `_jspr_had_deferred`. Todos os outros sitios da mesma
+funcao seguem a convencao "exit 4 => `_JSPE_BREAK=yes` (auth_failed);
+demais => `_jspr_had_deferred=yes`": R6 GET, R5, R4, os dois R6 PUT e,
+desde a 24.1.2, o marco do Epic (~2978-2987). Desde a 23.1.1,
+`_js_reconcile_phase_label` repassa o exit code genuino do R3/R2 (~1822,
+~1887). Mesmo assim, o comentario do chamador (~3024-3025) ainda diz que
+`_js_reconcile_epic_milestone` "ainda devolve sempre 0", o que deixou de
+ser verdade na 24.1.
+
+Medido nesta onda com uma copia do cenario
+`scenario_drain_reconcile_phase_label_r2_403_nao_aborta_drain_inteiro`
+(probe fora do repo, trocando so o status do R2 PUT de labels):
+
+- R2 => 401: evento `e1` = `done`, 6 chamadas. Com o marco do Epic, o
+  mesmo 401 da `auth_failed` (`scenario_drain_reconcile_epic_milestone_r2_401_vira_auth_failed`).
+- R2 => 403: evento `e1` = `done`. No marco do Epic, o 403 da `deferred`.
+
+Consequencias:
+
+- FR-016: a credencial rejeitada nao e registrada. O drain segue fazendo
+  chamadas com ela, e o evento fecha como sucesso.
+- A troca de FASE fica pendente com o evento `done`. So o proximo
+  `close_wave` a tenta de novo. No ultimo `close_wave` da feature nao ha
+  proxima tentativa, e o label `phase-N` fica errado sem nenhum sinal.
+
+- [ ] 25.1.1 No chamador (~3026-3031), capturar o exit code no `else` e aplicar a mesma convencao do marco do Epic (~2978-2987): exit 4 => `_JSPE_BREAK=yes` + `break`; qualquer outro exit nao-zero => `_jspr_had_deferred=yes`. Manter o fallback para WRITTEN e a reconciliacao de status do MESMO item, que segue normalmente. Atualizar o comentario obsoleto (~3024-3025)
+- [ ] 25.1.2 Testes em `tests/cstk/test_jira-sync.sh` (stub de fila, mesmo arranjo do cenario 403 existente): R2 de labels => 401 => evento `e1` = `auth_failed`; R2 => 403 => `e1` = `deferred`; o cenario 403 existente passa a asserir o status do evento. Mutation em `tests/cstk/test_jira-mutation.sh`: remover a classificacao do `else` MUST falhar o cenario 401
+
+<!-- converge-key: 370e37737b53 -->
+
+### 25.2 Mutation suite: a parte de mutation da tarefa 24.1.3 (`_js_reconcile_epic_milestone` + chamador do drain) nao existe em `tests/cstk/test_jira-mutation.sh` `[C]`
+
+Ref: FR-020 / task 24.1.3 mutation _js_reconcile_epic_milestone · tipo: `partial` · severidade: `HIGH`
+
+A tarefa 24.1.3 (marcada `[x]`) exige dois mutantes em
+`tests/cstk/test_jira-mutation.sh`. O primeiro remove a checagem de
+`http_status` e MUST falhar o cenario 400. O segundo remove a guarda do
+chamador e MUST falhar o cenario 403. O arquivo tem 22 cenarios; os de
+24.x sao 24_1_4 (phase_label), 24_2_1, 24_3_1, 24_4_1 e 24_5_1. Nenhum
+cenario muta `_js_reconcile_epic_milestone` (~1761-1765) nem o chamador
+(~2978).
+
+Os cenarios de comportamento existem e discriminam. Medido nesta onda com
+duas copias mutadas do plugin fora do repo, rodando so os 3 cenarios 24.1
+de `test_jira-sync.sh`:
+
+- Mutante A troca `*) [ "$_jrem_ec" -eq 0 ] && _jrem_ec=1 ;;` por
+  `*) : ;;`. Falha o cenario 400; os cenarios 401 e 403 passam.
+- Mutante B volta o chamador para a atribuicao nua sob `set -eu`. Falha os
+  3 cenarios.
+
+Portanto so falta o guard de regressao que a tarefa declarou. Hoje nada
+impede que os cenarios 24.1 sejam enfraquecidos em silencio.
+
+- [ ] 25.2.1 Adicionar `scenario_mutation_24_1_1_reconcile_epic_milestone_http_status` (mutante A, com guarda `mutant_stale` para o padrao nao encontrado) e `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard` (mutante B: o `drain` MUST sair com exit != 0 no arranjo 403), no mesmo formato de `scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment`. Cada um com controle no plugin original e depois o mutante
+
+<!-- converge-key: 49dc741332b0 -->
