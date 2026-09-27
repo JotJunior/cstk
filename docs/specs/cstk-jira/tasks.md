@@ -3425,8 +3425,8 @@ Consequencias:
   `close_wave` a tenta de novo. No ultimo `close_wave` da feature nao ha
   proxima tentativa, e o label `phase-N` fica errado sem nenhum sinal.
 
-- [ ] 25.1.1 No chamador (~3026-3031), capturar o exit code no `else` e aplicar a mesma convencao do marco do Epic (~2978-2987): exit 4 => `_JSPE_BREAK=yes` + `break`; qualquer outro exit nao-zero => `_jspr_had_deferred=yes`. Manter o fallback para WRITTEN e a reconciliacao de status do MESMO item, que segue normalmente. Atualizar o comentario obsoleto (~3024-3025)
-- [ ] 25.1.2 Testes em `tests/cstk/test_jira-sync.sh` (stub de fila, mesmo arranjo do cenario 403 existente): R2 de labels => 401 => evento `e1` = `auth_failed`; R2 => 403 => `e1` = `deferred`; o cenario 403 existente passa a asserir o status do evento. Mutation em `tests/cstk/test_jira-mutation.sh`: remover a classificacao do `else` MUST falhar o cenario 401
+- [x] 25.1.1 No chamador (~3026-3031), capturar o exit code no `else` e aplicar a mesma convencao do marco do Epic (~2978-2987): exit 4 => `_JSPE_BREAK=yes` + `break`; qualquer outro exit nao-zero => `_jspr_had_deferred=yes`. Manter o fallback para WRITTEN e a reconciliacao de status do MESMO item, que segue normalmente. Atualizar o comentario obsoleto (~3024-3025)
+- [x] 25.1.2 Testes em `tests/cstk/test_jira-sync.sh` (stub de fila, mesmo arranjo do cenario 403 existente): R2 de labels => 401 => evento `e1` = `auth_failed`; R2 => 403 => `e1` = `deferred`; o cenario 403 existente passa a asserir o status do evento. Mutation em `tests/cstk/test_jira-mutation.sh`: remover a classificacao do `else` MUST falhar o cenario 401
 
 <!-- converge-key: 370e37737b53 -->
 
@@ -3454,6 +3454,6 @@ de `test_jira-sync.sh`:
 Portanto so falta o guard de regressao que a tarefa declarou. Hoje nada
 impede que os cenarios 24.1 sejam enfraquecidos em silencio.
 
-- [ ] 25.2.1 Adicionar `scenario_mutation_24_1_1_reconcile_epic_milestone_http_status` (mutante A, com guarda `mutant_stale` para o padrao nao encontrado) e `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard` (mutante B: o `drain` MUST sair com exit != 0 no arranjo 403), no mesmo formato de `scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment`. Cada um com controle no plugin original e depois o mutante
+- [x] 25.2.1 Adicionar `scenario_mutation_24_1_1_reconcile_epic_milestone_http_status` (mutante A, com guarda `mutant_stale` para o padrao nao encontrado) e `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard` (mutante B: o `drain` MUST sair com exit != 0 no arranjo 403), no mesmo formato de `scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment`. Cada um com controle no plugin original e depois o mutante
 
 <!-- converge-key: 49dc741332b0 -->

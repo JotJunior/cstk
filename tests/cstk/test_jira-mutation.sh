@@ -825,6 +825,200 @@ EOF2
   return 0
 }
 
+# scenario_mutation_24_1_1_reconcile_epic_milestone_http_status — r02 FASE
+# 25 tarefa 25.2.1 (achado 25.2: a parte de mutation da tarefa 24.1.3 nunca
+# foi escrita). Mutante A: mira DIRETAMENTE a checagem de `http_status` de
+# `_js_reconcile_epic_milestone` (jira-sync.sh, `case "$_jrem_status" in
+# 2??) : ;; *) [ "$_jrem_ec" -eq 0 ] && _jrem_ec=1 ;; esac`, adicionada na
+# 24.1.1) — mesmo idioma de 24.1.4 (equivalente para
+# `_js_reconcile_phase_label`), agora para o marco do Epic. Com o R2
+# (update.fixVersions) respondendo 400 (passthrough, exit 0 em jira-io.sh —
+# `--op R2` so classifica 401/403/429/5xx), o original propaga a falha
+# (written_fix_version_id inalterado, ZERO R6 PUT do marker do Epic); o
+# mutante grava o id novo como se o marco tivesse sido de fato aplicado
+# (baseline falsa) e regrava o marker via R6 PUT — sinal observavel: 1 PUT
+# extra as properties da issue do Epic.
+scenario_mutation_24_1_1_reconcile_epic_milestone_http_status() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r01"}}
+EOF
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf 'demo\tepic\t20001\tDEMO-1\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _sha_epic=$(printf '%s' "demo" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-1?fields=summary,status|200|{\"fields\":{\"summary\":\"demo\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}
+https://example.atlassian.net/rest/api/3/project/DEMO|200|{\"id\":\"10000\",\"key\":\"DEMO\"}
+https://example.atlassian.net/rest/api/3/project/DEMO/versions|200|[{\"id\":\"30002\",\"name\":\"demo-r02\"}]
+https://example.atlassian.net/rest/api/3/issue/DEMO-1|400|{\"errorMessages\":[\"invalid body\"]}"
+
+  # -- controle: R2 responde 400 (passthrough exit 0); a checagem de
+  # http_status converte em falha -> WRITTEN inalterado, ZERO R6 PUT do
+  # marker do Epic (mesmo idioma do cenario 400 em test_jira-sync.sh) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  _ctrl_props_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _ctrl_props_puts=0
+  [ "$_ctrl_props_puts" = "0" ] \
+    || { _fail "controle_marker_put" "esperado ZERO PUT ao marker do Epic no controle (R2 400 deveria propagar falha, sem regravar o marker), obtido $_ctrl_props_puts"; return 1; }
+
+  # -- mutante: neutraliza a checagem de http_status (case "$_jrem_status"
+  # in 2??) : ;; *) [ "$_jrem_ec" -eq 0 ] && _jrem_ec=1 ;; esac) — um R2 em
+  # passthrough (exit 0) volta a ser tratado como sucesso independente do
+  # http_status observado --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF '    *) [ "$_jrem_ec" -eq 0 ] && _jrem_ec=1 ;;' "$_sy" \
+    || { _fail "mutant_stale" "checagem de http_status de _js_reconcile_epic_milestone nao encontrada — repo mudou"; return 1; }
+  sed 's/    \*) \[ "\$_jrem_ec" -eq 0 \] && _jrem_ec=1 ;;/    *) : ;;/' "$_sy" > "$_sy.mut" && mv "$_sy.mut" "$_sy"
+  grep -qF '    *) [ "$_jrem_ec" -eq 0 ] && _jrem_ec=1 ;;' "$_sy" \
+    && { _fail "mutant_apply" "sed nao aplicou a mutacao de http_status"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja marcou o evento done/deferred).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" = "0" ] \
+    || { _fail "mutant_exit" "drain deveria continuar saindo 0 (mutante nao introduz abort), obtido $_CAPTURED_EXIT"; return 1; }
+  _mut_props_puts=$(grep -c '^PUT https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync$' "$TMPDIR_TEST/io-curl-calls.log" 2>/dev/null) || _mut_props_puts=0
+  [ "$_mut_props_puts" = "1" ] \
+    || { _fail "mutant_marker_put_missing" "esperado 1 PUT ao marker do Epic no mutante (regressao: 400 em passthrough tratado como sucesso, baseline falsa gravada), obtido $_mut_props_puts"; return 1; }
+  return 0
+}
+
+# scenario_mutation_24_1_2_drain_epic_milestone_caller_guard — r02 FASE 25
+# tarefa 25.2.1 (achado 25.2). Mutante B: reverte o chamador do drain
+# (jira-sync.sh ~2978-2988, adicionado na 24.1.2) para a atribuicao NUA
+# original sob `set -eu`
+# (`_jspr_new_fixver=$(_js_reconcile_epic_milestone ...)`, sem guarda
+# if/else). Mesmo idioma de 24.5.1 (python3, mutacao multi-linha). Com o R2
+# (update.fixVersions) do Epic respondendo 403 (exit 7, jira-io.sh
+# classifica `--op R2`), o original absorve a falha (`_jspr_had_deferred=
+# yes`, drain sai 0, Task 1.1 mapeada segue sendo reconciliada
+# normalmente); o mutante aborta o `drain` INTEIRO no primeiro Epic que
+# falhar — a Task 1.1 nunca chega a ser processada (mesma regressao do bug
+# 24.1 original, exit 7 propagado ao inves de exit 0).
+scenario_mutation_24_1_2_drain_epic_milestone_caller_guard() {
+  cd "$TMPDIR_TEST" || return 1
+  _write_full_config_mut
+  _write_credential
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/demo/rounds/r01"
+  cat > "$TMPDIR_TEST/.claude/feature-00c-state/demo/state.json" <<'EOF'
+{"previous_round":{"round":"r01"}}
+EOF
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  cat > "$TMPDIR_TEST/docs/specs/demo/tasks.md" <<'EOF'
+## FASE 1 - Sincronizacao `[A]`
+
+### 1.1 Titulo da tarefa `[A]`
+
+- [x] 1.1.1 Sub um
+EOF
+  printf 'local_key\tkind\tjira_id\tjira_key\tstate\n' > "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf 'demo\tepic\t20001\tDEMO-1\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+  printf '1.1\ttask\t20002\tDEMO-2\tactive\n' >> "$TMPDIR_TEST/docs/specs/demo/jira-map.tsv"
+
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _sha_epic=$(printf '%s' "demo" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$ORIG_PLUGIN_DIR/scripts/jira-io.sh" sha256-stdin)
+  _mapa="https://example.atlassian.net/rest/api/3/issue/DEMO-1?fields=summary,status|200|{\"fields\":{\"summary\":\"demo\",\"status\":{\"name\":\"Done\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-1/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}
+https://example.atlassian.net/rest/api/3/project/DEMO|200|{\"id\":\"10000\",\"key\":\"DEMO\"}
+https://example.atlassian.net/rest/api/3/project/DEMO/versions|200|[{\"id\":\"30002\",\"name\":\"demo-r02\"}]
+https://example.atlassian.net/rest/api/3/issue/DEMO-1|403|{\"errorMessages\":[\"forbidden\"]}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2?fields=summary,status|200|{\"fields\":{\"summary\":\"Titulo da tarefa\",\"status\":{\"name\":\"To Do\"}}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/properties/cstk-jira.sync|200|{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"To Do\"}}
+https://example.atlassian.net/rest/api/3/issue/DEMO-2/transitions|200|{\"transitions\":[{\"id\":\"31\",\"to\":{\"name\":\"Done\"}}]}"
+
+  # -- controle: R2 do Epic responde 403 (exit 7); a guarda absorve a
+  # falha (deferred) e a Task 1.1 segue sendo reconciliada (R4 transiciona
+  # To Do -> Done) --
+  _bin=$(_make_curl_stub "$_mapa")
+  assert_exit 0 env PATH="$_bin:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$ORIG_PLUGIN_DIR/scripts/jira-sync.sh" drain --feature demo || return 1
+  grep -qE '^POST https://example.atlassian.net/rest/api/3/issue/DEMO-2/transitions$' "$TMPDIR_TEST/io-curl-calls.log" \
+    || { _fail "controle_task_transition" "controle: Task 1.1 deveria transicionar (R4) apesar da falha do R2 do Epic"; return 1; }
+
+  # -- mutante: reverte o chamador (~2978-2988) para a atribuicao NUA
+  # original sob `set -eu` --
+  _mp=$(_mut_copy_plugin)
+  _sy="$_mp/scripts/jira-sync.sh"
+  grep -qF 'if _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}"); then' "$_sy" \
+    || { _fail "mutant_stale" "guarda 24.1.2 (chamador do marco do Epic) nao encontrada — repo mudou"; return 1; }
+  python3 - "$_sy" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = '''      if _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}"); then
+        :
+      else
+        _jspr_mil_ec=$?
+        _jspr_new_fixver="${_jspr_written_fixver:-}"
+        if [ "$_jspr_mil_ec" -eq 4 ]; then
+          _JSPE_BREAK="yes"
+          break
+        fi
+        _jspr_had_deferred="yes"
+      fi'''
+new = '''      _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}")'''
+assert old in content, "padrao 24.1.2 (chamador do marco do Epic) nao encontrado no source"
+content = content.replace(old, new, 1)
+with open(path, "w") as f:
+    f.write(content)
+PYEOF
+  _py_rc=$?
+  [ "$_py_rc" = "0" ] \
+    || { _fail "mutant_apply" "python3 falhou ao reverter a guarda 24.1.2 para atribuicao nua (rc=$_py_rc)"; return 1; }
+  grep -qF 'if _jspr_new_fixver=$(_js_reconcile_epic_milestone "$_jsd_feature" "$_jspr_jkey" "${_jspr_written_fixver:-}"); then' "$_sy" \
+    && { _fail "mutant_apply" "guarda 24.1.2 ainda presente apos a mutacao"; return 1; }
+  chmod +x "$_sy"
+
+  # outbox precisa ser reenfileirado (o controle ja marcou o evento done).
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/runtime/outbox.tsv" <<'EOF2'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF2
+
+  _bin2=$(_make_curl_stub "$_mapa")
+  capture env PATH="$_bin2:$PATH" XDG_CONFIG_HOME="$TMPDIR_TEST/xdg" \
+    "$_sy" drain --feature demo
+  [ "$_CAPTURED_EXIT" != "0" ] \
+    || { _fail "mutant_regression" "regressao: drain deveria abortar (exit != 0) com a atribuicao nua sob set -eu — bug 24.1 reintroduzido, obtido exit 0"; return 1; }
+  grep -qE '^POST https://example.atlassian.net/rest/api/3/issue/DEMO-2/transitions$' "$TMPDIR_TEST/io-curl-calls.log" \
+    && { _fail "mutant_task_transition" "regressao: Task 1.1 NAO deveria ter sido alcancada (drain deveria abortar no Epic antes de chegar la)"; return 1; }
+  return 0
+}
+
 # scenario_mutation_24_2_1_process_one_event_carryforward — r02 FASE 24
 # tarefa 24.2.1/24.2.2 (achado 24.2): mira as 2 linhas de carry-forward de
 # `_js_process_one_event` que repassam `written_fix_version_id`/

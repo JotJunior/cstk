@@ -3943,6 +3943,14 @@ EOF
 # nenhum R6 PUT do marker) — mutation (remover o guard `if cmd; then :;
 # else ...; fi` ao redor da chamada, voltando a atribuicao nua) MUST falhar
 # este teste (drain sairia com o exit code do R2, 7, em vez de 0).
+#
+# r02 FASE 25 tarefa 25.1.1/25.1.2 (achado 25.1): ate aqui o `else` so
+# restaurava WRITTEN e nao classificava o exit code — o evento `e1` fechava
+# `done` mesmo com o R2 de labels tendo falhado com 403 (permissao
+# insuficiente), quando deveria ficar `deferred` (mesma convencao do marco
+# do Epic, task 24.1). A asserção de status abaixo cobre a correcao;
+# mutation (voltar o `else` a so restaurar WRITTEN, sem classificar) MUST
+# falhar esta asercao.
 scenario_drain_reconcile_phase_label_r2_403_nao_aborta_drain_inteiro() {
   _write_full_config
   _write_credential
@@ -3978,6 +3986,57 @@ EOF
     || { _fail "sy_drain_r2_403_calls" "esperado 6 chamadas (2 epic idempotente + 4 task: R3/R6get/R15/R2-403, SEM R6-PUT), obtido $(_queue_calls_count)"; return 1; }
   grep -qE '^PUT .*properties' "$TMPDIR_TEST/queue-curl-calls.log" \
     && { _fail "sy_drain_r2_403_no_marker_put" "R6 PUT do marker NAO deveria ocorrer apos falha do R2 (fase nao mudou nesta passada)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'deferred$' \
+    || { _fail "sy_drain_r2_403_deferred" "evento e1 deveria ficar deferred (label pendente, achado 25.1), obtido: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
+  return 0
+}
+
+# r02 FASE 25 tarefa 25.1.1/25.1.2 (achado 25.1): mesmo cenario acima, mas o
+# R2 PUT (update.labels) falha com 401 — credencial rejeitada. Antes da
+# 25.1.1, o `else` do chamador nunca via o exit code: o evento `e1` fechava
+# `done` com a credencial invalida ja descartada silenciosamente (FR-016
+# violado). Corrigido, exit 4 => `_JSPE_BREAK=yes` + `break` (mesma
+# convencao do marco do Epic, task 24.1.2): nenhuma chamada nova ocorre
+# apos o R2, e o evento vira `auth_failed`. Mutation (remover a
+# classificacao do `else`, deixando so o fallback de WRITTEN) MUST falhar
+# este teste (evento fecharia `done` em vez de `auth_failed`).
+scenario_drain_reconcile_phase_label_r2_401_vira_auth_failed() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:00:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # Epic (DEMO-1): idempotente puro (2 chamadas), igual ao cenario 403.
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  # Task (DEMO-2): R3 + R6-GET (written_phase_label=phase-3) + R15 (labels
+  # atuais: phase-3 + humano) -- ate aqui identico ao cenario 403.
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  _queue_push 200 '{"fields":{"labels":["phase-3","prioridade-alta"]}}'
+  # R2 (update.labels remove/add) falha com 401 -- credencial rejeitada.
+  _queue_push 401 '{"errorMessages":["unauthorized"]}'
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "6" ] \
+    || { _fail "sy_drain_r2_401_calls" "esperado exatamente 6 chamadas (sem retry, sem links apos auth_failed), obtido $(_queue_calls_count)"; return 1; }
+  grep -qE '^PUT .*properties' "$TMPDIR_TEST/queue-curl-calls.log" \
+    && { _fail "sy_drain_r2_401_no_marker_put" "R6 PUT do marker NAO deveria ocorrer apos falha do R2 (auth_failed)"; return 1; }
+  awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'auth_failed$' \
+    || { _fail "sy_drain_r2_401_auth_failed" "evento e1 nao virou auth_failed: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
   return 0
 }
 

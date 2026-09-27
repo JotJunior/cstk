@@ -3012,7 +3012,7 @@ _js_process_reconcile_event() {
       esac
       _jspr_target_label=""
       [ -n "$_jspr_phase_num" ] && _jspr_target_label="phase-$_jspr_phase_num"
-      # 23.1.1: `_js_reconcile_phase_label` agora devolve exit code GENUINO
+      # 23.1.1: `_js_reconcile_phase_label` devolve exit code GENUINO
       # (antes sempre 0, mesmo bug corrigido na propria funcao) — sob
       # `set -eu`, uma atribuicao NUA `var=$(cmd)` aborta o script inteiro
       # se `cmd` falhar (medido: `sh -c 'set -eu; f(){ return 7; }; x=$(f);
@@ -3021,13 +3021,24 @@ _js_process_reconcile_event() {
       # funcao imprime WRITTEN inalterado (convencao documentada no
       # cabecalho), entao o fallback do `else` reproduz exatamente esse
       # valor — o item so nao muda de fase nesta passada, proximo drain
-      # tenta de novo (mesma degradacao de `_js_reconcile_epic_milestone`
-      # acima, que ainda devolve sempre 0).
+      # tenta de novo. 25.1.1: o chamador agora CLASSIFICA o exit code, na
+      # mesma convencao do marco do Epic acima (~2978-2988) e de todos os
+      # outros sitios da funcao (R6 GET, R5, R4, os dois R6 PUT): exit 4 =>
+      # `_JSPE_BREAK=yes` + `break` (auth_failed, FR-016 — credencial
+      # rejeitada nao pode seguir sendo usada silenciosamente); qualquer
+      # outro exit nao-zero => `_jspr_had_deferred=yes`, para o evento
+      # `reconcile` nao fechar `done` com o label ainda desatualizado.
       if _jspr_new_phase_label=$(_js_reconcile_phase_label "$_jsd_feature" "$_jspr_lkey" "$_jspr_jkey" \
         "${_jspr_written_phase_label:-}" "$_jspr_target_label"); then
         :
       else
+        _jspr_phl_ec=$?
         _jspr_new_phase_label="${_jspr_written_phase_label:-}"
+        if [ "$_jspr_phl_ec" -eq 4 ]; then
+          _JSPE_BREAK="yes"
+          break
+        fi
+        _jspr_had_deferred="yes"
       fi
       if [ "$_jspr_new_phase_label" != "${_jspr_written_phase_label:-}" ]; then
         _jspr_written_phase_label="$_jspr_new_phase_label"
