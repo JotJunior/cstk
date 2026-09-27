@@ -3505,3 +3505,92 @@ enfraquecidas em silencio.
 - [x] 26.1.1 Adicionar `scenario_mutation_25_1_1_drain_phase_label_caller_classification` em `tests/cstk/test_jira-mutation.sh`, no mesmo formato de `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard`: guarda `mutant_stale` (padrao `_jspr_phl_ec=$?` nao encontrado), mutacao multi-linha via python3 que remove a classificacao e mantem so o fallback de WRITTEN, checagem de que a mutacao foi aplicada, controle no plugin original com R2 de labels => 401 (evento `e1` = `auth_failed`) e o mutante com o outbox reenfileirado (evento `e1` MUST NOT ser `auth_failed`)
 
 <!-- converge-key: cf6d28c3a99b -->
+
+## FASE 27 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 7 (onda-031): o achado 26.1 esta fechado. A varredura
+> de fechamento (tarefas `[x]` das FASES 15-26 que declaram mutation)
+> achou 4 tarefas cuja parte de mutation nunca virou cenario persistente,
+> nem em `tests/cstk/test_jira-mutation.sh` nem na suite indicada pela
+> tarefa (`tests/cstk/test_jira-sync.sh` nao tem nenhum cenario de
+> mutacao). Mesma classe do 25.2 e do 26.1. Os 4 cenarios de
+> comportamento discriminam hoje: medido nesta onda com copias mutadas do
+> plugin fora do repo (`REPO_ROOT` apontando para a copia, so o cenario
+> pelo `_SCENARIOS` do harness), original `ok` e mutante `not ok` nos 4.
+> Falta so o guard de regressao, no formato ja usado pelos cenarios
+> `scenario_mutation_*` (guarda `mutant_stale`, checagem de que a mutacao
+> foi aplicada, controle no original antes do mutante).
+
+### 27.1 Mutation suite: a parte de mutation da tarefa 21.1.2 (carry-forward de `_js_rebaseline_marker`) nao existe `[C]`
+
+Ref: FR-022 / task 21.1.2 mutation _js_rebaseline_marker carry-forward · tipo: `partial` · severidade: `HIGH`
+
+A tarefa 21.1.2 (marcada `[x]`) exige: "mutation (remover o carry-forward)
+MUST falhar o teste". O comentario do cenario
+`scenario_resolve_keep_jira_fecha_registro_e_encerra_evento_conflict_do_outbox`
+(`tests/cstk/test_jira-sync.sh` ~1359-1364) repete o oraculo, mas nenhum
+cenario o executa. Mutante medido: em `plugins/cstk-jira/scripts/jira-sync.sh`
+~829-830, trocar a leitura de `written_fix_version_id`/`written_phase_label`
+do R6 GET por atribuicao vazia => o cenario passa de `ok` para `not ok`.
+
+- [ ] 27.1.1 Adicionar `scenario_mutation_21_1_2_rebaseline_marker_carryforward` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (as 2 linhas `json-get '.value.written_fix_version_id? // ""'`/`'.value.written_phase_label? // ""'` de `_js_rebaseline_marker` nao encontradas), mutacao que as troca por atribuicao vazia, checagem de que a mutacao foi aplicada, controle no plugin original (`resolve --choice keep_jira` de um `manual_edit` com marker contendo as 2 chaves => corpo do R6 PUT preserva as 2) e o mutante (corpo do R6 PUT MUST NOT conter as 2 chaves)
+
+<!-- converge-key: a929b705f52b -->
+
+### 27.2 Mutation suite: a parte de mutation da tarefa 21.2.2 (R17 404 sem cascata em `_js_cmd_links`) nao existe `[C]`
+
+Ref: FR-025 / task 21.2.2 mutation _js_cmd_links R17 404 sem cascata · tipo: `partial` · severidade: `HIGH`
+
+A tarefa 21.2.2 (marcada `[x]`) exige: "mutation (reintroduzir a cascata)
+MUST falhar". Nenhum cenario de mutacao cobre o ramo `_jsl_r17_ec -eq 7`
+de `_js_cmd_links` (`plugins/cstk-jira/scripts/jira-sync.sh` ~1591-1614).
+Mutante medido: trocar `_jsl_reason="visibility_or_disabled"` (~1607) por
+`_jsl_reason="linking_disabled"; _jsl_linking_disabled="yes"` =>
+`scenario_links_404_r17_isolado_vira_unrepresentable_por_aresta_sem_cascata`
+(`tests/cstk/test_jira-sync.sh` ~4519) passa de `ok` para `not ok`.
+
+- [ ] 27.2.1 Adicionar `scenario_mutation_21_2_2_links_r17_404_sem_cascata` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (`_jsl_reason="visibility_or_disabled"` nao encontrado), mutacao que reintroduz a cascata (seta `_jsl_linking_disabled="yes"` no ramo do 404 de R17), checagem de que a mutacao foi aplicada, controle no original (3 arestas, R16 200, R17 da 1a aresta 404 e das demais 201 => 1 `unrepresentable` + 2 `active`) e o mutante (MUST NOT resultar em 2 `active`)
+
+<!-- converge-key: af4ba7c8e617 -->
+
+### 27.3 Mutation suite: a parte de mutation da tarefa 22.1.3 (guarda `blocked` de `milestone ensure`) nao existe `[C]`
+
+Ref: FR-020 / task 22.1.3 mutation _js_cmd_milestone_ensure blocked guard · tipo: `partial` · severidade: `HIGH`
+
+A tarefa 22.1.3 (marcada `[x]`) exige: "mutation (remover o guard) MUST
+falhar". O comentario de SY-92 (`tests/cstk/test_jira-sync.sh`
+~3344-3349) repete o oraculo, mas nenhum cenario o executa. Mutante
+medido: em `plugins/cstk-jira/scripts/jira-sync.sh` ~1270, trocar
+`if [ "$_jsme_blocked_state" = "blocked" ]; then` por `if false; then` =>
+`scenario_milestone_ensure_blocked_repetido_zero_chamadas` (~3350) passa
+de `ok` para `not ok`.
+
+- [ ] 27.3.1 Adicionar `scenario_mutation_22_1_3_milestone_ensure_blocked_guard` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (condicao `"$_jsme_blocked_state" = "blocked"` nao encontrada), mutacao que neutraliza a guarda, checagem de que a mutacao foi aplicada, controle no original (2a `ensure` com sidecar `blocked` => exit 7 e 0 chamadas ao stub) e o mutante (2a `ensure` MUST NOT sair exit 7 com 0 chamadas)
+
+<!-- converge-key: f571448fd758 -->
+
+### 27.4 Mutation suite: a parte de mutation da tarefa 22.2.2 (`overwrite` de `label_drift` reaplica a FASE local) nao existe `[C]`
+
+Ref: FR-022 / task 22.2.2 mutation _js_rebaseline_marker overwrite label_drift · tipo: `partial` · severidade: `HIGH`
+
+A tarefa 22.2.2 (marcada `[x]`) exige: "mutation (voltar a re-derivar sob
+`overwrite`) MUST falhar". Nenhum cenario de mutacao cobre o ramo
+`overwrite` de `label_drift` em `_js_rebaseline_marker`
+(`plugins/cstk-jira/scripts/jira-sync.sh` ~861). Mutante medido: trocar
+`if [ "$_jrm_choice" = "overwrite" ]; then` por `if false; then` (os dois
+choices caem na re-derivacao de `keep_jira`) =>
+`scenario_resolve_overwrite_label_drift_sem_phase_reaplica_fase_local`
+(`tests/cstk/test_jira-sync.sh` ~4165) passa de `ok` para `not ok`.
+
+- [ ] 27.4.1 Adicionar `scenario_mutation_22_2_2_overwrite_label_drift_reaplica_fase_local` em `tests/cstk/test_jira-mutation.sh`: guarda `mutant_stale` (`if [ "$_jrm_choice" = "overwrite" ]; then` nao encontrado), mutacao que faz o `overwrite` voltar a re-derivar, checagem de que a mutacao foi aplicada, controle no original (issue sem `phase-*` + `resolve --choice overwrite` => `update.labels` com `add` do `phase-<N>` local e marker com `written_phase_label`) e o mutante (MUST NOT emitir o R2 de `add` nem gravar `written_phase_label`)
+
+<!-- converge-key: 586da1a6bebe -->

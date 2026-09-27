@@ -246,3 +246,79 @@ Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`: t
 
 Gate MUST: `extract-must --coverage` => 5 principios, 0 so por heading, `cobertura de MUST: ok`. Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T21:09:47Z; actionable=1; tasks-digest=d39413f3a9d5 -->
+
+## Round r02 — Ciclo 7 (onda-031) — actionable
+
+Conferencia da FASE 26 no CODIGO e nos testes:
+
+| achado c6 | veredito | evidencia |
+|-----------|----------|-----------|
+| 26.1 | fechado | `test_jira-mutation.sh`: `scenario_mutation_25_1_1_drain_phase_label_caller_classification` (~1038-1138). Guarda `mutant_stale` (~1087-1088, padrao `_jspr_phl_ec=$?`). Mutacao multi-linha via python3 com `assert old in content` (~1089-1116). Checagem de aplicacao (~1117-1121: rc do python3 e `_jspr_phl_ec=$?` ausente). Controle no original (~1074-1081: 6 chamadas e `e1` = `auth_failed`). Mutante com outbox reenfileirado (~1124-1136: `e1` MUST NOT ser `auth_failed`). O padrao da mutacao casa o bloco real de `jira-sync.sh` ~3031-3041. Suite 25/25 nesta onda, `ok 20` e este cenario. A onda-030 so tocou `tasks.md` e `test_jira-mutation.sh` (`git diff --stat aaf077e c16995c`); `plugins/cstk-jira/scripts/*` nao mudou |
+
+Varredura de fechamento: tarefas `[x]` das FASES 15-26 que exigem mutation, com o cenario correspondente.
+
+| tarefa | cenario | suite |
+|--------|---------|-------|
+| 16.1.5 | `scenario_mutation_16_1_5_validate_version_name_allowlist` | test_jira-mutation |
+| 16.2.5 | `scenario_mutation_16_2_5_milestone_round_divergence_check` | test_jira-mutation |
+| 16.3.7 | `scenario_mutation_16_3_7_milestone_put_current_downgrade` | test_jira-mutation |
+| 16.4.7 | `scenario_mutation_16_4_7_milestone_id_known_sec10` | test_jira-mutation |
+| 17.1.4 | `scenario_mutation_17_1_4_label_allowlist` | test_jira-mutation |
+| 17.3.6 | `scenario_mutation_17_3_6_phase_label_sec10` | test_jira-mutation |
+| 18.1.4 | `scenario_mutation_18_1_4_check_link_type_membership` | test_jira-mutation |
+| 18.2.4 | `scenario_mutation_18_2_4_resolve_link_type_ambiguity_picks_first` | test_jira-mutation |
+| 18.3.5 | `scenario_mutation_18_3_5_link_put_stale_never_disappears` | test_jira-mutation |
+| 18.4.7 | `scenario_mutation_18_4_7_links_idempotency_skips_active` | test_jira-mutation |
+| 19.1.8 / 19.1.9 | `scenario_mutation_19_1_9_sec9_uso_unico` | test_jira-mutation |
+| 19.2.4 | `scenario_mutation_19_2_4_project_create_dupla_condicao` | test_jira-mutation |
+| 20.1.5 | `scenario_mutation_20_1_5_resolve_path_grava_na_principal` | test_jira-config |
+| 21.1.2 | **ausente** | nenhuma |
+| 21.2.2 | **ausente** | nenhuma |
+| 21.4.2 | `scenario_mutation_21_4_2_remove_enum_check_fails` | test_jira-config |
+| 21.5.3 | `scenario_mutation_21_5_3_check_field_support_ignora_stdin` | test_jira-setup |
+| 22.1.3 | **ausente** | nenhuma |
+| 22.2.2 | **ausente** | nenhuma |
+| 23.1.3 | oraculo declarado era mutante EQUIVALENTE (ciclo 4). O mutante efetivo e `scenario_mutation_24_1_4_reconcile_phase_label_http_status`, e o comentario foi corrigido na 24.1.4 | test_jira-mutation |
+| 24.1.3 | `scenario_mutation_24_1_1_reconcile_epic_milestone_http_status` + `scenario_mutation_24_1_2_drain_epic_milestone_caller_guard` | test_jira-mutation |
+| 24.2.2 | `scenario_mutation_24_2_1_process_one_event_carryforward` | test_jira-mutation |
+| 24.3.3 | `scenario_mutation_24_3_1_maybe_update_mapped_issue_http_status` | test_jira-mutation |
+| 24.4.2 | `scenario_mutation_24_4_1_cmd_links_r17_http_status` | test_jira-mutation |
+| 24.5.2 | `scenario_mutation_24_5_1_process_reconcile_event_items_bare_assignment` | test_jira-mutation |
+| 25.1.2 / 26.1.1 | `scenario_mutation_25_1_1_drain_phase_label_caller_classification` | test_jira-mutation |
+
+Nas 4 ausencias, a tarefa aponta `tests/cstk/test_jira-sync.sh`, e essa suite nao tem nenhum cenario de mutacao. Todos os mutantes de `jira-sync.sh` ficam em `test_jira-mutation.sh`. Dois comentarios de teste afirmam o oraculo sem executa-lo: ~1359-1364 (21.1.2) e ~3344-3349 (22.1.3). Na 23.1.3, um oraculo afirmado e nao executado se revelou falso.
+
+Discriminacao medida nesta onda com copias mutadas do plugin fora do repo. `REPO_ROOT` aponta para a copia, e so o cenario roda, pelo `_SCENARIOS` do harness:
+
+| tarefa | mutante | cenario | original | mutante |
+|--------|---------|---------|----------|---------|
+| 21.1.2 | `jira-sync.sh` ~829-830: leitura das 2 chaves do R6 GET vira atribuicao vazia | `scenario_resolve_keep_jira_fecha_registro_e_encerra_evento_conflict_do_outbox` | ok | not ok |
+| 21.2.2 | ~1607: `visibility_or_disabled` vira `linking_disabled` e seta `_jsl_linking_disabled=yes` (cascata) | `scenario_links_404_r17_isolado_vira_unrepresentable_por_aresta_sem_cascata` | ok | not ok |
+| 22.1.3 | ~1270: guarda `blocked` vira `if false` | `scenario_milestone_ensure_blocked_repetido_zero_chamadas` | ok | not ok |
+| 22.2.2 | ~861: ramo `overwrite` vira `if false` (re-deriva como `keep_jira`) | `scenario_resolve_overwrite_label_drift_sem_phase_reaplica_fase_local` | ok | not ok |
+
+Os 4 testes de comportamento discriminam hoje. Falta so o guard de regressao, a mesma classe do 25.2 e do 26.1.
+
+| # | tipo | severidade | path | origem |
+|---|------|------------|------|--------|
+| 27.1 | partial | HIGH | `tests/cstk/test_jira-mutation.sh` (mutante do carry-forward de `_js_rebaseline_marker`) | FR-022 / task 21.1.2 |
+| 27.2 | partial | HIGH | `tests/cstk/test_jira-mutation.sh` (mutante da cascata do R17 404 em `_js_cmd_links`) | FR-025 / task 21.2.2 |
+| 27.3 | partial | HIGH | `tests/cstk/test_jira-mutation.sh` (mutante da guarda `blocked` de `milestone ensure`) | FR-020 / task 22.1.3 |
+| 27.4 | partial | HIGH | `tests/cstk/test_jira-mutation.sh` (mutante do ramo `overwrite` de `label_drift`) | FR-022 / task 22.2.2 |
+
+Severidade calculada por `severity.sh` (partial + P1 + must-violated=false => HIGH). A prioridade e a mesma do ciclo 1, que ligou 21.1/21.2 a US3 (P1). A classificacao repete a do 25.2 e do 26.1 (FR-011).
+
+Revisao final de FR-020..FR-025 e dos residuais LOW. O codigo de `plugins/cstk-jira/` e o mesmo revisado no ciclo 6, e os vereditos daquele ciclo continuam valendo:
+
+- FR-020: codigo fechado. Falta o guard 27.3.
+- FR-021 e FR-023: sem gap.
+- FR-022: codigo fechado. Faltam os guards 27.1 e 27.4.
+- FR-024: sem gap. Guards 19.1.9 e 19.2.4 presentes.
+- FR-025: codigo fechado. Falta o guard 27.2. O residual dec-095(a) segue.
+- **dec-081** (`overwrite` de `milestone_drift` igual a `keep_jira`), **dec-088** (R4 404/422 e R6 PUT 400/404 em passthrough), **dec-095 (a)** (R17 400 retentado), **dec-095 (b)** (reconcile `deferred` acumulando, com o gatilho ampliado pela 25.1.1) e **dec-095 (c)** (`maybe_update` com 401): nenhum codigo tocado desde o ciclo 6. Seguem LOW.
+- **dec-099**: registrada no ciclo 6. Nenhum codigo tocado, segue LOW.
+
+Suites rodadas uma a uma nesta onda, com `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`, todas com exit 0: test_jira-mutation 25/25, test_jira-sync 117/117, test_jira-map 44/44, test_jira-setup 41/41, test_jira-config 36/36, test_jira-tasks 29/29, test_jira-io 129/129, test_posttooluse-jira-sync 21/21.
+
+Gate MUST: `extract-must --coverage` => 17 ocorrencias, 5 linhas reconhecidas, 5 principios (I, II, III, IV, VI), 0 so por heading, `cobertura de MUST: ok`. Principio II honrado: em `jira-sync.sh`, `sqlite3` so aparece em usage e comentarios (~239, ~424, ~432, ~3988). Os residuais R1/R2 do r01 seguem inalterados (LOW, documentacao).
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T21:37:17Z; actionable=4; tasks-digest=de6339141e6b -->
