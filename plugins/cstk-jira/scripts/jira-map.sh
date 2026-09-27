@@ -99,7 +99,10 @@
 #         unrepresentable` aceita `--blocker-key`/`--blocked-key`/
 #         `--type-id` vazios (data-model.md: "vazio se unrepresentable") mas
 #         EXIGE `--reason` (enum `no_anchor`/`no_link_type`/
-#         `ambiguous_link_type`/`linking_disabled`/`limit`/`anchor_changed`);
+#         `ambiguous_link_type`/`linking_disabled`/`visibility_or_disabled`/
+#         `limit`/`anchor_changed` — task 21.2, `visibility_or_disabled`
+#         cobre 404 isolado em R17, sem a prova de site-wide que so R16 404
+#         confirma);
 #         `--state active`/`stale` exige os 3 campos nao-vazios.
 #
 #   jira-map.sh anchor --feature F --phase N
@@ -271,7 +274,7 @@ _jm_milestone_file() {
 # blocker_key, blocked_key)).
 _JM_LINK_HEADER='from_phase	to_phase	blocker_key	blocked_key	link_type_id	state	reason'
 _JM_LINK_STATES="active stale unrepresentable"
-_JM_LINK_REASONS="no_anchor no_link_type ambiguous_link_type linking_disabled limit anchor_changed"
+_JM_LINK_REASONS="no_anchor no_link_type ambiguous_link_type linking_disabled visibility_or_disabled limit anchor_changed"
 
 # _jm_link_file FEATURE -> imprime o path do jira-links.tsv da feature
 # (mesmo diretorio de jira-map.tsv, arquivo irmao).

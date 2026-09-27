@@ -98,12 +98,21 @@ do resto desta ETAPA):
 - `links_unrepresentable=N` / `links_stale=N` — contagens de
   `docs/specs/<feature>/jira-links.tsv`. `links_unrepresentable > 0`
   (CHK016): reason `no_link_type`/`ambiguous_link_type` (0 ou 2+ tipos de
-  link candidatos na instancia) ou `linking_disabled`/`limit` (API do site
-  nega/limita) — oriente o operador a definir `link_type_id` manualmente
-  (rode `/jira-setup` de novo, ETAPA 7, ou edite `ProjectConfig`
-  diretamente com o `id` confirmado). `links_stale > 0` e informativo (uma
-  aresta reorganizou de fase — a linha antiga nunca e removida, FR-012; a
-  nova `active` ja reflete a fase corrente, nenhuma acao exigida).
+  link candidatos na instancia), `linking_disabled` (o proprio R16 desta
+  execucao respondeu 404 — linking desligado no site, TODAS as arestas
+  pendentes daquela chamada ficam assim) ou `limit` (API do site limita) —
+  oriente o operador a definir `link_type_id` manualmente (rode
+  `/jira-setup` de novo, ETAPA 7, ou edite `ProjectConfig` diretamente com
+  o `id` confirmado). `visibility_or_disabled` (task 21.2): 404 isolado em
+  R17 para AQUELA aresta especifica (nunca em cascata) — o contrato
+  (`contracts/jira-rest.md` R17) documenta esse 404 como ambiguo entre
+  "linking desligado" e "usuario sem visibilidade de uma das 2 issues da
+  aresta"; oriente o operador a checar se a credencial configurada
+  (`/jira-setup`) enxerga AMBAS as issues da aresta em questao (nao so
+  redefinir `link_type_id`, que ja resolveu se o problema fosse tipo).
+  `links_stale > 0` e informativo (uma aresta reorganizou de fase — a
+  linha antiga nunca e removida, FR-012; a nova `active` ja reflete a fase
+  corrente, nenhuma acao exigida).
 
 ## ETAPA 2: Resolver um conflito
 
@@ -237,36 +246,45 @@ como pre-requisito), mas e relevante para explicar ao operador por que
 bloqueado pelo plugin — a guarda so cobre chamadas de tool MCP DENTRO de
 uma sessao com o plugin configurado.
 
-### `resolve` e agnostico ao `reason` — inclusive `milestone_drift`/`label_drift` (r02)
+### `resolve` preserva/re-deriva `written_fix_version_id`/`written_phase_label` (r02)
 
 `jira-sync.sh resolve` (`_js_cmd_resolve`) fecha QUALQUER `ConflictRecord`
-pendente de `(feature, local_key)` da MESMA forma, seja o `reason`
-`manual_edit`/`marker_missing` (r01) ou `milestone_drift`/`label_drift`
-(r02, gravados por `_js_reconcile_epic_milestone`/`_js_reconcile_phase_label`
-durante o evento `reconcile` do drain) — nao ha branch dedicado por `reason`.
-Isso tem uma implicacao pratica que vale explicar ao operador antes de
-escolher:
+pendente de `(feature, local_key)`, seja o `reason` `manual_edit`/
+`marker_missing` (r01) ou `milestone_drift`/`label_drift` (r02, gravados por
+`_js_reconcile_epic_milestone`/`_js_reconcile_phase_label` durante o evento
+`reconcile` do drain). O rebaseline do SyncMarker (`_js_rebaseline_marker`,
+usado por `keep_jira` E `overwrite`) trata as duas chaves de baseline
+conforme o `reason` do conflito fechado (task 21.1, plan.md SEC-10):
 
-- `keep_jira`/`ignored`: fecham o registro sem nenhuma escrita de conteudo
-  alem do rebaseline do SyncMarker (`_js_rebaseline_marker`) — que so
-  regrava `written_summary_sha256`/`written_status`/`written_description_sha256`,
-  NUNCA `written_fix_version_id`/`written_phase_label`. Ou seja: fechar um
-  `milestone_drift`/`label_drift` com `keep_jira` encerra o alerta, mas nao
-  "confirma" o marco/label atual da issue como novo baseline desses dois
-  campos especificos.
-- `overwrite`: reenfileira um evento com o `desired_state` do ULTIMO evento
-  outbox `conflict` do par ou, na ausencia dele (o caso normal aqui, ja que
-  `milestone_drift`/`label_drift` nascem de reconciliacao, nunca de um
+- `manual_edit`/`marker_missing`: `written_fix_version_id`/
+  `written_phase_label` sao PRESERVADAS tal-e-qual do marker atual (lido via
+  R6 GET antes do PUT) — resolver um conflito de titulo/status de UM item
+  nunca desliga a reconciliacao de marco do Epic nem de label de FASE de
+  outro item.
+- `milestone_drift` (so pode ocorrer no Epic, `local_key=feature`): a
+  baseline e RE-DERIVADA do estado REAL do Epic (`fields.fixVersions`),
+  restrita ao id de versao que `jira-map.sh milestone-id-known` reconhece
+  (`current`/`superseded` em `jira-milestones.tsv` daquela feature).
+  `keep_jira` portanto passa a "confirmar o marco atual da issue como novo
+  baseline" de fato — se NENHUM fixVersion do Epic for reconhecido pelo
+  sidecar, a baseline fica vazia (nada a proteger ate a proxima
+  reconciliacao), nunca um id humano adotado as cegas.
+- `label_drift` (Task/Sub-task): mesma disciplina, restrita a um label
+  casando `^phase-[0-9]+$` dentre os labels ATUAIS da issue
+  (`fields.labels`).
+- `overwrite`: alem do rebaseline acima (mesma logica por `reason`),
+  reenfileira um evento com o `desired_state` do ULTIMO evento outbox
+  `conflict` do par ou, na ausencia dele (o caso normal para
+  `milestone_drift`/`label_drift`, que nascem de reconciliacao, nunca de um
   evento outbox `conflict`), do `local_state` ATUAL (`pending`/
   `in_progress`/`pass`/`fail`) via `jira-tasks.sh items` — um conceito de
-  TRANSICAO DE STATUS, nao de marco/label. `overwrite` NAO reaplica o marco
-  nem o label por si so.
-- A proxima chamada de `jira-sync.sh drain` (evento `reconcile`) e quem de
-  fato tenta reconciliar marco/label de novo, do zero (mesma logica que
-  gerou o conflito na 1a vez) — se a causa raiz nao mudou (ex.: o marco
-  antigo ainda nao consta no sidecar como `current`/`superseded`), o MESMO
-  `milestone_drift` pode reaparecer. Ajustar `jira-milestones.tsv`
-  manualmente esta fora do escopo desta skill (sidecar interno do plugin).
+  TRANSICAO DE STATUS, independente de marco/label.
+- A proxima chamada de `jira-sync.sh drain` (evento `reconcile`) continua
+  reaplicando/checando marco e label a partir da baseline agora correta —
+  se a causa raiz nao mudou (ex.: nenhum fixVersion do Epic consta no
+  sidecar como `current`/`superseded`), o MESMO `milestone_drift` pode
+  reaparecer. Ajustar `jira-milestones.tsv` manualmente esta fora do escopo
+  desta skill (sidecar interno do plugin).
 
 ### `jira-conflict-view.sh` nunca interpreta a estrutura de `description`/`comment`
 

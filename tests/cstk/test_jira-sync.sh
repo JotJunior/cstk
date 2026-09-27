@@ -1259,15 +1259,20 @@ EOF
 }
 
 # SY-25 resolve --choice keep_jira (FASE 12 tarefa 12.1.1 — efeito
-# DURAVEL): fecha o registro e rebaselineia o SyncMarker (R3 GET + R6 PUT)
-# para o titulo+status ATUAIS da issue — antes desta tarefa nenhuma chamada
-# de rede era feita e o marker antigo permanecia, reabrindo o MESMO
+# DURAVEL): fecha o registro e rebaselineia o SyncMarker (R3 GET + R6 GET +
+# R6 PUT) para o titulo+status ATUAIS da issue — antes da 12.1.1 nenhuma
+# chamada de rede era feita e o marker antigo permanecia, reabrindo o MESMO
 # conflito no proximo drain (achado 12.1). task 13.3.1 (data-model.md
 # OutboxEvent "conflict --> [*]"): o evento outbox `conflict` do MESMO par
 # (F, K) MUST ser encerrado (status vira `done`) — antes desta tarefa ele
 # ficava `conflict` para sempre, e `_js_last_conflict_desired_state`
 # (usado por `overwrite`) continuava enxergando-o mesmo depois do conflito
-# ja fechado.
+# ja fechado. task 21.1.1/21.1.2 (plan.md SEC-10, achado 21.1): o R6 GET
+# extra le o marker ATUAL (que ja carrega `written_fix_version_id`/
+# `written_phase_label` de uma sincronizacao r02 anterior) ANTES do R6 PUT
+# — o rebaseline de um conflito `manual_edit` (nada a ver com marco/label)
+# MUST preservar as 2 chaves tal-e-qual no corpo do PUT, nunca apaga-las
+# (mutation: remover o carry-forward faz este teste falhar).
 scenario_resolve_keep_jira_fecha_registro_e_encerra_evento_conflict_do_outbox() {
   _write_full_config
   _write_credential
@@ -1284,6 +1289,7 @@ detected_at	feature	local_key	jira_key	reason	resolution
 EOF
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo editado a mao no Jira","status":{"name":"In Progress"}}}'
+  _queue_push 200 '{"key":"cstk-jira.sync","value":{"written_summary_sha256":"old","written_status":"To Do","written_fix_version_id":"10099","written_phase_label":"phase-3"}}'
   _queue_push 200 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
   assert_stdout_contains "escolha=keep_jira" || return 1
@@ -1291,15 +1297,24 @@ EOF
     || { _fail "resolve_keep_jira_resolution" "resolution nao virou keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
   awk -F '\t' '$1=="e1"' "$(_outbox_file)" | grep -q 'done$' \
     || { _fail "sy63_keep_jira_outbox_conflict_closed" "evento e1 (conflict) deveria virar done apos resolve: $(awk -F '\t' '$1==\"e1\"' "$(_outbox_file)")"; return 1; }
-  [ "$(_queue_calls_count)" = "2" ] \
-    || { _fail "resolve_keep_jira_calls" "esperado 2 chamadas (R3+R6 PUT), obtido $(_queue_calls_count)"; return 1; }
-  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-2.json")
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "resolve_keep_jira_calls" "esperado 3 chamadas (R3 + R6 GET + R6 PUT), obtido $(_queue_calls_count)"; return 1; }
+  _marker_status=$("$IO_SCRIPT" json-get '.written_status' < "$TMPDIR_TEST/queue-curl-body-3.json")
   [ "$_marker_status" = "In Progress" ] \
     || { _fail "resolve_keep_jira_marker_status" "SyncMarker nao rebaselinado para o status atual: $_marker_status"; return 1; }
   _expect_sha=$(printf '%s' "Titulo editado a mao no Jira" | "$IO_SCRIPT" sha256-stdin)
-  _marker_sha=$("$IO_SCRIPT" json-get '.written_summary_sha256' < "$TMPDIR_TEST/queue-curl-body-2.json")
+  _marker_sha=$("$IO_SCRIPT" json-get '.written_summary_sha256' < "$TMPDIR_TEST/queue-curl-body-3.json")
   [ "$_marker_sha" = "$_expect_sha" ] \
     || { _fail "resolve_keep_jira_marker_sha" "SyncMarker nao rebaselinado para o titulo atual"; return 1; }
+  # task 21.1.1: written_fix_version_id/written_phase_label do marker ANTIGO
+  # (lido acima via R6 GET) MUST sobreviver ao PUT — reason=manual_edit nao
+  # e milestone_drift/label_drift, entao preserva tal-e-qual (nunca apaga).
+  _marker_fixver=$("$IO_SCRIPT" json-get '.written_fix_version_id? // ""' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_marker_fixver" = "10099" ] \
+    || { _fail "resolve_keep_jira_marker_fixver_preserved" "written_fix_version_id nao foi preservado no rebaseline (achado 21.1): '$_marker_fixver'"; return 1; }
+  _marker_phase=$("$IO_SCRIPT" json-get '.written_phase_label? // ""' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_marker_phase" = "phase-3" ] \
+    || { _fail "resolve_keep_jira_marker_phase_preserved" "written_phase_label nao foi preservado no rebaseline (achado 21.1): '$_marker_phase'"; return 1; }
   return 0
 }
 
@@ -1330,9 +1345,12 @@ EOF
 # SY-27 resolve --choice overwrite (FASE 12 tarefa 12.1.1 — efeito
 # DURAVEL): fecha o registro E reenfileira um NOVO OutboxEvent (status=
 # queued) com o MESMO desired_state do evento `conflict` original — mas
-# AGORA rebaselineia o SyncMarker (R3+R6 PUT) ANTES de reenfileirar, senao
-# o proximo drain repetiria a MESMA comparacao contra o marker antigo e
-# reabriria o conflito em vez de transicionar (achado 12.1).
+# AGORA rebaselineia o SyncMarker (R3 + R6 GET + R6 PUT) ANTES de
+# reenfileirar, senao o proximo drain repetiria a MESMA comparacao contra o
+# marker antigo e reabriria o conflito em vez de transicionar (achado
+# 12.1). task 21.1.1: o R6 GET extra le o marker atual para preservar
+# `written_fix_version_id`/`written_phase_label` (aqui ausentes/vazios —
+# marker r01) no PUT.
 scenario_resolve_overwrite_fecha_registro_e_reenfileira() {
   _write_full_config
   _write_credential
@@ -1349,13 +1367,14 @@ detected_at	feature	local_key	jira_key	reason	resolution
 EOF
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo editado a mao","status":{"name":"To Do"}}}'
+  _queue_push 404 '{"errorMessages":["not found"]}'
   _queue_push 200 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
   assert_stdout_contains "escolha=overwrite" || return 1
   grep -q 'demo	1\.1	DEMO-2	manual_edit	overwrite$' "$(_conflicts_file)" \
     || { _fail "resolve_overwrite_resolution" "resolution nao virou overwrite: $(cat "$(_conflicts_file)")"; return 1; }
-  [ "$(_queue_calls_count)" = "2" ] \
-    || { _fail "resolve_overwrite_calls" "esperado 2 chamadas (R3+R6 PUT de rebaseline), obtido $(_queue_calls_count)"; return 1; }
+  [ "$(_queue_calls_count)" = "3" ] \
+    || { _fail "resolve_overwrite_calls" "esperado 3 chamadas (R3 + R6 GET + R6 PUT de rebaseline), obtido $(_queue_calls_count)"; return 1; }
   _novo=$(awk -F '\t' '$1 != "e1" && NR > 1 { print }' "$(_outbox_file)")
   [ -n "$_novo" ] \
     || { _fail "resolve_overwrite_new_event" "nenhum evento novo foi enfileirado: $(cat "$(_outbox_file)")"; return 1; }
@@ -1399,6 +1418,7 @@ EOF
 EOF
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo editado a mao 2","status":{"name":"To Do"}}}'
+  _queue_push 404 '{"errorMessages":["not found"]}'
   _queue_push 200 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
 
@@ -1433,6 +1453,7 @@ detected_at	feature	local_key	jira_key	reason	resolution
 EOF
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo editado a mao no Jira","status":{"name":"In Progress"}}}'
+  _queue_push 404 '{"errorMessages":["not found"]}'
   _queue_push 200 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
 
@@ -1475,6 +1496,7 @@ detected_at	feature	local_key	jira_key	reason	resolution
 EOF
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo editado a mao","status":{"name":"To Do"}}}'
+  _queue_push 404 '{"errorMessages":["not found"]}'
   _queue_push 200 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
 
@@ -1517,6 +1539,9 @@ detected_at	feature	local_key	jira_key	reason	resolution
 EOF
   _bin="$(_init_queue_stub)"
   _queue_push 200 '{"fields":{"summary":"Titulo atual no Jira","status":{"name":"To Do"}}}'
+  # reason=marker_missing: o R6 GET do rebaseline (task 21.1.1) tambem
+  # encontra 404 de verdade — mesma causa raiz do conflito.
+  _queue_push 404 '{"errorMessages":["not found"]}'
   _queue_push 200 ''
   PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice overwrite || return 1
   grep -q 'demo	1\.1	DEMO-2	marker_missing	overwrite$' "$(_conflicts_file)" \
@@ -3234,6 +3259,114 @@ EOF
   return 0
 }
 
+# task 21.1.1/21.1.2 (plan.md SEC-10, achado 21.1): resolve --choice
+# keep_jira de um ConflictRecord milestone_drift RE-DERIVA
+# written_fix_version_id do estado REAL do Epic (fixVersions), restrito ao
+# id que o sidecar reconhece (current/superseded) — nunca preserva o id
+# antigo (30001, que o proprio conflito ja provou desconhecido) nem adota
+# um id qualquer as cegas. Mutation (preservar o valor antigo em vez de
+# re-derivar) MUST falhar este teste.
+scenario_resolve_keep_jira_milestone_drift_rederiva_baseline_reconhecida() {
+  _write_full_config
+  _write_credential
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n' \
+    > "$(_milestone_file)"
+  printf 'demo-r02\tround\t30002\tDEMO\tcurrent\n' >> "$(_milestone_file)"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	demo	DEMO-1	milestone_drift	pending
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # R3 (fields agora inclui fixVersions,labels — task 21.1.1): o Epic JA
+  # tem fixVersions=30002 aplicado de fato no Jira — o drift era so no
+  # MARKER (ainda apontando 30001, id que o sidecar nao reconhece mais).
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"},"fixVersions":[{"id":"30002","name":"demo-r02"}]}}'
+  # R6 GET (marker atual, task 21.1.1): aponta o id antigo/desconhecido.
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\",\"written_fix_version_id\":\"30001\"}}"
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key demo --choice keep_jira || return 1
+  grep -q 'demo	demo	DEMO-1	milestone_drift	keep_jira$' "$(_conflicts_file)" \
+    || { _fail "sy_msdrift_resolution" "resolution nao virou keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
+  _final_fv=$("$IO_SCRIPT" json-get '.written_fix_version_id? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_final_fv" = "30002" ] \
+    || { _fail "sy_msdrift_rederiva" "written_fix_version_id deveria ser re-derivado para 30002 (id reconhecido pelo sidecar como current), obtido: $_final_fv"; return 1; }
+  return 0
+}
+
+# task 21.1.1/21.1.2: apos keep_jira re-derivar a baseline (teste
+# anterior), o PROXIMO drain (evento reconcile) NAO reabre o
+# milestone_drift nem emite update.fixVersions algum — o marker agora bate
+# exatamente o unico marco `current` do sidecar (idempotente). Mutation
+# (nao preservar/re-derivar corretamente) reabriria o conflito ou geraria
+# um `add` sem o `remove` correspondente (SEC-10) — este teste MUST falhar
+# nesse caso.
+scenario_resolve_keep_jira_milestone_drift_drain_seguinte_idempotente_sem_reabrir() {
+  _write_full_config
+  _write_credential
+  _write_round_demo_r01
+  _write_tasks_epic_task_sub_todos_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$TMPDIR_TEST/docs/specs/demo"
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n' \
+    > "$(_milestone_file)"
+  printf 'demo-r02\tround\t30002\tDEMO\tcurrent\n' >> "$(_milestone_file)"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	demo	DEMO-1	milestone_drift	pending
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  _sha_task=$(printf '%s' "Titulo Qualquer" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"},"fixVersions":[{"id":"30002","name":"demo-r02"}]}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\",\"written_fix_version_id\":\"30001\"}}"
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key demo --choice keep_jira || return 1
+
+  # Le de VOLTA o que o resolve de fato gravou no R6 PUT (body-3.json) —
+  # NUNCA hardcoded — para que uma mutation que quebre a re-derivacao
+  # (ex.: voltar a preservar o 30001 antigo) se propague ao marker "atual"
+  # do proximo drain e este teste FALHE (mutation: preservar em vez de
+  # re-derivar MUST falhar este teste via _pending_count abaixo).
+  _fv_apos_resolve=$("$IO_SCRIPT" json-get '.written_fix_version_id? // ""' < "$TMPDIR_TEST/queue-curl-body-3.json")
+
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:01:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  # Proximo drain: Epic com written_fix_version_id = o que o resolve
+  # realmente gravou. Com o codigo correto (30002, re-derivado e
+  # reconhecido) a reconciliacao e idempotente (ZERO update.fixVersions).
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"},"fixVersions":[{"id":"30002","name":"demo-r02"}]}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\",\"written_fix_version_id\":\"$_fv_apos_resolve\"}}"
+  _queue_push 200 '{"id":"10000","key":"DEMO"}'
+  _queue_push 200 '[{"id":"30002","name":"demo-r02"}]'
+  # Task 1.1 idempotente (ja Done, marker batendo, sem written_phase_label).
+  _queue_push 200 '{"fields":{"summary":"Titulo Qualquer","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\"}}"
+
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "9" ] \
+    || { _fail "sy_msdrift_drain_calls" "esperado 9 chamadas (3 resolve + 4 epic idempotente + 2 task idempotente), obtido $(_queue_calls_count)"; return 1; }
+  for _n in 4 5 6 7 8 9; do
+    [ -f "$TMPDIR_TEST/queue-curl-body-$_n.json" ] \
+      && { _fail "sy_msdrift_drain_no_write" "chamada #$_n do drain gerou corpo de escrita — deveria ser idempotente (so GET), obtido: $(cat "$TMPDIR_TEST/queue-curl-body-$_n.json")"; return 1; }
+  done
+  _pending_count=$(awk -F '\t' 'NR>1 && $2=="demo" && $3=="demo" && $6=="pending"' "$(_conflicts_file)" | wc -l | tr -d ' ')
+  [ "$_pending_count" = "0" ] \
+    || { _fail "sy_msdrift_no_new_conflict" "milestone_drift nao deveria reabrir apos a baseline re-derivada: $(cat "$(_conflicts_file)")"; return 1; }
+  return 0
+}
+
 # =========================== convert: labels de FASE (r02 FASE 17 task 17.2) ====
 #
 # SY-82 convert (labels_enabled=on, default): task da FASE 1 recebe
@@ -3441,6 +3574,75 @@ EOF
   return 0
 }
 
+# task 21.1.1/21.1.2 (plan.md SEC-10, achado 21.1): resolve --choice
+# keep_jira de um ConflictRecord label_drift RE-DERIVA written_phase_label
+# do estado REAL da issue (labels atuais), restrito a um label casando
+# `^phase-[0-9]+$` — nunca preserva o label antigo (phase-3, que o proprio
+# conflito ja provou ausente da issue). Com a baseline corrigida, a
+# reconciliacao de troca de FASE (R2-5) volta a funcionar no PROXIMO
+# drain — antes do fix (achado 21.1), written_phase_label ficava vazio
+# para sempre apos QUALQUER resolve, desligando R2-5 em silencio.
+# Mutation (apagar/nao re-derivar written_phase_label) MUST falhar este
+# teste.
+scenario_resolve_keep_jira_label_drift_rederiva_e_drain_seguinte_reconcilia_fase() {
+  _write_full_config
+  _write_credential
+  _write_tasks_fase5_1task_1sub_pass
+  _write_map_row "demo" epic 20001 DEMO-1 active
+  _write_map_row "1.1" task 20002 DEMO-2 active
+  cd "$TMPDIR_TEST" || return 1
+  export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
+  mkdir -p "$(dirname "$(_outbox_file)")"
+  cat > "$(_conflicts_file)" <<'EOF'
+detected_at	feature	local_key	jira_key	reason	resolution
+2026-01-01T00:00:00Z	demo	1.1	DEMO-2	label_drift	pending
+EOF
+  _sha_task=$(printf '%s' "Titulo da tarefa" | "$IO_SCRIPT" sha256-stdin)
+  _bin="$(_init_queue_stub)"
+  # R3 (fields agora inclui fixVersions,labels — task 21.1.1): labels REAIS
+  # da issue ja mudaram para phase-9 (a propria causa do drift original).
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"},"labels":["phase-9"]}}'
+  # R6 GET (marker atual, task 21.1.1): ainda aponta o label antigo (phase-3).
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-3\"}}"
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" resolve --feature demo --local-key 1.1 --choice keep_jira || return 1
+  grep -q 'demo	1.1	DEMO-2	label_drift	keep_jira$' "$(_conflicts_file)" \
+    || { _fail "sy_labeldrift_resolution" "resolution nao virou keep_jira: $(cat "$(_conflicts_file)")"; return 1; }
+  _final_label=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-3.json")
+  [ "$_final_label" = "phase-9" ] \
+    || { _fail "sy_labeldrift_rederiva" "written_phase_label deveria ser re-derivado para phase-9 (label atual da issue, casando ^phase-N), obtido: $_final_label"; return 1; }
+
+  # Proximo drain: a task continua sob FASE 5 (target=phase-5) — com a
+  # baseline corrigida (phase-9), R2-5 volta a reconciliar: remove
+  # phase-9/add phase-5.
+  cat > "$(_outbox_file)" <<'EOF'
+event_id	created_at	feature	local_key	desired_state	source	attempts	status
+e1	2026-01-01T00:01:00Z	demo	*	reconcile	hook-close-wave	0	queued
+EOF
+  _sha_epic=$(printf '%s' "demo" | "$IO_SCRIPT" sha256-stdin)
+  # Epic: marco `auto` sem round -> unresolved, idempotente puro (2 chamadas).
+  _queue_push 200 '{"fields":{"summary":"demo","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_epic\",\"written_status\":\"Done\"}}"
+  # Task: R3 + R6-GET (written_phase_label=phase-9, ja rebaselinado) + R15
+  # (labels atuais: phase-9) + R2 (update.labels remove/add) + R6-PUT final.
+  _queue_push 200 '{"fields":{"summary":"Titulo da tarefa","status":{"name":"Done"}}}'
+  _queue_push 200 "{\"key\":\"cstk-jira.sync\",\"value\":{\"written_summary_sha256\":\"$_sha_task\",\"written_status\":\"Done\",\"written_phase_label\":\"phase-9\"}}"
+  _queue_push 200 '{"fields":{"labels":["phase-9"]}}'
+  _queue_push 204 ''
+  _queue_push 200 ''
+  PATH="$_bin:$PATH" assert_exit 0 "$SCRIPT" drain --feature demo || return 1
+
+  [ "$(_queue_calls_count)" = "10" ] \
+    || { _fail "sy_labeldrift_drain_calls" "esperado 10 chamadas (3 resolve + 2 epic idempotente + 5 task: R3/R6get/R15/R2/R6put), obtido $(_queue_calls_count)"; return 1; }
+  _lbl_ops=$("$IO_SCRIPT" json-get '.update.labels | tostring' < "$TMPDIR_TEST/queue-curl-body-9.json")
+  [ "$_lbl_ops" = '[{"remove":"phase-9"},{"add":"phase-5"}]' ] \
+    || { _fail "sy_labeldrift_reconcile" "esperado remove phase-9/add phase-5 (reconciliacao de fase reativada apos o fix), obtido: $_lbl_ops"; return 1; }
+  _final_label2=$("$IO_SCRIPT" json-get '.written_phase_label? // "AUSENTE"' < "$TMPDIR_TEST/queue-curl-body-10.json")
+  [ "$_final_label2" = "phase-5" ] \
+    || { _fail "sy_labeldrift_marker_final" "esperado written_phase_label=phase-5 no R6 PUT final, obtido: $_final_label2"; return 1; }
+  return 0
+}
+
 # ==== links (r02 FASE 18 task 18.4, FR-025, research.md Decision R2-6) =====
 #
 #   SY-86 links: links_enabled=off -> linking=disabled, ZERO chamadas de
@@ -3554,7 +3756,17 @@ scenario_links_ambiguous_link_type_zero_r17() {
     || { _fail "sy88_zero_r17" "ambiguidade de tipo NUNCA deveria tentar R17, obtido $_r17_calls"; return 1; }
 }
 
-scenario_links_404_r17_linking_disabled_cascata() {
+# task 21.2.1/21.2.2 (contracts/jira-rest.md R17 + plan.md Riscos, achado
+# 21.2): 404 ISOLADO em R17 (sem R16 confirmar linking desligado no site —
+# aqui nem sequer roda, `link_type_id` vem do ProjectConfig) vira
+# `unrepresentable reason=visibility_or_disabled` SO da aresta que
+# respondeu 404 — as demais arestas da MESMA chamada seguem tentando R17
+# normalmente (sem cascata). Antes da correcao (achado 21.2), a 1a aresta
+# 404 desligava `_jsl_linking_disabled` e as 2 arestas seguintes eram
+# marcadas `unrepresentable reason=linking_disabled` SEM sequer tentar
+# R17 — mutation (reintroduzir `_jsl_linking_disabled="yes"` neste ramo)
+# MUST falhar este teste (3 R17 attempts vira 1, reason muda).
+scenario_links_404_r17_isolado_vira_unrepresentable_por_aresta_sem_cascata() {
   _write_full_config
   _append_config_line "link_type_id=10000"
   _write_credential
@@ -3587,6 +3799,7 @@ flowchart TD
     F3[FASE 3 - Terceira]
     F1 --> F2
     F1 --> F3
+    F2 --> F3
 ```
 EOF
   _write_map_row "1.1" "task" "10010" "DEMO-10" "active"
@@ -3595,21 +3808,39 @@ EOF
   cd "$TMPDIR_TEST" || return 1
   export XDG_CONFIG_HOME="$TMPDIR_TEST/xdg"
   _bin="$(_init_queue_stub)"
+  # 3 arestas (F1->F2, F1->F3, F2->F3, nesta ordem — `jira-tasks.sh
+  # phase-edges` preserva a ordem de declaracao do mermaid): a 1a R17
+  # responde 404 (visibilidade/desligado ambiguo, SO desta aresta); as
+  # demais 2 respondem 201 (linking segue ligado — nunca deveriam ter sido
+  # puladas por cascata).
   _queue_push 404 '{}'
+  _queue_push 201 ''
+  _queue_push 201 ''
 
   _out=$(PATH="$_bin:$PATH" "$SCRIPT" links --feature demo) \
     || { _fail "sy89_exit" "links deveria sair exit 0"; return 1; }
-  printf '%s\n' "$_out" | grep -qx "linking=disabled" \
-    || { _fail "sy89_linking" "esperado linking=disabled apos 404 em R17, obtido: $_out"; return 1; }
-  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=2" \
-    || { _fail "sy89_unrep" "esperado links_unrepresentable=2 (cascata p/ ambas arestas), obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "linking=enabled" \
+    || { _fail "sy89_linking" "404 isolado em R17 NUNCA prova linking desligado no site — esperado linking=enabled, obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_active=2" \
+    || { _fail "sy89_active" "esperado links_active=2 (as 2 arestas seguintes NUNCA deveriam ser puladas por cascata), obtido: $_out"; return 1; }
+  printf '%s\n' "$_out" | grep -qx "links_unrepresentable=1" \
+    || { _fail "sy89_unrep" "esperado links_unrepresentable=1 (SO a aresta que respondeu 404), obtido: $_out"; return 1; }
   _r17_calls=$(grep -c 'POST .*api/3/issueLink$' "$TMPDIR_TEST/queue-curl-calls.log" 2>/dev/null) || _r17_calls=0
-  [ "$_r17_calls" = "1" ] \
-    || { _fail "sy89_r17_once" "cascata deveria evitar a 2a tentativa de R17, obtido $_r17_calls"; return 1; }
-  _nlinking=$(awk -F '\t' 'NR>1 && $7=="linking_disabled"' "$(_links_file)" | wc -l | tr -d ' ')
-  [ "$_nlinking" = "2" ] \
-    || { _fail "sy89_reasons" "esperado 2 linhas reason=linking_disabled, obtido $_nlinking: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+  [ "$_r17_calls" = "3" ] \
+    || { _fail "sy89_r17_tres" "esperado 3 tentativas de R17 (sem cascata pulando nenhuma), obtido $_r17_calls"; return 1; }
+  awk -F '\t' 'NR>1 && $7=="linking_disabled"' "$(_links_file)" | grep -q . \
+    && { _fail "sy89_no_linking_disabled" "404 isolado em R17 NUNCA deveria gravar reason=linking_disabled (achado 21.2): $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
+  _nvisib=$(awk -F '\t' 'NR>1 && $7=="visibility_or_disabled"' "$(_links_file)" | wc -l | tr -d ' ')
+  [ "$_nvisib" = "1" ] \
+    || { _fail "sy89_reason" "esperado exatamente 1 linha reason=visibility_or_disabled, obtido $_nvisib: $(cat "$(_links_file)" 2>/dev/null)"; return 1; }
 }
+
+# Regressao preservada (achado 21.2 so muda o ramo de 404 ISOLADO em
+# R17): 404 no proprio R16 continua provando linking desligado no site e
+# cascateando reason=linking_disabled para TODAS as arestas pendentes,
+# ZERO tentativas de R17 — ja coberto por SY-91
+# (`scenario_links_404_r16_linking_disabled_sem_link_type`, abaixo),
+# reexecutada sem mudanca nesta onda para confirmar a nao-regressao.
 
 scenario_links_413_r17_reason_limit() {
   _write_full_config

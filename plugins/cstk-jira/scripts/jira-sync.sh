@@ -263,11 +263,14 @@ USO:
       via R17 (bloqueador=outwardIssue, bloqueado=inwardIssue). `link_type_id`
       vazio em ProjectConfig -> resolve via R16 desta MESMA execucao + regra
       de candidato unico; 0/2+ candidatos -> unrepresentable (reason=
-      no_link_type/ambiguous_link_type). 404 em R16/R17 -> reason=
-      linking_disabled (cascata p/ todas as arestas pendentes); 413 em R17 ->
-      reason=limit (so a aresta). Ancora que mudou (reorganizacao de fase) ->
-      linha active antiga vira stale (nunca removida, FR-012), nova linha
-      active criada. Saida: linking=enabled|disabled, links_active=N,
+      no_link_type/ambiguous_link_type). 404 em R16 -> reason=linking_disabled
+      (cascata p/ todas as arestas pendentes, unica prova inequivoca de
+      linking desligado no site); 404 em R17 sozinho (ambiguo no contrato:
+      linking desligado OU usuario sem visibilidade de uma issue) -> reason=
+      visibility_or_disabled, SO da aresta, sem cascata (task 21.2); 413 em
+      R17 -> reason=limit (so a aresta). Ancora que mudou (reorganizacao de
+      fase) -> linha active antiga vira stale (nunca removida, FR-012), nova
+      linha active criada. Saida: linking=enabled|disabled, links_active=N,
       links_unrepresentable=N. SEMPRE exit 0 (falha de rede/auth em uma
       aresta nunca aborta as demais).
 
@@ -693,14 +696,15 @@ _js_last_conflict_desired_state() {
   ' "$_JS_OUTBOX_FILE"
 }
 
-# _js_rebaseline_marker IO FEATURE LOCAL_KEY JIRA_KEY — feature cstk-jira
-# FASE 12 tarefa 12.1.1 (FR-011 / task 4.3.2 / task 4.3.4 `resolve`): le o
-# titulo+status+descricao ATUAIS da issue (R3, mesma leitura que `drain`/
-# `convert` ja fazem) e regrava o SyncMarker (R6 PUT) com ESSES valores —
-# nunca inventa um estado, so espelha o que a issue tem agora. Efeito: a
-# proxima deteccao de conflito (drain/reconcile/`_js_maybe_update_mapped_issue`)
-# compara contra um marker que bate o estado atual, logo NAO reabre o
-# MESMO conflito (`resolve --choice keep_jira`/`overwrite`, FASE 12.1).
+# _js_rebaseline_marker IO FEATURE LOCAL_KEY JIRA_KEY [REASON] — feature
+# cstk-jira FASE 12 tarefa 12.1.1 (FR-011 / task 4.3.2 / task 4.3.4
+# `resolve`): le o titulo+status+descricao ATUAIS da issue (R3, mesma
+# leitura que `drain`/`convert` ja fazem) e regrava o SyncMarker (R6 PUT)
+# com ESSES valores — nunca inventa um estado, so espelha o que a issue tem
+# agora. Efeito: a proxima deteccao de conflito (drain/reconcile/
+# `_js_maybe_update_mapped_issue`) compara contra um marker que bate o
+# estado atual, logo NAO reabre o MESMO conflito (`resolve --choice
+# keep_jira`/`overwrite`, FASE 12.1).
 # task 13.2.1 (FR-011 / data-model SyncMarker written_description_sha256):
 # quando a issue carrega descricao composta (`fields.description` nao-vazio
 # — so Task/Sub-task com criticidade/dependencias, mesma extracao de
@@ -712,18 +716,36 @@ _js_last_conflict_desired_state() {
 # proxima `convert` tratar a descricao como "sem baseline" e sobrescrever
 # uma edicao manual em silencio). Issue sem descricao: a chave continua
 # omitida (nada a proteger).
+# task 21.1.1 (plan.md SEC-10; achado 21.1 — R6 PUT e overwrite TOTAL da
+# propriedade): TODO rebaseline agora le o marker ATUAL (R6 GET) ANTES de
+# regrava-lo e carrega adiante `written_fix_version_id`/`written_phase_label`
+# — sem isto, QUALQUER `resolve` (keep_jira/overwrite, qualquer REASON)
+# apagava as 2 chaves e desligava silenciosamente a reconciliacao de marco
+# do Epic (R2-2) e de label de FASE de Task/Sub-task (R2-5) daquele item
+# para sempre. Quando REASON e `milestone_drift`/`label_drift` (o proprio
+# conflito sendo fechado e a causa daquela chave), a baseline carregada NAO
+# e o valor antigo (que o `_js_reconcile_epic_milestone`/
+# `_js_reconcile_phase_label` ja provou divergente do sidecar/estado local)
+# — e RE-DERIVADA do estado REAL da issue (fixVersions/labels, mesmo R3),
+# restrita a valores que o proprio plugin reconhece
+# (`jira-map.sh milestone-id-known` para o id de versao; label casando
+# `^phase-[0-9]+$`) — nunca adota um valor humano como baseline removivel
+# (SEC-8/SEC-10). Nenhum id/label reconhecido -> baseline fica vazia (sem
+# marco/label a proteger ate a proxima reconciliacao normal), nunca um
+# palpite.
 # Imprime o status atual (stdout) em sucesso — reuso pelo chamador sem 2a
-# leitura R3. Falha (R3 ou R6 PUT) -> diagnostico em stderr, marker
-# intocado, retorna 1 — chamador NUNCA deve fechar o ConflictRecord como
-# se o rebaseline tivesse funcionado (senao o proximo drain reabriria o
-# conflito ja fechado, silenciosamente).
+# leitura R3. Falha (R3, R6 GET com erro genuino, ou R6 PUT) -> diagnostico
+# em stderr, marker intocado, retorna 1 — chamador NUNCA deve fechar o
+# ConflictRecord como se o rebaseline tivesse funcionado (senao o proximo
+# drain reabriria o conflito ja fechado, silenciosamente).
 _js_rebaseline_marker() {
   _jrm_io="$1"
   _jrm_feature="$2"
   _jrm_lkey="$3"
   _jrm_jkey="$4"
+  _jrm_reason="${5:-}"
 
-  if _jrm_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey?fields=summary,status,description" --op R3 2>/dev/null); then
+  if _jrm_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey?fields=summary,status,description,fixVersions,labels" --op R3 2>/dev/null); then
     :
   else
     printf '%s: falha ao ler estado atual de %s (R3) para rebaselinear o SyncMarker\n' \
@@ -736,12 +758,102 @@ _js_rebaseline_marker() {
     '.fields.description.content[0].content[0].text? // ""')
   _jrm_sha=$(printf '%s' "$_jrm_summary" | "$_jrm_io" sha256-stdin)
   _jrm_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # task 21.1.1: le o marker ATUAL (R6 GET) para carregar adiante as 2
+  # chaves — o PUT abaixo substitui o valor INTEIRO da propriedade. `404`
+  # (marker inexistente, ex. reason=marker_missing) -> ambas ficam vazias,
+  # nada a preservar (mesmo comportamento conservador de
+  # `_js_maybe_update_mapped_issue`). Erro genuino (rede/auth) -> aborta
+  # (nunca finge que preservou algo que nao leu).
+  _jrm_prop_err=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6err.XXXXXX") \
+    || _js_die "falha ao criar arquivo temporario" 1
+  if _jrm_prop_resp=$("$_jrm_io" request GET "/rest/api/3/issue/$_jrm_jkey/properties/$_JS_MARKER_PROPERTY_KEY" --op R6 2>"$_jrm_prop_err"); then
+    _jrm_prop_ec=0
+  else
+    _jrm_prop_ec=$?
+  fi
+  _jrm_prop_status=$(grep '^http_status=' "$_jrm_prop_err" | tail -n 1 | cut -d= -f2)
+  rm -f "$_jrm_prop_err"
+
+  _jrm_written_fixver=""
+  _jrm_written_phase_label=""
+  # `--op R6` nunca chama `_ji_fail_status` para 404 generico (so R12/R16/
+  # R17 tem branch dedicado) — `request` retorna exit 0 mesmo com
+  # http_status=404 (mesma convencao ja usada por
+  # `_js_maybe_update_mapped_issue`/`_js_process_reconcile_event` acima:
+  # checar STATUS antes do exit code, nunca tentar `json-get` no corpo de
+  # erro do 404).
+  if [ "$_jrm_prop_status" = "404" ]; then
+    : # marker inexistente -> ambas ficam vazias, nada a preservar
+  elif [ "$_jrm_prop_ec" -ne 0 ]; then
+    printf '%s: falha ao ler SyncMarker atual de %s (R6 GET) para preservar written_fix_version_id/written_phase_label — rebaseline abortado, tente novamente\n' \
+      "$_JS_NAME" "$_jrm_jkey" >&2
+    return 1
+  else
+    _jrm_written_fixver=$(printf '%s' "$_jrm_prop_resp" | "$_jrm_io" json-get '.value.written_fix_version_id? // ""')
+    _jrm_written_phase_label=$(printf '%s' "$_jrm_prop_resp" | "$_jrm_io" json-get '.value.written_phase_label? // ""')
+  fi
+
+  # task 21.1.1 (SEC-10): re-derivacao restrita SO quando o proprio reason
+  # sendo fechado e milestone_drift/label_drift — outros reasons preservam
+  # o valor lido acima tal-e-qual.
+  case "$_jrm_reason" in
+    milestone_drift)
+      _jrm_written_fixver=""
+      _jrm_dir="$(_js_script_dir)"
+      _jrm_config="$_jrm_dir/jira-config.sh"
+      _jrm_map="$_jrm_dir/jira-map.sh"
+      _jrm_pkey=$("$_jrm_config" get project_key 2>/dev/null) || _jrm_pkey=""
+      if [ -n "$_jrm_pkey" ]; then
+        _jrm_cur_fixvers=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.fixVersions[]?.id')
+        _jrm_ifs_bak=$IFS
+        IFS='
+'
+        for _jrm_fv in $_jrm_cur_fixvers; do
+          [ -n "$_jrm_fv" ] || continue
+          if "$_jrm_map" milestone-id-known --feature "$_jrm_feature" \
+              --project-key "$_jrm_pkey" --version-id "$_jrm_fv" 2>/dev/null; then
+            _jrm_written_fixver="$_jrm_fv"
+            IFS=$_jrm_ifs_bak
+            break
+          fi
+        done
+        IFS=$_jrm_ifs_bak
+      fi
+      ;;
+    label_drift)
+      _jrm_written_phase_label=""
+      _jrm_cur_labels=$(printf '%s' "$_jrm_resp" | "$_jrm_io" json-get '.fields.labels[]?')
+      _jrm_ifs_bak=$IFS
+      IFS='
+'
+      for _jrm_lbl in $_jrm_cur_labels; do
+        case "$_jrm_lbl" in
+          phase-*)
+            _jrm_suffix=${_jrm_lbl#phase-}
+            case "$_jrm_suffix" in
+              ''|*[!0-9]*) : ;;
+              *)
+                _jrm_written_phase_label="$_jrm_lbl"
+                IFS=$_jrm_ifs_bak
+                break
+                ;;
+            esac
+            ;;
+        esac
+      done
+      IFS=$_jrm_ifs_bak
+      ;;
+  esac
+
   set -- marker --local-key "$_jrm_lkey" --feature "$_jrm_feature" \
     --written-summary-sha256 "$_jrm_sha" --written-status "$_jrm_status" --written-at "$_jrm_now"
   if [ -n "$_jrm_description" ]; then
     _jrm_desc_sha=$(printf '%s' "$_jrm_description" | "$_jrm_io" sha256-stdin)
     set -- "$@" --written-description-sha256 "$_jrm_desc_sha"
   fi
+  [ -n "$_jrm_written_fixver" ] && set -- "$@" --written-fix-version-id "$_jrm_written_fixver"
+  [ -n "$_jrm_written_phase_label" ] && set -- "$@" --written-phase-label "$_jrm_written_phase_label"
   _jrm_body=$("$_jrm_io" json-build "$@")
   _jrm_bf=$(mktemp "${TMPDIR:-/tmp}/jira-sync-r6body.XXXXXX") \
     || _js_die "falha ao criar arquivo temporario" 1
@@ -1351,16 +1463,22 @@ _js_cmd_links() {
     fi
 
     if [ "$_jsl_r17_ec" -eq 7 ]; then
-      # 18.4.2: 404 em R17 (jira-io.sh classifica permission_denied) =>
-      # reason=linking_disabled de negocio, cascata para TODAS as demais
-      # arestas pendentes desta MESMA chamada (evita N-1 tentativas
-      # inuteis de R17 quando o site inteiro tem linking desligado); 413
-      # (classification=limit_exceeded) => reason=limit, so ESTA aresta.
+      # task 21.2.1 (contracts/jira-rest.md R17 + plan.md Riscos, achado
+      # 21.2): 404 em R17 (jira-io.sh classifica permission_denied) e
+      # AMBIGUO no proprio contrato — "issue linking is disabled" OU
+      # "usuario sem visibilidade de uma das issues" — e NUNCA prova
+      # sozinho que o linking esta desligado no site (isso so R16 404
+      # confirma, tratado acima em `_jsl_linking_disabled`). Por isso
+      # NUNCA aciona a cascata `_jsl_linking_disabled` aqui: vira
+      # `unrepresentable reason=visibility_or_disabled` SO desta aresta —
+      # inclusive quando `link_type_id` veio do config e R16 nao rodou
+      # nesta execucao (sem evidencia do estado do site, classificar por
+      # aresta nao esconde nada). 413 (classification=limit_exceeded) =>
+      # reason=limit, so ESTA aresta (inalterado).
       if grep -q 'classification=limit_exceeded' "$_jsl_r17_err" 2>/dev/null; then
         _jsl_reason="limit"
       else
-        _jsl_reason="linking_disabled"
-        _jsl_linking_disabled="yes"
+        _jsl_reason="visibility_or_disabled"
       fi
       rm -f "$_jsl_r17_err"
       "$_jsl_map" link-put --feature "$_jsl_feature" --from "$_jsl_a" --to "$_jsl_b" \
@@ -3427,7 +3545,7 @@ _js_cmd_resolve() {
         || _js_die "nao foi possivel determinar desired_state (nem evento outbox 'conflict' pendente, nem local_state atual via jira-tasks.sh items) para feature=$_jsr_feature local_key=$_jsr_key" 1
     fi
 
-    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" >/dev/null \
+    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" >/dev/null \
       || _js_die "falha ao rebaselinear o SyncMarker antes do overwrite — conflito NAO fechado, tente novamente" 1
 
     _jsr_new_eid=$(_js_cmd_enqueue --feature "$_jsr_feature" --local-key "$_jsr_key" \
@@ -3435,7 +3553,7 @@ _js_cmd_resolve() {
   fi
 
   if [ "$_jsr_choice" = "keep_jira" ]; then
-    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" >/dev/null \
+    _js_rebaseline_marker "$_jsr_io" "$_jsr_feature" "$_jsr_key" "$_jsr_jkey" "$_jsr_reason" >/dev/null \
       || _js_die "falha ao rebaselinear o SyncMarker — conflito NAO fechado, tente novamente" 1
   fi
 

@@ -2932,9 +2932,9 @@ issue (`fields=fixVersions,labels`) SO com valores que o plugin reconhece
 `^phase-[0-9]+$`) — nunca adotar valor humano como baseline removivel
 (SEC-8/SEC-10).
 
-- [ ] 21.1.1 Corrigir `_js_rebaseline_marker`/`_js_cmd_resolve` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme plan.md SEC-10: preservar `written_fix_version_id`/`written_phase_label` em todo rebaseline e re-derivar a baseline (restrita a valores reconhecidos pelo plugin) para `milestone_drift`/`label_drift`
-- [ ] 21.1.2 Teste em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `resolve --choice keep_jira` de um `manual_edit` preserva as 2 chaves no corpo do R6 PUT; `milestone_drift` resolvido => proximo drain NAO reabre o conflito e NAO emite `add` sem o `remove` correspondente; `label_drift` resolvido => troca de FASE posterior volta a ser reconciliada; mutation (remover o carry-forward) MUST falhar o teste
-- [ ] 21.1.3 Atualizar `plugins/cstk-jira/skills/jira-sync/SKILL.md` (Gotcha "`resolve` e agnostico ao `reason`") removendo a "limitacao" documentada na onda-016, descrevendo o comportamento final
+- [x] 21.1.1 Corrigir `_js_rebaseline_marker`/`_js_cmd_resolve` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme plan.md SEC-10: preservar `written_fix_version_id`/`written_phase_label` em todo rebaseline e re-derivar a baseline (restrita a valores reconhecidos pelo plugin) para `milestone_drift`/`label_drift`
+- [x] 21.1.2 Teste em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `resolve --choice keep_jira` de um `manual_edit` preserva as 2 chaves no corpo do R6 PUT; `milestone_drift` resolvido => proximo drain NAO reabre o conflito e NAO emite `add` sem o `remove` correspondente; `label_drift` resolvido => troca de FASE posterior volta a ser reconciliada; mutation (remover o carry-forward) MUST falhar o teste
+- [x] 21.1.3 Atualizar `plugins/cstk-jira/skills/jira-sync/SKILL.md` (Gotcha "`resolve` e agnostico ao `reason`") removendo a "limitacao" documentada na onda-016, descrevendo o comportamento final
 
 <!-- converge-key: 2a79786858de -->
 
@@ -2969,9 +2969,9 @@ novo no enum `reason` de `jira-links.tsv` (ex.: visibilidade), atualizar
 `data-model.md` IssueLink ANTES do codigo (Principio I) — nunca reusar
 `linking_disabled` com semantica diferente.
 
-- [ ] 21.2.1 Corrigir `_js_cmd_links` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme contracts/jira-rest.md R17 + plan.md Riscos: 404 em R17 => `unrepresentable` SO da aresta (motivo distinto de `linking_disabled`), sem cascata; cascata `linking_disabled` so quando o proprio R16 respondeu 404
-- [ ] 21.2.2 Teste em `tests/cstk/test_jira-sync.sh`: 3 arestas, R16 `200`, R17 da 1a aresta `404` e das demais `201` => 1 `unrepresentable` + 2 `active` (hoje: 3 `unrepresentable linking_disabled`); R16 `404` => todas `linking_disabled` (regressao preservada); mutation (reintroduzir a cascata) MUST falhar
-- [ ] 21.2.3 Se o enum `reason` mudar: atualizar `data-model.md` IssueLink + `contracts/plugin-scripts.md` (`links`) e o diagnostico de `jira-sync.sh status`/skill `jira-sync` ETAPA 1
+- [x] 21.2.1 Corrigir `_js_cmd_links` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme contracts/jira-rest.md R17 + plan.md Riscos: 404 em R17 => `unrepresentable` SO da aresta (motivo distinto de `linking_disabled`), sem cascata; cascata `linking_disabled` so quando o proprio R16 respondeu 404
+- [x] 21.2.2 Teste em `tests/cstk/test_jira-sync.sh`: 3 arestas, R16 `200`, R17 da 1a aresta `404` e das demais `201` => 1 `unrepresentable` + 2 `active` (hoje: 3 `unrepresentable linking_disabled`); R16 `404` => todas `linking_disabled` (regressao preservada); mutation (reintroduzir a cascata) MUST falhar
+- [x] 21.2.3 Se o enum `reason` mudar: atualizar `data-model.md` IssueLink + `contracts/plugin-scripts.md` (`links`) e o diagnostico de `jira-sync.sh status`/skill `jira-sync` ETAPA 1
 
 <!-- converge-key: c97b3aa26511 -->
 
@@ -2991,9 +2991,9 @@ para "NAO alterado" — documentacao alinhada ao codigo nao fecha o requisito
 do plan: em execucao autonoma (US3), a degradacao de marco/links fica
 invisivel ate alguem rodar `status` manualmente.
 
-- [ ] 21.3.1 Implementar em `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme plan.md: a linha de resumo inclui `milestone=` quando `unresolved`/`blocked:*` e `links_unrepresentable=`/`links_stale=` quando > 0 (mesma regra de omissao no caminho feliz), parseando SO linhas ancoradas da saida de `jira-sync.sh status`; fail-open e nao-exfiltracao de `session_id` inalterados
-- [ ] 21.3.2 Teste em `tests/test_posttooluse-jira-sync.sh`: stub de `status` com `milestone=blocked:X` e `links_unrepresentable=2` => resumo contem os 2; caminho feliz (`milestone=<nome>`, contagens 0) => resumo byte-identico ao atual
-- [ ] 21.3.3 Restaurar `contracts/hooks.md` passo 5.bis para descrever o resumo estendido (reverter a nota "NAO alterado" da onda-016)
+- [x] 21.3.1 Implementar em `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme plan.md: a linha de resumo inclui `milestone=` quando `unresolved`/`blocked:*` e `links_unrepresentable=`/`links_stale=` quando > 0 (mesma regra de omissao no caminho feliz), parseando SO linhas ancoradas da saida de `jira-sync.sh status`; fail-open e nao-exfiltracao de `session_id` inalterados
+- [x] 21.3.2 Teste em `tests/test_posttooluse-jira-sync.sh`: stub de `status` com `milestone=blocked:X` e `links_unrepresentable=2` => resumo contem os 2; caminho feliz (`milestone=<nome>`, contagens 0) => resumo byte-identico ao atual
+- [x] 21.3.3 Restaurar `contracts/hooks.md` passo 5.bis para descrever o resumo estendido (reverter a nota "NAO alterado" da onda-016)
 
 <!-- converge-key: 44b6f3621377 -->
 

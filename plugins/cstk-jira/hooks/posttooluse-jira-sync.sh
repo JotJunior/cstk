@@ -250,8 +250,41 @@ _PJS_A=$(printf '%s\n' "$_PJS_OUTBOX_LINE" | sed -n 's/.*auth_failed=\([0-9]*\).
 _PJS_CONFLICT_PENDING=$(printf '%s\n' "$_PJS_STATUS_OUT" | sed -n 's/^pending=\([0-9]*\)$/\1/p')
 [ -n "$_PJS_CONFLICT_PENDING" ] || _PJS_CONFLICT_PENDING=0
 
-if [ "$_PJS_D" != "0" ] || [ "$_PJS_CONFLICT_PENDING" != "0" ] || [ "$_PJS_A" != "0" ]; then
-  _pjs_log "resumo pos-drain ($_PJS_FEATURE): queued=$_PJS_Q deferred=$_PJS_D conflict=$_PJS_CONFLICT_PENDING auth_failed=$_PJS_A"
+# task 21.3.1 (plan.md "Impacto em hooks e skills existentes" — resumo com
+# sinais novos; achado 21.3): `milestone=`/`links_unrepresentable=`/
+# `links_stale=` sao linhas ANCORADAS (inicio-de-linha) que
+# `jira-sync.sh status --feature F` ja emite (100% LOCAL, sem rede/titulo
+# do Jira — mesma garantia das demais linhas desta secao, nenhum rotulo
+# UNTRUSTED necessario). Antes desta tarefa o hook nunca as parseava —
+# degradacao de marco/links ficava invisivel em execucao autonoma ate
+# alguem rodar `status` manualmente. `milestone=` so entra no resumo
+# quando `unresolved`/`blocked:*` (marco resolvido/`off` e o caminho
+# feliz, omitido); `links_unrepresentable=`/`links_stale=` so entram
+# quando > 0 (mesma regra de omissao do caminho feliz) — cada campo novo
+# e independente, nunca aparece so porque outro sinal disparou o resumo.
+_PJS_MILESTONE_LINE=$(printf '%s\n' "$_PJS_STATUS_OUT" | sed -n 's/^milestone=\(.*\)$/\1/p')
+_PJS_LINKS_UNREP=$(printf '%s\n' "$_PJS_STATUS_OUT" | sed -n 's/^links_unrepresentable=\([0-9]*\)$/\1/p')
+_PJS_LINKS_STALE=$(printf '%s\n' "$_PJS_STATUS_OUT" | sed -n 's/^links_stale=\([0-9]*\)$/\1/p')
+[ -n "$_PJS_LINKS_UNREP" ] || _PJS_LINKS_UNREP=0
+[ -n "$_PJS_LINKS_STALE" ] || _PJS_LINKS_STALE=0
+
+_PJS_MILESTONE_FLAG="no"
+case "$_PJS_MILESTONE_LINE" in
+  unresolved | blocked:*) _PJS_MILESTONE_FLAG="yes" ;;
+esac
+
+# O resumo (linha inteira) so e gravado quando ALGUM sinal (dos 4 originais
+# OU dos 3 novos) sai do caminho feliz — nenhuma mudanca no gate original
+# perde comportamento (queued=0/deferred=0/conflict=0/auth_failed=0 +
+# milestone resolvido/off + links zerados continua sem gravar linha
+# nenhuma, byte-identico ao r01/13.4.1).
+if [ "$_PJS_D" != "0" ] || [ "$_PJS_CONFLICT_PENDING" != "0" ] || [ "$_PJS_A" != "0" ] \
+    || [ "$_PJS_MILESTONE_FLAG" = "yes" ] || [ "$_PJS_LINKS_UNREP" != "0" ] || [ "$_PJS_LINKS_STALE" != "0" ]; then
+  _PJS_SUMMARY="resumo pos-drain ($_PJS_FEATURE): queued=$_PJS_Q deferred=$_PJS_D conflict=$_PJS_CONFLICT_PENDING auth_failed=$_PJS_A"
+  [ "$_PJS_MILESTONE_FLAG" = "yes" ] && _PJS_SUMMARY="$_PJS_SUMMARY milestone=$_PJS_MILESTONE_LINE"
+  [ "$_PJS_LINKS_UNREP" != "0" ] && _PJS_SUMMARY="$_PJS_SUMMARY links_unrepresentable=$_PJS_LINKS_UNREP"
+  [ "$_PJS_LINKS_STALE" != "0" ] && _PJS_SUMMARY="$_PJS_SUMMARY links_stale=$_PJS_LINKS_STALE"
+  _pjs_log "$_PJS_SUMMARY"
 fi
 
 # ==== 6. Fail-open absoluto ====

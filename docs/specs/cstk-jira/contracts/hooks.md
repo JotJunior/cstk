@@ -134,19 +134,30 @@ contexto autonomo, devolve o pedido de gate ao orquestrador) e do
   `jira-sync.sh links` (`plugin-scripts.md` r02). Modo `task`/`bash`:
   inalterado (so transicao de status — nada de marco/label/link por task,
   para nao multiplicar escritas por `record_task`).
-- **Passo 5.bis (resumo)**: **NAO alterado** (achado de auditoria da FASE 20
-  tarefa 20.3.3, Principio VI — corrige uma aspiracao de plano que nunca foi
-  implementada em `posttooluse-jira-sync.sh`): a linha `resumo pos-drain
-  (...)` gravada em `runtime/hook.log` continua exibindo SOMENTE
-  `queued=`/`deferred=`/`conflict=`/`auth_failed=`, os mesmos 4 campos do
-  r01 (confirmado por grep — o hook nunca parseia `milestone=`/
-  `links_unrepresentable=`/`links_stale=` da saida de `jira-sync.sh
-  status`). Marco/labels/links continuam disponiveis sob demanda via
-  `jira-sync.sh status --feature F` (skill `jira-sync`, ETAPA 1) — so nao
-  sao surfaced automaticamente no resumo do hook. Estender o resumo
-  automatico do hook para incluir esses 2 campos e um gap real, nao
-  coberto por nenhuma tarefa desta FASE (fora de escopo desta rodada de
-  sincronizacao de documentacao).
+- **Passo 5.bis (resumo)**: **ESTENDIDO** (task 21.2/21.3, round r02 ciclo 1
+  do converge — corrige o gap que a FASE 20 tarefa 20.3.3 apenas
+  documentou como aspiracao nunca implementada). A linha `resumo pos-drain
+  (...)` gravada em `runtime/hook.log` agora tambem parseia, das mesmas
+  linhas ANCORADAS (inicio-de-linha) que `jira-sync.sh status --feature F`
+  ja emite (100% LOCAL, sem rede/titulo do Jira — nenhum rotulo UNTRUSTED
+  necessario, mesma garantia do restante desta secao): `milestone=` — SO
+  entra no resumo quando o valor e `unresolved`/`blocked:*` (marco
+  resolvido por nome ou `off` e o caminho feliz, omitido); `links_
+  unrepresentable=`/`links_stale=` — SO entram quando > 0 (mesma regra de
+  omissao do caminho feliz). Cada um dos 2 campos novos e independente do
+  outro E dos 4 originais — nunca aparece so porque outro sinal disparou o
+  resumo. O GATE que decide se a linha inteira e gravada tambem foi
+  estendido: alem de `deferred`/`auth_failed`/`pending` (ConflictRecord)
+  nao-zerados, agora `milestone` fora do caminho feliz OU `links_
+  unrepresentable`/`links_stale` > 0 tambem disparam a gravacao — sem essa
+  extensao do gate, um marco `blocked`/arestas `unrepresentable` com
+  outbox/conflitos saudaveis nunca apareceria (o proprio motivo do achado
+  21.3: "em execucao autonoma, a degradacao de marco/links fica invisivel
+  ate alguem rodar `status` manualmente"). Caminho feliz completo (outbox
+  saudavel + marco resolvido/`off` + links zerados) permanece
+  byte-identico ao r01/13.4.1 (nenhuma linha gravada). Marco/labels/links
+  seguem disponiveis sob demanda via `jira-sync.sh status --feature F`
+  (skill `jira-sync`, ETAPA 1) para inspecao detalhada alem do resumo.
 
 Inalterados: fail-open absoluto (passo 6), nao-exfiltracao de `session_id`
 (passo 7), nenhuma escrita no state da execucao, o hook NUNCA cria projeto

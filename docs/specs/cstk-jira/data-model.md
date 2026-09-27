@@ -337,8 +337,11 @@ escrito SOMENTE pelo hook `posttooluse-jira-sync.sh`. 3 usos: (1) stderr
 do `drain` quando nao-vazio (gate `auth_failed`/FR-016, ProjectConfig
 invalido, conflito detectado — FASE 12 tarefa 12.7.1, antes descartado via
 `>/dev/null 2>&1`); (2) resumo pos-drain `queued=N deferred=N conflict=N
-auth_failed=N`, OMITIDO quando saudavel (`deferred=0 conflict=0
-auth_failed=0`, sem ruido no caminho feliz) — o `conflict=N` vem do
+auth_failed=N`, mais `milestone=<valor>` (SO quando `unresolved`/
+`blocked:*`) e `links_unrepresentable=N`/`links_stale=N` (SO quando > 0) —
+task 21.3, round r02 ciclo 1 do converge; OMITIDO por inteiro quando
+saudavel (4 campos originais zerados/normais E marco resolvido/`off` E
+links zerados, sem ruido no caminho feliz) — o `conflict=N` vem do
 `pending=N` de `jira-sync status` (ConflictRecords pendentes), NUNCA da
 contagem de eventos outbox `conflict=` (FASE 13 tarefa 13.4.1); (3)
 diagnostico de candidatos ambiguos (`candidatos=N`, `N != 1`) quando a
@@ -460,7 +463,7 @@ Matriz de Dependencias (`FASE A --> FASE B`).
 | `blocked_key` | string (SEC-1) | `jira_key` da ancora de B (idem) |
 | `link_type_id` | string (SEC-1) | tipo usado (vazio se `unrepresentable`) |
 | `state` | `active`/`stale`/`unrepresentable` | ver transicoes |
-| `reason` | enum | vazio para `active`; `no_anchor`/`no_link_type`/`ambiguous_link_type`/`linking_disabled`/`limit`/`anchor_changed` |
+| `reason` | enum | vazio para `active`; `no_anchor`/`no_link_type`/`ambiguous_link_type`/`linking_disabled`/`visibility_or_disabled`/`limit`/`anchor_changed` — task 21.2 (contracts/jira-rest.md R17): `linking_disabled` SO quando o proprio R16 desta execucao respondeu 404 (unica prova inequivoca de linking desligado no site, cascata p/ todas as arestas pendentes); `visibility_or_disabled` quando o 404 veio isolado de R17 (ambiguo no contrato — linking desligado OU usuario sem visibilidade de uma das 2 issues da aresta), classificado SO por aresta, sem cascata |
 
 Chave natural: `(from_phase, to_phase, blocker_key, blocked_key)`. Ancora =
 Task de menor `local_key` da fase com linha `active` no `jira-map.tsv`
@@ -470,7 +473,7 @@ R17; R17 reenviado e seguro (duplicata nao cria outro link, OpenAPI).
 ```mermaid
 stateDiagram-v2
     [*] --> active: R17 201 (tipo resolvido, ancoras mapeadas)
-    [*] --> unrepresentable: sem tipo compativel / sem ancora / linking off / 413
+    [*] --> unrepresentable: sem tipo compativel / sem ancora / linking off (R16 404) / visibilidade (R17 404 isolado) / 413
     unrepresentable --> active: causa removida (ex.: operador define link_type_id) + R17 201
     active --> stale: ancora de A ou B mudou (reorganizacao) — link NUNCA removido (FR-012)
     stale --> [*]: operador decide no Jira

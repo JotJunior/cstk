@@ -91,6 +91,33 @@ _config_off() {
   printf 'config_version=1\nsync_autonomous=off\n' > "$1/.claude/cstk-jira/config"
 }
 
+# _config_on_full_milestone_off: ProjectConfig COMPLETO e valido
+# (`jira-config.sh validate` exit 0 — os campos minimos de `_config_on`
+# NAO bastam: `_js_cmd_milestone_resolve` chama `validate` ANTES de
+# checar `milestone_mode`, entao config invalido faz `status` cair no
+# fallback `milestone=unresolved`, mascarando `milestone_mode=off`) +
+# `milestone_mode=off` — usado pelos cenarios de resumo "saudavel" (task
+# 21.3.1/21.3.2) para que `milestone=off` seja um caminho feliz de
+# verdade (nao dependa do config estar incompleto).
+_config_on_full_milestone_off() {
+  mkdir -p "$1/.claude/cstk-jira"
+  cat > "$1/.claude/cstk-jira/config" <<'EOF'
+config_version=1
+site_host=cstk-test.atlassian.net
+project_key=DEMO
+board_id=1
+issue_type_epic=10001
+issue_type_task=10004
+issue_type_subtask=10002
+status_pending=To Do
+status_in_progress=In Progress
+status_pass=Done
+status_fail=Failed
+sync_autonomous=on
+milestone_mode=off
+EOF
+}
+
 _feature_lock() {
   mkdir -p "$1/.claude/feature-00c-state/$2/.lock"
 }
@@ -324,14 +351,21 @@ EOF
 }
 
 scenario_resumo_pos_drain_omitido_quando_saudavel() {
-  _config_on "$TMPDIR_TEST"
+  # task 21.3.1: config COMPLETO + milestone_mode=off — com o resumo agora
+  # tambem espelhando milestone=/links_unrepresentable=/links_stale=
+  # (achado 21.3), o config MINIMO de `_config_on` faria `jira-config.sh
+  # validate` falhar dentro de `milestone resolve` e `status` cair no
+  # fallback `milestone=unresolved`, que NAO e mais um caminho feliz —
+  # ruido falso que nada tem a ver com o outbox estar saudavel.
+  _config_on_full_milestone_off "$TMPDIR_TEST"
   _feature_lock "$TMPDIR_TEST" demo
   _jira_map "$TMPDIR_TEST" demo
   _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
   assert_exit 0 _run_hook "$_J" task || return 1
   # outbox so tem o evento recem-enfileirado (queued=1), sem
-  # conflict/auth_failed/deferred — nenhuma linha "resumo pos-drain" deve
-  # aparecer (evita ruido no caminho feliz).
+  # conflict/auth_failed/deferred, milestone=off e links zerados (sem
+  # jira-links.tsv) — nenhuma linha "resumo pos-drain" deve aparecer
+  # (evita ruido no caminho feliz).
   grep -q 'resumo pos-drain' "$(_hooklog "$TMPDIR_TEST")" \
     && { _fail "resumo_noise" "resumo pos-drain apareceu com outbox saudavel: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
   return 0
@@ -362,7 +396,11 @@ EOF
 # `conflict` remanescente ainda existe (cenario que a contagem antiga, por
 # evento outbox, acusaria para sempre).
 scenario_resumo_conflito_resolvido_nao_aparece() {
-  _config_on "$TMPDIR_TEST"
+  # task 21.3.1: config completo + milestone_mode=off (mesmo motivo de
+  # scenario_resumo_pos_drain_omitido_quando_saudavel — sem isto,
+  # milestone=unresolved do config minimo faria o resumo aparecer por um
+  # motivo nao relacionado ao conflito ja resolvido que este teste cobre).
+  _config_on_full_milestone_off "$TMPDIR_TEST"
   _feature_lock "$TMPDIR_TEST" demo
   _jira_map "$TMPDIR_TEST" demo
   mkdir -p "$TMPDIR_TEST/.claude/cstk-jira/runtime"
@@ -378,6 +416,81 @@ EOF
   assert_exit 0 _run_hook "$_J" task || return 1
   grep -q 'resumo pos-drain' "$(_hooklog "$TMPDIR_TEST")" \
     && { _fail "resumo_resolved_conflict_noise" "conflito ja resolvido ainda apareceu no resumo: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# HS-20 (task 21.3.1/21.3.2, achado 21.3): resumo pos-drain agora tambem
+# espelha `milestone=`/`links_unrepresentable=` — marco `blocked:1.0.0`
+# (`milestone_release=1.0.0` + `jira-milestones.tsv` com `state=blocked`,
+# resolucao 100% local, sem CHANGELOG.md/round) e 2 arestas
+# `unrepresentable` em `jira-links.tsv` aparecem no resumo mesmo com
+# outbox/conflicts totalmente saudaveis — o gate do resumo agora considera
+# estes 2 sinais novos, nao so deferred/conflict/auth_failed (r01/13.4.1).
+# Mutation (parar de parsear/anexar os campos novos) MUST falhar este
+# teste.
+scenario_resumo_milestone_blocked_e_links_unrepresentable_aparecem() {
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/config" <<'EOF'
+config_version=1
+site_host=cstk-test.atlassian.net
+project_key=DEMO
+board_id=1
+issue_type_epic=10001
+issue_type_task=10004
+issue_type_subtask=10002
+status_pending=To Do
+status_in_progress=In Progress
+status_pass=Done
+status_fail=Failed
+sync_autonomous=on
+milestone_release=1.0.0
+EOF
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n1.0.0\trelease\t30001\tDEMO\tblocked\n' \
+    > "$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv"
+  printf 'from_phase\tto_phase\tblocker_key\tblocked_key\tlink_type_id\tstate\treason\n1\t2\t\t\t\tunrepresentable\tno_link_type\n2\t3\t\t\t\tunrepresentable\tno_link_type\n' \
+    > "$TMPDIR_TEST/docs/specs/demo/jira-links.tsv"
+  _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  grep -q 'resumo pos-drain (demo):.*milestone=blocked:1.0.0' "$(_hooklog "$TMPDIR_TEST")" \
+    || { _fail "hs20_milestone_missing" "milestone=blocked:1.0.0 nao apareceu no resumo: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  grep -q 'resumo pos-drain (demo):.*links_unrepresentable=2' "$(_hooklog "$TMPDIR_TEST")" \
+    || { _fail "hs20_links_missing" "links_unrepresentable=2 nao apareceu no resumo: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+# HS-21 (task 21.3.2, caminho feliz): marco RESOLVIDO (milestone=1.0.0,
+# nao blocked) + jira-links.tsv sem nenhuma linha unrepresentable/stale +
+# outbox/conflicts saudaveis => resumo byte-identico ao r01/13.4.1
+# (nenhuma linha "resumo pos-drain"). Marco resolvido (nao unresolved/
+# blocked) e links=0 sao os 2 novos campos no seu proprio caminho feliz —
+# nunca disparam o resumo sozinhos.
+scenario_resumo_milestone_resolvido_e_links_zerados_nao_aparece() {
+  mkdir -p "$TMPDIR_TEST/.claude/cstk-jira"
+  cat > "$TMPDIR_TEST/.claude/cstk-jira/config" <<'EOF'
+config_version=1
+site_host=cstk-test.atlassian.net
+project_key=DEMO
+board_id=1
+issue_type_epic=10001
+issue_type_task=10004
+issue_type_subtask=10002
+status_pending=To Do
+status_in_progress=In Progress
+status_pass=Done
+status_fail=Failed
+sync_autonomous=on
+milestone_release=1.0.0
+EOF
+  _feature_lock "$TMPDIR_TEST" demo
+  _jira_map "$TMPDIR_TEST" demo
+  printf 'milestone_name\tmilestone_kind\tjira_version_id\tproject_key\tstate\n1.0.0\trelease\t30001\tDEMO\tcurrent\n' \
+    > "$TMPDIR_TEST/docs/specs/demo/jira-milestones.tsv"
+  _J=$(_json_task "$TMPDIR_TEST" 5.1 pass)
+  assert_exit 0 _run_hook "$_J" task || return 1
+  grep -q 'resumo pos-drain' "$(_hooklog "$TMPDIR_TEST")" \
+    && { _fail "hs21_noise" "resumo pos-drain apareceu com marco resolvido e links zerados: $(cat "$(_hooklog "$TMPDIR_TEST")" 2>/dev/null)"; return 1; }
   return 0
 }
 
