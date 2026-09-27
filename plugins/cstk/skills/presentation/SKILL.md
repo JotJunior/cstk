@@ -25,6 +25,12 @@ humanizado. O resultado sempre segue o mesmo template:
 | `inventory.tsv` | fatos e metricas, linha de base do proximo diff | `scan-project-docs.sh` |
 | `index.html` | deck unico e offline (slides, relatorio, PDF) | `render-presentation.sh` |
 
+A audiencia nao e tecnica: o texto e **linguagem de produto**, que
+encanta e vende o que o projeto resolve. Arquitetura, frameworks,
+linguagens, endpoints, comandos e caminhos ficam fora do texto; quando um
+nome tecnico for indispensavel, vem com uma traducao curta em linguagem
+comum, ou vira um selo ilustrativo (`@tag`).
+
 Voce escreve **so** o `story.md`, numa gramatica fechada
 (`references/slide-grammar.md`). Fatos vem do inventario; metricas, so
 por chave (`@metric Rotulo | chave`). O HTML e sempre derivado.
@@ -114,7 +120,8 @@ inventario, `spec.md` (titulo, Clarifications, User Story P1),
 **Volume grande** (mais de 12 specs a escrever): delegue por capitulo com
 a tool `Agent`, em paralelo. Cada subagente recebe as linhas do
 inventario do capitulo, os caminhos das specs, `references/slide-grammar.md`
-e `references/narrative-guide.md`, e devolve **so** os blocos
+e `references/narrative-guide.md` (com enfase em "Linguagem de produto"),
+e devolve **so** os blocos
 `<!-- slide: spec key=... -->` prontos. Voce costura capitulos, abertura e
 fechamento, e revisa a unidade de tom.
 
@@ -124,7 +131,8 @@ Siga `references/narrative-guide.md` (arco, tom, limites de tamanho) e a
 gramatica de `references/slide-grammar.md`. Ordem obrigatoria: `cover`
 primeiro, `sources` por ultimo. Um slide `spec` por chave do inventario,
 com as quatro secoes `###` na ordem: o que e, como foi pensada, como foi
-enriquecida, como foi implementada.
+enriquecida, como foi implementada. Leia os artefatos tecnicos, mas
+escreva para quem decide: traduza cada mecanismo no efeito que ele produz.
 
 ## ETAPA 5: Validacao
 
@@ -136,6 +144,12 @@ sh "$S/validate-presentation.sh" --story "$OUT/story.md" --inventory "$OUT/inven
 `story.md:LINHA: mensagem` e valide de novo ate `errors=0`. Nunca
 contorne o validador (ex.: apagar o `@source` que aponta para arquivo
 inexistente em vez de corrigir o caminho).
+
+Depois, trate cada `aviso: termo tecnico` (G-12): reescreva em linguagem
+de produto, traduza na mesma frase com uma descricao curta, mova para
+`@tag` ou, se for vocabulario do proprio produto, declare em
+`vocabulary:` no frontmatter. Relate ao operador os avisos que ficaram e
+por que.
 
 ## ETAPA 6: Render e relato
 
@@ -154,6 +168,7 @@ tela cheia, `P` imprime (um slide por pagina, pronto para PDF).
 ## DIRETRIZES RAPIDAS
 
 - O redator escreve narrativa; o script escreve fatos.
+- Linguagem de produto: o que muda para quem usa, nunca como o codigo faz.
 - Um slide por spec, sempre; densidade fixa (lead + 4 secoes curtas).
 - Nada de HTML, links ou imagens no `story.md`: o render escapa tudo.
 - O template (`templates/presentation.html`, `theme.css`, `deck.js`) e o
@@ -169,6 +184,16 @@ tela cheia, `P` imprime (um slide por pagina, pronto para PDF).
 | `validate-documentation` | qualidade das docs de origem; rode antes se o deck parecer pobre |
 
 ## Gotchas
+
+### Tecniques afasta quem decide
+
+Os artefatos de origem sao tecnicos e o redator tende a copiar o
+vocabulario deles: nome de script, flag, tabela, framework. Para a
+diretoria isso e ruido. O validador barra o tecniques estrutural (codigo,
+URL, endpoint, flag, caminho, arquivo) e avisa sobre termos do glossario;
+nao silencie o aviso colocando tudo em `vocabulary:`. Se o nome tecnico e
+indispensavel, explique-o numa frase ("o SQLite, que e como um banco de
+dados de bolso, funciona sem internet"); se so ilustra, use `@tag`.
 
 ### "Vendavel" nao autoriza numero sem lastro
 

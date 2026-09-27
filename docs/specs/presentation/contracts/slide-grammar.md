@@ -19,6 +19,9 @@ dois arquivos e defeito.
 | G-08 | `@metric` com chave valida para o escopo (FR-013) | `@metric chave invalida: K` |
 | G-09 | diretiva conhecida | `diretiva desconhecida: @X` |
 | G-10 | sem placeholders | `placeholder: X` |
+| G-11 | texto narrativo sem tecniques estrutural: crases, URL, endpoint, flag, caminho, arquivo (FR-018) | `tecniques: <tipo> "<trecho>" (...)` |
+| G-12 | termo do glossario `references/jargon.txt` fora de `vocabulary:` gera **aviso**, nao erro (FR-019) | `aviso: termo tecnico "X" (...)` |
+| G-13 | no maximo 3 `@tag` por slide (FR-020) | `slide com N @tag (maximo 3)` |
 
 ## Invariantes do render (`render-presentation.sh`)
 
@@ -29,3 +32,6 @@ dois arquivos e defeito.
 | R-03 | nenhum `src=`, `href=`, `@import` ou `url(` apontando para rede no HTML gerado; o render nunca emite links a partir do texto (FR-010) |
 | R-04 | um `<section class="slide ...">` por slide da story, na mesma ordem |
 | R-05 | valor de metrica ausente renderizado como rotulo localizado de "nao registrado", nunca `0` |
+| R-06 | `@tag` vira `<div class="tags">` com rotulo localizado ("Por tras"/"Under the hood") (FR-020) |
+| R-07 | rodape: rotulo amigavel por fonte (briefing, constituicao, titulo narrativo da spec dona do arquivo, "documentacao do projeto"), deduplicado, caminhos em `title=` (FR-021) |
+| R-08 | `@timeline` e `@sources` usam o titulo narrativo da spec quando o slide ja foi visto (FR-022) |

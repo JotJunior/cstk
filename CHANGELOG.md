@@ -38,6 +38,15 @@ humanizado.
   escuro, modo slides (teclado, progresso, deep link) com auto-ajuste
   tipográfico por slide para caber no canvas 16:9, modo relatório com
   sumário e impressão com um slide por página.
+- **Linguagem de produto, sem tecniquês**: o deck fala com quem decide.
+  O validador bloqueia no texto narrativo trechos de código, URLs,
+  endpoints, flags, caminhos e nomes de arquivo, e avisa (sem bloquear)
+  sobre termos de um glossário técnico (`references/jargon.txt`), com
+  isenção por `vocabulary:` no frontmatter. Nome técnico indispensável
+  vem com tradução curta na mesma frase; como ilustração, vira selo
+  discreto via `@tag` (até 3 por slide). O rodapé mostra rótulos
+  amigáveis (caminhos só no tooltip e no apêndice) e a linha do tempo
+  usa os títulos narrativos dos slides.
 - Referências da skill: `slide-grammar.md`, `narrative-guide.md`,
   `source-mapping.md` e o esqueleto `templates/story.md`.
 - Testes: `tests/test_scan-project-docs.sh`,

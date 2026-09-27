@@ -38,21 +38,67 @@ cover → manifesto → briefing → constitution
 ## Slide de spec (o coracao do deck)
 
 - `##` titulo = o beneficio, em ate 8 palavras ("Entrar sem atrito"),
-  nunca o nome tecnico da spec. O nome tecnico ja aparece no rodape.
+  nunca o nome tecnico da spec. O render usa esse titulo tambem na linha
+  do tempo, no rodape de fontes e no apendice.
 - Lead: uma frase (ate 25 palavras) com a transformacao que a spec trouxe.
 - Quatro secoes, na ordem, ate ~45 palavras cada:
-  1. **O que e**: a capacidade, em linguagem de quem usa.
+  1. **O que e**: a capacidade, em linguagem de quem usa. O que muda na
+     vida de quem usa, nao como o sistema faz.
   2. **Como foi pensada**: o problema e a escolha central (research,
-     plan: alternativas consideradas e por que esta venceu).
-  3. **Como foi enriquecida**: o que o clarify, o checklist e o converge
-     mudaram; perguntas que fecharam ambiguidades, gaps que viraram
-     requisito.
+     plan: alternativas consideradas e por que esta venceu), contados
+     como decisao de produto, nao como arquitetura.
+  3. **Como foi enriquecida**: o que as rodadas de perguntas e revisoes
+     mudaram; duvidas que viraram decisao, lacunas que viraram garantia.
   4. **Como foi implementada**: o que foi entregue e o estado real
-     (use o estagio do inventario: em andamento nunca vira "entregue").
+     (use o estagio do inventario: em andamento nunca vira "entregue"),
+     descrito pelo resultado, nunca por arquivos, comandos ou tecnologias.
 - Metricas: 2 ou 3 `@metric` por spec (`tasks`, `clarify-questions`,
-  `converge` sao as mais expressivas).
+  `converge` sao as mais expressivas), com rotulos em linguagem comum:
+  "Tarefas entregues", "Duvidas esclarecidas", "Revisao final".
+- Ate 3 `@tag` por slide quando uma tecnologia ajudar a ilustrar (ver
+  "Linguagem de produto").
 - `@source` para o `spec.md` (ou o arquivo da spec viva); acrescente
   outros arquivos citados (research, plan) quando o texto depender deles.
+
+## Linguagem de produto (sem tecniques)
+
+A audiencia nao e tecnica. O deck deve **encantar e vender o produto**:
+o que ele resolve, para quem, com que cuidado. Arquitetura, frameworks,
+linguagens de programacao, endpoints, comandos de terminal, nomes de
+arquivo e caminhos nao sao relevantes para quem decide.
+
+**Bloqueado pelo validador (G-11)** no texto narrativo: trecho entre
+crases, URL, endpoint (`GET /...`), flag de linha de comando (`--algo`),
+caminho de arquivo e nome de arquivo com extensao tecnica. Traduza para o
+efeito que isso produz.
+
+**Aviso do validador (G-12)**: termos do glossario
+(`references/jargon.txt`: API, backend, SQLite, script, hook, commit...).
+Resolva de um destes jeitos:
+
+1. **Reescreva** em linguagem de produto (o caminho preferido).
+2. **Traduza na mesma frase**, quando o nome for estritamente necessario
+   para o contexto: nome + descricao curta em linguagem comum. Exemplo:
+   "A aplicacao guarda os dados localmente com o SQLite, que e como um
+   banco de dados de bolso: funciona sem internet e sem nenhum sistema
+   pesado por tras."
+3. **Mova para `@tag`**: selos discretos ("Por tras: SQLite"), no maximo
+   3 por slide. E o unico lugar em que nomes tecnicos entram sem
+   explicacao, como ilustracao.
+4. **Declare como vocabulario do produto** em `vocabulary:` no
+   frontmatter, quando o termo e a propria linguagem do produto (ex.:
+   "skill" e "pipeline" num toolkit de desenvolvimento). Use com parcimonia.
+
+| Em vez de | Escreva |
+|-----------|---------|
+| "migrou o estado para SQLite com transacoes" | "o historico de cada execucao passou a ficar num cofre local que nao se corrompe se algo falhar no meio" |
+| "`converge-status.sh record` grava o marcador" | "cada entrega passa por uma conferencia final contra o que foi combinado" |
+| "hook PreToolUse bloqueia comandos" | "uma guarda automatica impede acoes perigosas antes que acontecam" |
+| "endpoint `POST /reservas` com payload JSON" | "a reserva e confirmada em um unico passo" |
+| "suite POSIX com 113 testes" | "cada peca e verificada automaticamente antes de chegar a quem usa" (e o numero via `@metric`) |
+
+Rotulos de metrica tambem sao texto de produto: "Duvidas esclarecidas",
+nao "Perguntas de clarify".
 
 ## Tom
 
@@ -96,3 +142,6 @@ cover → manifesto → briefing → constitution
 - [ ] Nenhum numero literal fora de `@metric`.
 - [ ] Todo slide factual tem `@source` apontando para arquivo existente.
 - [ ] Nenhum placeholder (`{{`, TODO, TBD) sobrou do esqueleto.
+- [ ] Zero erros de tecniques (G-11) e cada aviso de glossario (G-12)
+      resolvido: reescrito, traduzido na frase, movido para `@tag` ou
+      declarado em `vocabulary:`.

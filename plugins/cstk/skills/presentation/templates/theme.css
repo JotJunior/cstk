@@ -367,7 +367,40 @@ em { font-style: italic; }
   color: var(--accent);
 }
 
-.slide__footer code { background: none; padding: 0; font-size: 1em; }
+.slide__footer .src {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  color: var(--muted);
+  cursor: help;
+}
+
+.slide__footer .src__sep { color: var(--line); }
+
+/* ---- selos ilustrativos (@tag): tecnologia so como ilustracao ---- */
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tags__label {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tag {
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+}
 
 /* ------------------------------------------------------------------ */
 /* Tipos de slide                                                      */
@@ -803,6 +836,8 @@ em { font-style: italic; }
 .is-slides .slide--numbers .metric__value { font-size: var(--fs-metric); }
 .is-slides .metric { padding: 9px 18px; }
 .is-slides .slide__footer { font-size: 13px; }
+.is-slides .tags__label { font-size: 12px; }
+.is-slides .tag { font-size: 13px; padding: 4px 12px; }
 .is-slides .card { padding: 24px 28px; border-radius: 18px; }
 .is-slides .card__flag { font-size: 12px; }
 .is-slides .badge { font-size: 13px; padding: 7px 16px; }

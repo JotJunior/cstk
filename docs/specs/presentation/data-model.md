@@ -46,7 +46,8 @@ com `estado` em `added|changed|removed|unchanged`.
 
 Frontmatter YAML simples (`chave: valor`, uma por linha) entre `---`:
 `title` (obrigatorio), `subtitle`, `project`, `lang` (obrigatorio,
-`pt-BR` ou `en`), `generated` (`AAAA-MM-DD`). Corpo = sequencia de
+`pt-BR` ou `en`), `generated` (`AAAA-MM-DD`), `vocabulary` (termos do
+proprio produto, separados por virgula, isentos do aviso de glossario). Corpo = sequencia de
 slides. Contrato completo em
 [contracts/slide-grammar.md](./contracts/slide-grammar.md).
 
@@ -56,7 +57,7 @@ slides. Contrato completo em
 |----------|-------|
 | `type` | um de `cover`, `manifesto`, `briefing`, `constitution`, `chapter`, `spec`, `timeline`, `numbers`, `closing`, `sources` |
 | `key` | obrigatorio e unico em `spec`; deve existir no inventario |
-| conteudo | Markdown restrito + diretivas `@metric`, `@source`, `@timeline`, `@sources` |
+| conteudo | Markdown restrito + diretivas `@metric`, `@source`, `@tag` (ate 3), `@timeline`, `@sources` |
 
 ## Entity: Chave de metrica
 

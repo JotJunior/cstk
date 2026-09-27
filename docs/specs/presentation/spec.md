@@ -31,6 +31,22 @@
   snapshot do inventario gravado junto do `story.md`; o diff entre o
   snapshot e um scan novo aponta specs novas, alteradas e removidas.
 
+### Session 2026-09-26
+
+- Q: O dogfooding mostrou tecniques nos slides (arquitetura, frameworks,
+  linguagens, endpoints, comandos). Qual a regra de linguagem? → A: A
+  apresentacao e uma visao encantadora do produto para audiencia nao
+  tecnica. Dados tecnicos so de forma ilustrativa, nunca informativa.
+- Q: Como tratar os caminhos de arquivo citados no rodape de cada slide?
+  → A: Rotulo amigavel no rodape (nome da peca ou titulo narrativo da
+  spec); caminhos completos so no apendice de fontes e no tooltip.
+- Q: Termos tecnicos soltos (framework, API, SQLite, backend) bloqueiam?
+  → A: Nao bloqueiam: quando estritamente necessarios, entram com uma
+  descricao curta em linguagem comum (ex.: "o SQLite, que e como um banco
+  de dados de bolso, funciona sem internet"). O validador avisa.
+- Q: Onde dados tecnicos podem aparecer de forma ilustrativa? → A: Em
+  selos discretos no slide (`@tag`), no maximo 3 por slide.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Gerar a apresentacao do projeto a partir das docs (Priority: P1)
@@ -122,6 +138,40 @@ conferir o texto novo no HTML, com o `story.md` byte a byte inalterado.
 
 ---
 
+### User Story 4 - Ler a historia sem tecniques (Priority: P1)
+
+Um diretor sem formacao tecnica le o deck. Ele entende o que cada feature
+resolve e por que importa, sem esbarrar em nomes de arquivo, comandos,
+endpoints ou siglas. Quando uma tecnologia aparece, vem explicada numa
+frase ou como um selo discreto de ilustracao.
+
+**Why this priority**: a audiencia do deck e quem decide; tecniques quebra
+o encantamento e o poder de venda que justificam a skill.
+
+**Independent Test**: validar uma story com trecho de codigo, URL,
+endpoint, flag, caminho e arquivo (cada um reprova) e com termo do
+glossario (so avisa); renderizar e conferir rodape, selos e linha do tempo.
+
+**Acceptance Scenarios**:
+
+1. **Given** uma story com texto narrativo contendo codigo entre crases,
+   URL, endpoint, flag, caminho ou nome de arquivo, **When** o validador
+   roda, **Then** falha com `tecniques` e a linha do problema (FR-018).
+2. **Given** uma story com termo do glossario tecnico, **When** o
+   validador roda, **Then** emite aviso nao bloqueante, e o termo listado
+   em `vocabulary:` nao gera aviso (FR-019).
+3. **Given** um slide com `@tag`, **When** renderizado, **Then** exibe
+   selos discretos "Por tras"; mais de 3 selos reprova a validacao (FR-020).
+4. **Given** slides com `@source`, **When** renderizados, **Then** o rodape
+   mostra rotulo amigavel (briefing, constituicao, titulo narrativo da
+   spec ou documentacao do projeto) com o caminho so no tooltip e no
+   apendice (FR-021).
+5. **Given** a linha do tempo e o apendice, **When** renderizados,
+   **Then** usam o titulo narrativo de cada spec, nao o titulo tecnico
+   do documento (FR-022).
+
+---
+
 ### Edge Cases
 
 - Projeto sem briefing ou sem constitution: a skill segue com o que
@@ -140,6 +190,11 @@ conferir o texto novo no HTML, com o `story.md` byte a byte inalterado.
   interpretado como marcacao (FR-015).
 - Nenhuma spec em `docs/specs/`: a apresentacao cobre briefing e
   constitution; o capitulo de specs fica ausente sem erro (FR-004).
+- Barra em expressao comum ("e/ou", "entrada/saida") nao e caminho e
+  nao reprova (FR-018); `@source` e `@tag` podem conter nomes tecnicos
+  (FR-018, FR-020).
+- Termo tecnico com traducao curta na mesma frase continua gerando aviso:
+  o aviso lembra o redator de conferir a traducao, sem bloquear (FR-019).
 - Instalacao via `cstk install` com perfil `complementary`: a skill chega
   com seus scripts POSIX, cada um coberto por teste 1:1 na suite (FR-017).
 
@@ -198,6 +253,21 @@ conferir o texto novo no HTML, com o `story.md` byte a byte inalterado.
   `sources`) e layout fixo por tipo.
 - **FR-017**: A skill MUST ser distribuida no perfil `complementary` do
   cstk, com scripts POSIX sh testados 1:1.
+
+- **FR-018**: O texto narrativo MUST estar em linguagem de produto: o
+  validador MUST reprovar trecho entre crases, URL, endpoint, flag de
+  linha de comando, caminho de arquivo e nome de arquivo com extensao
+  tecnica em qualquer linha de texto (exceto `@source`, `@tag`, `@metric`).
+- **FR-019**: O validador MUST emitir aviso nao bloqueante para termos de
+  um glossario tecnico distribuido com a skill, exceto os declarados em
+  `vocabulary:` no frontmatter; o resultado MUST reportar `warnings=N`.
+- **FR-020**: A story MUST aceitar `@tag Texto` como selo ilustrativo
+  discreto, no maximo 3 por slide, unico lugar para nome tecnico sem
+  explicacao.
+- **FR-021**: O rodape de fontes MUST exibir rotulo amigavel em vez do
+  caminho; o caminho MUST permanecer rastreavel no tooltip e no apendice.
+- **FR-022**: A linha do tempo e o apendice MUST usar o titulo narrativo
+  (`##`) do slide de cada spec, com fallback para o titulo do inventario.
 
 ### Key Entities
 

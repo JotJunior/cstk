@@ -38,7 +38,7 @@ scenario_story_valida_exit0() {
   _vp_setup || return 2
   _vp_run
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
-  assert_stdout_contains "RESULT|slides=14|specs=4/4|errors=0" || return 1
+  assert_stdout_contains "RESULT|slides=14|specs=4/4|errors=0|warnings=0" || return 1
 }
 
 scenario_spec_sem_slide() {
@@ -169,6 +169,91 @@ scenario_texto_fora_de_slide() {
   _vp_edit 's/^<!-- slide: cover -->$/Texto solto\
 <!-- slide: cover -->/'
   _vp_expect_fail "conteudo fora de slide" || return 1
+}
+
+# ---------- linguagem de produto (G-11..G-13) ----------
+
+_vp_tech() {
+  _vp_setup || return 2
+  _vp_edit "s|^Menos telas, menos passos.\$|$1|"
+  _vp_expect_fail "tecniques: $2" || return 1
+}
+
+scenario_tecniques_codigo_entre_crases() {
+  _vp_tech 'Rode `make build` para gerar.' "codigo" || return 1
+}
+
+scenario_tecniques_url() {
+  _vp_tech 'Veja https://exemplo.com/docs para detalhes.' 'url "https://exemplo.com/docs"' || return 1
+}
+
+scenario_tecniques_endpoint() {
+  _vp_tech 'O painel chama GET /api/reservas a cada minuto.' 'endpoint "GET /api/reservas"' || return 1
+}
+
+scenario_tecniques_flag() {
+  _vp_tech 'Basta passar --force para seguir.' 'flag "--force"' || return 1
+}
+
+scenario_tecniques_caminho() {
+  _vp_tech 'A regra vive em docs/regras para todos.' 'caminho "docs/regras"' || return 1
+}
+
+scenario_tecniques_arquivo() {
+  _vp_tech 'Tudo fica no config.json do projeto.' 'arquivo "config.json"' || return 1
+}
+
+scenario_barra_simples_nao_e_caminho() {
+  _vp_setup || return 2
+  _vp_edit 's|^Menos telas, menos passos.$|Menos telas e/ou passos, entrada/saida clara.|'
+  _vp_run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "e/ou nao deveria reprovar; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_source_e_tag_podem_ter_tecniques() {
+  _vp_setup || return 2
+  _vp_edit 's|^@tag Expiração automática$|@tag `sqlite3` e config.json|'
+  _vp_run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "@tag nao deveria reprovar; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_jargao_e_aviso_nao_bloqueante() {
+  _vp_setup || return 2
+  _vp_edit 's|^Menos telas, menos passos.$|Menos telas, com um backend enxuto.|'
+  _vp_run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "aviso nao deveria bloquear; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains 'aviso: termo tecnico "backend"' || return 1
+  assert_stdout_contains "errors=0|warnings=1" || return 1
+}
+
+scenario_vocabulary_suprime_aviso() {
+  _vp_setup || return 2
+  _vp_edit 's|^Menos telas, menos passos.$|Menos telas, com um backend enxuto.|; s|^vocabulary: checkout$|vocabulary: checkout, Backend|'
+  _vp_run
+  assert_stdout_contains "errors=0|warnings=0" || return 1
+}
+
+scenario_jargao_com_traducao_continua_aviso() {
+  # a traducao curta e responsabilidade do redator; o aviso lembra de conferir
+  _vp_setup || return 2
+  _vp_edit 's|^Menos telas, menos passos.$|Os dados ficam no SQLite, um banco de dados de bolso que funciona sem internet.|'
+  _vp_run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains 'termo tecnico "sqlite"' || return 1
+}
+
+scenario_mais_de_tres_tags() {
+  _vp_setup || return 2
+  _vp_edit 's|^@tag Expiração automática$|@tag A\
+@tag B\
+@tag C|'
+  _vp_expect_fail "slide com 4 @tag (maximo 3)" || return 1
+}
+
+scenario_glossario_inexistente_exit2() {
+  _vp_setup || return 2
+  capture sh -c 'cd "$1" && exec sh "$2" --story story.md --inventory inventory.tsv --jargon nada.txt' _ "$TMPDIR_TEST" "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
 scenario_sem_argumentos_exit2() {
