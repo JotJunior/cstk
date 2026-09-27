@@ -42,3 +42,33 @@ exigindo. 6 achados acionaveis, apendados como FASE 21:
 
 Residuais R1/R2 do r01 inalterados (LOW, documentacao).
 <!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T15:27:31Z; actionable=6; tasks-digest=234a560d080c -->
+
+## Round r02 — Ciclo 2 (onda-020) — actionable
+
+Verificacao da FASE 21 no CODIGO e nos testes (nao na doc):
+
+| achado c1 | veredito | evidencia |
+|-----------|----------|-----------|
+| 21.1 | fechado | `jira-sync.sh` `_js_rebaseline_marker` (~741-873): R6 GET antes do PUT, carry-forward das 2 chaves, re-derivacao restrita (`milestone-id-known`, `^phase-[0-9]+$`) |
+| 21.2 | fechado | `_js_cmd_links` (~1466-1486): 404 de R17 => `visibility_or_disabled` so da aresta; cascata so com 404 de R16 (~1333); enum em `jira-map.sh:277` + data-model.md:466 |
+| 21.3 | fechado | `posttooluse-jira-sync.sh` (~265-287): `milestone=`/`links_unrepresentable=`/`links_stale=` ancorados, omitidos no caminho feliz; contracts/hooks.md 5.bis ESTENDIDO |
+| 21.4 | fechado | `jira-config.sh` `_jc_cmd_validate`: 5 enums + SEC-6 + SEC-1 |
+| 21.5 | fechado | `jira-setup.sh` `check-field-support` (~380-411) + skill `jira-setup` ETAPA 5.bis/ETAPA 8 |
+| 21.6 | fechado | `create-project`/`consent-question` recusam `never` antes de qualquer requisicao (~611, ~670); skill ETAPA 2.bis pula a oferta |
+
+Suites (uma a uma, `JIRA_IO_BACKOFF_SECONDS=0 LC_ALL=C`): test_jira-sync
+98/98, test_jira-config 36/36, test_jira-setup 39/39,
+test_posttooluse-jira-sync 21/21. Gate MUST: `extract-must --coverage` =>
+5 principios, `cobertura de MUST: ok`; Principio II honrado (`sqlite3` so
+em comentario/usage). Varredura de ponta a ponta de FR-020..FR-025 achou 2
+gaps novos, apendados como FASE 22:
+
+| # | tipo | severidade | path | origem |
+|---|------|------------|------|--------|
+| 22.1 | partial | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`milestone ensure`) + `jira-setup.sh` (`write-config`) | FR-020 / research R2-4 / data-model Milestone |
+| 22.2 | contradicts | HIGH | `plugins/cstk-jira/scripts/jira-sync.sh` (`_js_rebaseline_marker` sob `overwrite`) | data-model ConflictRecord ("`overwrite` reaplica") / FR-022 |
+
+22.2 inclui doc alinhada ao codigo (skill `jira-sync`, item `overwrite`),
+que nao conta como fechamento. Residuais R1/R2 do r01 inalterados (LOW,
+documentacao).
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-09-27T17:09:19Z; actionable=2; tasks-digest=aae6563e4a62 -->

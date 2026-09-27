@@ -3065,3 +3065,76 @@ consentimento, por isso MEDIUM e nao HIGH). Completar e ADITIVO.
 
 <!-- converge-key: 167e86bd12d4 -->
 
+## FASE 22 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 2 (onda-020): os 6 achados da FASE 21 foram conferidos
+> no CODIGO e nos testes e estao fechados; os 2 achados abaixo sao novos,
+> encontrados na varredura de ponta a ponta de FR-020..FR-025.
+
+### 22.1 Marco `blocked` volta a chamar R12 em toda `milestone ensure` (convert e todo reconcile, este em silencio); `write-config` nao limpa o bloqueio `[C]`
+
+Ref: FR-020 ("suspendendo a sincronizacao daquele marco em vez de repetir silenciosamente") + research.md Decision R2-4 ("nao repete R12 ate o operador reconfigurar ... `jira-setup.sh write-config` limpa o bloqueio") + data-model.md ProjectConfig Validation rules / Milestone `blocked --> current: operador reconfigura (write-config) + nova tentativa OK` + plan.md fluxo 5 (US1 P1) · tipo: `partial` · severidade: `HIGH`
+
+`_js_cmd_milestone_ensure` (`plugins/cstk-jira/scripts/jira-sync.sh`, ~linha
+1144) nunca le o estado ja persistido em `jira-milestones.tsv`: a cada
+chamada faz R13 e, sem casamento, R12 de novo (~linha 1199) — mesmo quando
+o sidecar ja tem `state=blocked` para o mesmo nome. `convert` chama `ensure`
+em toda execucao (~linha 2177) e `_js_reconcile_epic_milestone` chama
+`ensure` em todo evento `reconcile` do drain com `2>/dev/null` (~linha
+1564), ou seja, a cada fechamento de onda o plugin repete o `createVersion`
+negado sem nenhum diagnostico no stderr — exatamente o "repetir
+silenciosamente" que FR-020 proibe. Do lado da reconfiguracao,
+`_js_cmd_write_config` (`plugins/cstk-jira/scripts/jira-setup.sh`, ~linhas
+471-570) so chama `requeue-auth-failed`; nada limpa o `state=blocked` do
+marco, entao a transicao `blocked --> current` do data-model nao depende de
+reconfiguracao nenhuma. Nenhum teste cobre "blocked nao repete R12" (so
+SY-78, `scenario_milestone_ensure_403_grava_blocked_exit7`, que cobre a 1a
+gravacao). Completar e ADITIVO: um guard no inicio do ramo de rede de
+`ensure` e um passo de limpeza no `write-config`.
+
+- [ ] 22.1.1 Implementar em `_js_cmd_milestone_ensure` (`plugins/cstk-jira/scripts/jira-sync.sh`) conforme FR-020/R2-4: marco com linha `state=blocked` no sidecar para o mesmo `(feature, name, project_key)` => `name=`/`status=blocked`, exit 7, ZERO requisicoes (nem R13 nem R12), com diagnostico em stderr que continua visivel em `convert` (o reconcile segue absorvendo o exit e o `status`/hook ja expoem `milestone=blocked:<nome>`, 21.3)
+- [ ] 22.1.2 Implementar em `_js_cmd_write_config` (`plugins/cstk-jira/scripts/jira-setup.sh`) conforme research.md R2-4/data-model.md: apos gravar o config com sucesso, limpar (best-effort, mesmo idioma de `requeue-auth-failed`) as linhas `state=blocked` de `jira-milestones.tsv` para que a proxima `ensure` tente R13/R12 de novo; via subcomando de `jira-map.sh`/`jira-sync.sh` (nunca editar o TSV direto do setup); se o nome do subcomando nao existir em `contracts/plugin-scripts.md`, atualizar o contrato ANTES do codigo (Principio I)
+- [ ] 22.1.3 Testes em `tests/cstk/test_jira-sync.sh` e `tests/cstk/test_jira-setup.sh` (stub de `jira-io.sh`): 2a `ensure` com sidecar `blocked` => exit 7 e 0 chamadas ao stub; `write-config` com sucesso => linha `blocked` removida e a `ensure` seguinte volta a chamar R13; mutation (remover o guard) MUST falhar
+
+<!-- converge-key: 431ba6e53451 -->
+
+### 22.2 `resolve --choice overwrite` de um `label_drift` nunca reaplica o label de FASE quando o humano removeu o `phase-<N>` `[C]`
+
+Ref: data-model.md "ConflictRecord — valores novos de `reason`" (`keep_jira` rebaselineia, `overwrite` reaplica) + FR-022 + plan.md fluxo 6 (reconcile idempotente, US3 P1) + tarefa 21.1 (re-derivacao prescrita "para `milestone_drift`/`label_drift` com `keep_jira`") · tipo: `contradicts` · severidade: `HIGH`
+
+`_js_rebaseline_marker` (`plugins/cstk-jira/scripts/jira-sync.sh`, ~linhas
+802-845) re-deriva `written_phase_label` do estado REAL da issue sempre que
+`REASON=label_drift`, sem distinguir a escolha: `_js_cmd_resolve` chama-o
+igual para `overwrite` (~linha 3548) e `keep_jira` (~linha 3556). No caso
+mais comum de `label_drift` (o humano removeu o `phase-<N>` e nao ha outro
+`phase-*` na issue) a baseline re-derivada fica VAZIA; o `overwrite` so
+reenfileira uma transicao de status, e a reconciliacao de label do drain so
+roda com `written_phase_label` nao-vazio (~linhas 2759-2760) — logo o label
+nunca mais e reaplicado naquele item, e o `overwrite` tem o mesmo efeito do
+`keep_jira`. Isso contradiz o data-model ("`overwrite` reaplica") e o
+escopo da tarefa 21.1 ("com `keep_jira`"). A skill `jira-sync`
+(`plugins/cstk-jira/skills/jira-sync/SKILL.md`, ~linhas 279-285) descreve o
+`overwrite` como "um conceito de TRANSICAO DE STATUS, independente de
+marco/label", ou seja, a doc foi alinhada ao codigo e nao ao requisito.
+Nenhum teste cobre `overwrite` + `label_drift` (existem so os cenarios
+`keep_jira`). Corrigir exige MUDAR o rebaseline/resolve: para
+`overwrite` + `label_drift` a baseline nao pode ser re-derivada do Jira;
+o label alvo (`phase-<N>` da FASE local atual, SEC-1) tem que voltar para
+a issue via `update.labels` `add` (nunca `fields.labels`, nunca removendo
+label humano, SEC-10) ou por um caminho de reconciliacao que aceite
+baseline vazia sob `overwrite` explicito.
+
+- [ ] 22.2.1 Corrigir `_js_rebaseline_marker`/`_js_cmd_resolve` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme data-model.md ("`overwrite` reaplica"): `overwrite` de `label_drift` reaplica `phase-<N>` da FASE local atual (so `add`, preservando labels humanos) e grava esse valor como `written_phase_label`; `keep_jira` mantem a re-derivacao da 21.1; conferir tambem `overwrite` de `milestone_drift` (hoje so reaplica no proximo `reconcile`) e registrar o comportamento escolhido
+- [ ] 22.2.2 Teste em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `label_drift` com a issue SEM nenhum `phase-*` + `resolve --choice overwrite` => corpo `update.labels` com `add` do `phase-<N>` local e marker com `written_phase_label` = esse valor; o drain seguinte e idempotente (0 escritas de label); `keep_jira` no mesmo cenario continua com baseline vazia; mutation (voltar a re-derivar sob `overwrite`) MUST falhar
+- [ ] 22.2.3 Restaurar `plugins/cstk-jira/skills/jira-sync/SKILL.md` (item `overwrite` do Gotcha de `resolve`) para descrever o reaplicar de marco/label, retirando a frase "independente de marco/label"
+
+<!-- converge-key: 2b7269eeca2e -->
