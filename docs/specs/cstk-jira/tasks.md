@@ -2887,3 +2887,181 @@ Ref: plan.md Constitution Check Principio I (lockstep MP-5);
       nesta tarefa (suites que tocam os arquivos editados nas tarefas
       20.3.x): `tests/cstk/test_jira-contract.sh` 8/8, `tests/
       test_doc-subcommands.sh` 4/4
+
+## FASE 21 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+>
+> Round r02, ciclo 1 (onda-017): documentacao alinhada ao codigo pela
+> onda-016 NAO fecha requisito de `spec.md`/`plan.md`/`data-model.md` — os
+> achados abaixo corrigem o CODIGO e depois restauram o contrato.
+
+### 21.1 `resolve` (keep_jira/overwrite) apaga `written_fix_version_id`/`written_phase_label` do SyncMarker: baseline SEC-10 perdida apos QUALQUER resolucao `[C]`
+
+Ref: plan.md SEC-10 + fluxo 6 (reconcile idempotente, US3 P1) / data-model.md SyncMarker `written_fix_version_id`/`written_phase_label` · tipo: `contradicts` · severidade: `HIGH`
+
+`_js_rebaseline_marker` (`plugins/cstk-jira/scripts/jira-sync.sh`, ~linha
+720) le so `summary,status,description` (R3) e regrava o marker (R6 PUT,
+que substitui o valor INTEIRO da propriedade) sem `--written-fix-version-id`
+nem `--written-phase-label`. E chamado por `_js_cmd_resolve` para
+`keep_jira` E `overwrite`, qualquer que seja o `reason` (`manual_edit`,
+`marker_missing`, `milestone_drift`, `label_drift`). Efeitos medidos na
+leitura do codigo: (a) Task/Sub-task — o drain so reconcilia label quando
+`written_phase_label` nao-vazio (~linha 2642), logo depois de QUALQUER
+resolve o label de FASE daquele item nunca mais e reconciliado ao trocar de
+fase (R2-5 silenciosamente desligado); (b) Epic — com
+`written_fix_version_id` vazio, `_js_reconcile_epic_milestone` faz so `add`
+sem `remove` (~linha 1489), podendo deixar DUAS Fix Versions no Epic, o que
+contradiz a Clarification r02 ("nunca os dois simultaneamente para o mesmo
+Epic"). As transicoes de status do drain ja carregam essas chaves adiante
+(~linhas 2598/2603/2669); o rebaseline e o unico R6 PUT que as descarta. A
+onda-016 documentou isso como "limitacao" na skill `jira-sync`, mas
+plan.md/data-model continuam exigindo a baseline. Corrigir exige MUDAR o
+rebaseline: ler o marker atual (R6 GET) e carregar adiante
+`written_fix_version_id`/`written_phase_label`; para `reason=milestone_drift`
+/`label_drift` com `keep_jira`, re-derivar a baseline do estado REAL da
+issue (`fields=fixVersions,labels`) SO com valores que o plugin reconhece
+(id presente em `jira-milestones.tsv` da feature; label casando
+`^phase-[0-9]+$`) — nunca adotar valor humano como baseline removivel
+(SEC-8/SEC-10).
+
+- [ ] 21.1.1 Corrigir `_js_rebaseline_marker`/`_js_cmd_resolve` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme plan.md SEC-10: preservar `written_fix_version_id`/`written_phase_label` em todo rebaseline e re-derivar a baseline (restrita a valores reconhecidos pelo plugin) para `milestone_drift`/`label_drift`
+- [ ] 21.1.2 Teste em `tests/cstk/test_jira-sync.sh` (stub de `jira-io.sh`): `resolve --choice keep_jira` de um `manual_edit` preserva as 2 chaves no corpo do R6 PUT; `milestone_drift` resolvido => proximo drain NAO reabre o conflito e NAO emite `add` sem o `remove` correspondente; `label_drift` resolvido => troca de FASE posterior volta a ser reconciliada; mutation (remover o carry-forward) MUST falhar o teste
+- [ ] 21.1.3 Atualizar `plugins/cstk-jira/skills/jira-sync/SKILL.md` (Gotcha "`resolve` e agnostico ao `reason`") removendo a "limitacao" documentada na onda-016, descrevendo o comportamento final
+
+<!-- converge-key: 2a79786858de -->
+
+### 21.2 `404` em R17 sempre vira `linking_disabled` em cascata, mesmo quando R16 da MESMA execucao provou que o linking esta ligado `[C]`
+
+Ref: contracts/jira-rest.md R17 (404 ambiguo) + plan.md "Riscos e degradacoes" (unrepresentable POR ARESTA) / FR-025 (fluxo 5, US1 P1) · tipo: `contradicts` · severidade: `HIGH`
+
+`contracts/jira-rest.md` R17 documenta o `404` de `POST /rest/api/3/issueLink`
+como ambiguo: "issue linking is disabled" OU usuario sem visibilidade de uma
+das issues. `jira-io.sh --op R17` classifica o 404 como `permission_denied`
+(exit 7) — coerente com `contracts/plugin-scripts.md`. Mas
+`_js_cmd_links` (`plugins/cstk-jira/scripts/jira-sync.sh`, ~linhas
+1353-1363) interpreta TODO exit 7 de R17 que nao seja `limit_exceeded` como
+`reason=linking_disabled` e liga `_jsl_linking_disabled=yes`, marcando em
+cascata TODAS as arestas seguintes da chamada como `unrepresentable
+linking_disabled` sem tentar R17. Quando o tipo veio de R16 nesta mesma
+execucao (R16 `200` => linking ligado no site), o 404 so pode ser o caso de
+visibilidade de UMA aresta; a cascata entao (a) grava motivo falso no
+sidecar e no `status` (diagnostico orienta o operador para a causa errada) e
+(b) como as arestas sao processadas na mesma ordem a cada chamada, uma unica
+aresta com issue invisivel impede PERMANENTEMENTE a criacao dos links das
+arestas posteriores — dependencias com tipo compativel ficam
+"nao-representaveis", contrariando FR-025 ("representar cada dependencia
+... quando a instancia tiver um tipo de link compativel") e o "por aresta"
+do plan. Task 18.4.2 pediu a cascata, mas nao considerou a ambiguidade que o
+proprio contrato registra. Corrigir exige MUDAR a interpretacao: a cascata
+`linking_disabled` fica restrita ao 404 do proprio R16 (unica leitura
+inequivoca de "linking desligado"); 404 em R17 afeta SO a aresta — inclusive
+quando `link_type_id` veio do config e R16 nao rodou (nesse caso nao ha
+evidencia do estado do site, e classificar por aresta nao esconde nada). Se for preciso um motivo
+novo no enum `reason` de `jira-links.tsv` (ex.: visibilidade), atualizar
+`data-model.md` IssueLink ANTES do codigo (Principio I) — nunca reusar
+`linking_disabled` com semantica diferente.
+
+- [ ] 21.2.1 Corrigir `_js_cmd_links` em `plugins/cstk-jira/scripts/jira-sync.sh` conforme contracts/jira-rest.md R17 + plan.md Riscos: 404 em R17 => `unrepresentable` SO da aresta (motivo distinto de `linking_disabled`), sem cascata; cascata `linking_disabled` so quando o proprio R16 respondeu 404
+- [ ] 21.2.2 Teste em `tests/cstk/test_jira-sync.sh`: 3 arestas, R16 `200`, R17 da 1a aresta `404` e das demais `201` => 1 `unrepresentable` + 2 `active` (hoje: 3 `unrepresentable linking_disabled`); R16 `404` => todas `linking_disabled` (regressao preservada); mutation (reintroduzir a cascata) MUST falhar
+- [ ] 21.2.3 Se o enum `reason` mudar: atualizar `data-model.md` IssueLink + `contracts/plugin-scripts.md` (`links`) e o diagnostico de `jira-sync.sh status`/skill `jira-sync` ETAPA 1
+
+<!-- converge-key: c97b3aa26511 -->
+
+### 21.3 Resumo pos-drain do hook nao expoe `milestone=`/`links_unrepresentable=`/`links_stale=` `[C]`
+
+Ref: plan.md "Impacto em hooks e skills existentes" (resumo com sinais novos) + "Riscos e degradacoes" (visivel em `status`/`hook.log`) / fluxo 6 (US3 P1) · tipo: `partial` · severidade: `HIGH`
+
+plan.md fixa que `posttooluse-jira-sync.sh` ganha "resumo com sinais
+novos" e que marco `unresolved`/`blocked:*` e arestas `unrepresentable`
+ficam visiveis em `status`/`hook.log`. `plugins/cstk-jira/hooks/
+posttooluse-jira-sync.sh` (~linhas 243-254) so extrai `queued=` e grava
+`resumo pos-drain (...): queued= deferred= conflict= auth_failed=` — os 4
+campos do r01. `jira-sync.sh status` ja emite as linhas
+`milestone=`/`links_unrepresentable=`/`links_stale=` (~linhas 3236-3300),
+logo completar e ADITIVO. A onda-016 reescreveu `contracts/hooks.md` 5.bis
+para "NAO alterado" — documentacao alinhada ao codigo nao fecha o requisito
+do plan: em execucao autonoma (US3), a degradacao de marco/links fica
+invisivel ate alguem rodar `status` manualmente.
+
+- [ ] 21.3.1 Implementar em `plugins/cstk-jira/hooks/posttooluse-jira-sync.sh` conforme plan.md: a linha de resumo inclui `milestone=` quando `unresolved`/`blocked:*` e `links_unrepresentable=`/`links_stale=` quando > 0 (mesma regra de omissao no caminho feliz), parseando SO linhas ancoradas da saida de `jira-sync.sh status`; fail-open e nao-exfiltracao de `session_id` inalterados
+- [ ] 21.3.2 Teste em `tests/test_posttooluse-jira-sync.sh`: stub de `status` com `milestone=blocked:X` e `links_unrepresentable=2` => resumo contem os 2; caminho feliz (`milestone=<nome>`, contagens 0) => resumo byte-identico ao atual
+- [ ] 21.3.3 Restaurar `contracts/hooks.md` passo 5.bis para descrever o resumo estendido (reverter a nota "NAO alterado" da onda-016)
+
+<!-- converge-key: 44b6f3621377 -->
+
+### 21.4 `jira-config.sh validate` nao valida os enums r02, SEC-6 em `milestone_release` nem SEC-1 em `link_type_id` `[A]`
+
+Ref: data-model.md ProjectConfig "Validation rules (novas)" + plan.md Convencoes de Borda (delta) SEC-6/SEC-1 (US4 P2) · tipo: `partial` · severidade: `MEDIUM`
+
+`data-model.md` (§ProjectConfig — chaves novas) exige: "valores de enum fora
+da lista => `validate` falha (exit 1) com a chave no diagnostico;
+`milestone_release` fora de SEC-6 => falha; `link_type_id` fora de SEC-1 =>
+falha". `_jc_cmd_validate` (`plugins/cstk-jira/scripts/jira-config.sh`,
+~linha 222) so confere `_JC_REQUIRED_FIELDS`, `site_host` e
+`status_pass != status_fail` (identico ao r01). Efeito observavel: um typo
+como `milestone_mode=Auto` e lido por `_js_reconcile_epic_milestone`
+(`!= auto` => off) e desliga o marco em silencio; `labels_enabled=yes`
+idem. A onda-016 reescreveu a linha `validate` de
+`contracts/plugin-scripts.md` para "inalterado desde o r01" — alinhar o
+contrato ao codigo nao fecha a regra do data-model. Completar e ADITIVO
+(chave ausente continua valida, com o DEFAULT do data-model).
+
+- [ ] 21.4.1 Implementar em `_jc_cmd_validate` (`plugins/cstk-jira/scripts/jira-config.sh`) conforme data-model.md: enums `milestone_mode` (`auto`/`off`), `labels_enabled`/`fix_versions_on_subtask`/`links_enabled` (`on`/`off`), `project_create` (`gated`/`never`) — chave presente com valor fora da lista => exit 1 citando a chave; `milestone_release` nao-vazio fora de SEC-6 (`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`) => exit 1; `link_type_id` nao-vazio fora de `[A-Za-z0-9_-]` => exit 1; chave ausente/vazia => valida (POSIX puro, sem `jq`)
+- [ ] 21.4.2 Teste em `tests/cstk/test_jira-config.sh`: 1 cenario por chave (valor valido, invalido, ausente); mutation (remover a checagem de um enum) MUST falhar
+- [ ] 21.4.3 Restaurar a linha `validate` de `contracts/plugin-scripts.md` (r02) para o comportamento final (reverter a nota da onda-016)
+
+<!-- converge-key: 1662140021a8 -->
+
+### 21.5 `jira-setup.sh check-field-support` nunca implementado: setup nao grava `labels_enabled=off`/`fix_versions_on_subtask` a partir da tela de criacao (R8) `[A]`
+
+Ref: plan.md Project Structure (delta) `jira-setup.sh` check-field-support + fluxo 7 + Riscos ("Tela de criacao sem labels/fixVersions") / data-model.md ProjectConfig `labels_enabled`/`fix_versions_on_subtask` (US4 P2) · tipo: `partial` · severidade: `MEDIUM`
+
+plan.md lista `jira-setup.sh` como ALTERADO com `check-field-support`, o
+fluxo 7 manda o setup conferir se `labels`/`fixVersions` estao na tela de
+criacao (R8), e a tabela de riscos fixa a degradacao: "setup grava
+`labels_enabled=off`/`fix_versions_on_subtask=off` com aviso". data-model
+descreve `labels_enabled` ("o setup grava `off` se `labels` nao estiver na
+tela") e `fix_versions_on_subtask` ("gravado pelo setup: `on` so se
+`fixVersions` estiver na tela de Sub-task"). O subcomando nao existe em
+`plugins/cstk-jira/scripts/jira-setup.sh` e a skill `jira-setup` (ETAPA 3/8)
+nunca grava essas chaves. Efeito: com o default `labels_enabled=on`, numa
+instancia cuja tela de criacao nao tem `labels`, o `convert` envia
+`labels:["phase-N"]` no R1 sem que o setup tenha avisado; e
+`fix_versions_on_subtask` so vira `on` por edicao manual. A onda-016 riscou
+a linha de `contracts/plugin-scripts.md` em vez de implementar. Completar e
+ADITIVO (o comentario de `jira-sync.sh` ~linha 2075 ja presume o
+subcomando).
+
+- [ ] 21.5.1 Implementar `check-field-support` em `plugins/cstk-jira/scripts/jira-setup.sh` conforme plan.md/`contracts/plugin-scripts.md` (forma original r02): POSIX puro, le de stdin os `fieldId` de um tipo (extraidos pela skill de R8 via `jira-io.sh json-get`) e imprime `FIELD_ID=on|off` para os ids pedidos; sem `jq`/cliente HTTP no script
+- [ ] 21.5.2 Skill `plugins/cstk-jira/skills/jira-setup/SKILL.md` ETAPA 3/8: usar `check-field-support` e gravar `labels_enabled`/`fix_versions_on_subtask` via `write-config`, com aviso ao operador quando `off`; nomes de campo SO os ja citados em `contracts/jira-rest.md` R8 (Principio VI — sem campo suposto)
+- [ ] 21.5.3 Teste em `tests/cstk/test_jira-setup.sh`: lista com/sem `labels` e `fixVersions` => saida `on`/`off` correta; mutation MUST falhar; restaurar a linha em `contracts/plugin-scripts.md`
+
+<!-- converge-key: ddc128167a9d -->
+
+### 21.6 Politica `project_create` (`gated`/`never`) nao e lida por nenhum ponto do fluxo de setup `[A]`
+
+Ref: data-model.md ProjectConfig `project_create` + plan.md fluxo 7 ("sem projeto e com `project_create=gated`, oferecer criacao") / FR-024 (US4 P2) · tipo: `partial` · severidade: `MEDIUM`
+
+data-model.md define `project_create` (`gated`/`never`, default `gated`)
+como a politica da oferta de criacao de projeto no setup, e o fluxo 7 do
+plan condiciona a oferta a `project_create=gated`. Nenhum arquivo de
+`plugins/cstk-jira/` le a chave (grep: zero ocorrencias em `scripts/`,
+`hooks/` e `skills/`); a ETAPA 2.bis de
+`plugins/cstk-jira/skills/jira-setup/SKILL.md` oferece a criacao sempre que
+`getProject` devolve `404`. Com `project_create=never` o operador continua
+recebendo a oferta (o gate humano SEC-7/SEC-9 segue impedindo a criacao sem
+consentimento, por isso MEDIUM e nao HIGH). Completar e ADITIVO.
+
+- [ ] 21.6.1 Implementar conforme data-model.md: `jira-setup.sh create-project`/`consent-question` recusam (exit 2, sem requisicao) quando `project_create=never`, e a ETAPA 2.bis da skill `jira-setup` pula a oferta nesse caso, orientando criacao manual (FR-024)
+- [ ] 21.6.2 Teste em `tests/cstk/test_jira-setup.sh`: `project_create=never` => `create-project` exit 2 com 0 requisicoes mesmo com `--confirm-key` valido; ausente/`gated` => comportamento atual
+
+<!-- converge-key: 167e86bd12d4 -->
+
