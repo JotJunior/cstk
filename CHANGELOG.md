@@ -24,6 +24,11 @@ leitura.
   discreto via `@tag` (até 3 por slide). O rodapé mostra rótulos
   amigáveis (caminhos só no tooltip e no apêndice) e a linha do tempo
   usa os títulos narrativos dos slides.
+- A regra de caminho do G-11 só reprova sequência `a/b/c` que tenha ao
+  menos uma letra: datas (`26/09/2026`) e sequências numéricas (`1/2/3`)
+  seguem livres no texto narrativo (`tech_alpha` em
+  `validate-presentation.sh`; cenários `data_nao_e_caminho` e
+  `tecniques_caminho_sem_prefixo`).
 - Rótulos de métrica, esqueleto `templates/story.md` e fixture de testes
   reescritos em linguagem comum ("Tarefas entregues", "Dúvidas
   esclarecidas").
