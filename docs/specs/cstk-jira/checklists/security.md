@@ -1,0 +1,60 @@
+# Security Checklist: cstk-jira
+
+**Purpose**: validar a qualidade dos requisitos de seguranca (SEC-1..SEC-5
+do gate `owasp-security`, FR-012, FR-015, FR-016) antes de `create-tasks`.
+**Created**: 2026-09-24
+**Feature**: [spec.md](../spec.md) | [plan.md](../plan.md) (secao "Requisitos de seguranca derivados do gate owasp-security") | [contracts/hooks.md](../contracts/hooks.md) | [contracts/rovo-mcp.md](../contracts/rovo-mcp.md)
+
+## Input Validation (SEC-1, SEC-3)
+
+- [x] CHK001 - E' o charset allowlist de segmentos de path (`[A-Za-z0-9_-]`) e a lista de bytes proibidos (`..`, `//`, `\`, `@`, `#`, espaco, CR/LF, controle) suficientemente especifica para virar teste automatizado, sem ambiguidade de interpretacao? [Mensurabilidade, Plan.md SEC-1] {auto}
+- [x] CHK002 - Esta explicito QUAIS variaveis (`jira_id`/`jira_key` do `jira-map.tsv` versionado, `project_key`) passam pela validacao SEC-1 antes de qualquer interpolacao em PATH ou JQL, cobrindo TODOS os pontos de interpolacao (R1-R11 + busca JQL de SEC-3)? [Completude, Plan.md SEC-1/SEC-3] {auto}
+- [x] CHK003 - E' explicito que nenhum texto livre (titulo/descricao) entra em JQL montada pelo plugin — so valores que ja passaram pela allowlist de SEC-1? [Clareza, Plan.md SEC-3] {auto}
+
+## Dados Nao-Confiaveis / Prompt Injection (SEC-2)
+
+- [x] CHK004 - E' explicito que texto livre do Jira (titulo, descricao, nomes de status, comentarios, respostas de tools Rovo) NUNCA pode disparar uma decisao de sync (transicao/sobrescrita/resolucao de conflito) — e que toda decisao de sync vem so de ids/keys/status mapeados ou de escolha humana? [Consistencia/Seguranca, Plan.md SEC-2 + data-model.md ConflictRecord] {auto}
+- [ ] CHK005 - As skills interativas tem um requisito explicito de ROTULAR conteudo lido do Jira como externo/nao-confiavel antes de apresenta-lo ao operador (mesma disciplina do read-back loop do proprio toolkit — "UNTRUSTED"), em vez de so mencionar isso como principio geral no plan? [Gap, Plan.md SEC-2 nao especifica o MECANISMO de rotulagem nas 3 skills] {auto} — **[Gap]**: SEC-2 declara a regra ("apresenta-lo rotulado como conteudo externo nao-confiavel") mas nenhuma skill (`jira-setup`/`jira-convert`/`jira-sync`) ainda existe para implementar o rotulo concretamente — as skills so serao escritas em `create-tasks`/`execute-task`. Destino: `/create-tasks` MUST gerar tarefa explicita "rotular texto do Jira como UNTRUSTED nas 3 skills interativas, citando SEC-2" (nao ha o que editar em spec/plan agora — o requisito ja existe, falta so a tarefa de implementacao).
+
+## Credencial e Transporte (SEC-4, SEC-5)
+
+- [x] CHK006 - E' verificavel objetivamente que o arquivo de credencial temporario e criado com `umask 077`, em diretorio privado, e removido por `trap` em EXIT/INT/TERM — com teste dedicado citado na Test Strategy? [Mensurabilidade, Plan.md SEC-4 + Test Strategy "Hooks"/"Mutation"] {auto}
+- [x] CHK007 - Esta definido o comportamento de limpeza do arquivo de credencial temporario para TODOS os casos (sucesso, sinal recebido, crash do processo), nao so o caso feliz (EXIT normal)? [Cobertura de Edge Case, Plan.md SEC-4 "trap em EXIT/INT/TERM"] {auto}
+- [x] CHK008 - E' explicito que o cliente HTTP nunca segue redirect e sempre verifica TLS, com comportamento EXATO para resposta 3xx (erro sem nova requisicao, nao retry silencioso)? [Clareza, Plan.md SEC-5] {auto}
+- [x] CHK009 - Existe algum requisito ou flag de configuracao que permita desligar a verificacao TLS (mesmo para debug/teste)? Se existisse, contradiria SEC-5. [Conflito potencial, Plan.md SEC-5 "proibido desligar verificacao de certificado"] {auto} — Nao existe tal flag em nenhum artefato (`data-model.md` ProjectConfig nao lista opcao de TLS); requisito protegido de regressao futura por redacao MUST explicita.
+
+## Deny-list de Exclusao e Defesa em Profundidade (FR-012)
+
+- [x] CHK010 - E' o deny-list de exclusao (`deleteJiraIssue`/`executeDestructive`) enforced em DOIS lugares independentes (hook `PreToolUse` regex + ausencia de metodo `DELETE` em `jira-io.sh`), reduzindo o risco de bypass por um unico ponto de falha? [Completude/Defesa em profundidade, Plan.md ponto 2 da tabela onda-003 + Contracts rovo-mcp.md deny-list] {auto}
+- [ ] CHK011 - A guarda `PreToolUse` de delecao fica INATIVA quando o plugin nao esta configurado (no-op, FR-017/SC-006) — esse trade-off (permitir `deleteJiraIssue` sobre issues NAO relacionadas ao plugin quando desconfigurado) esta documentado como decisao aceita em `contracts/hooks.md`, mas NAO esta refletido na spec (FR-012 nao menciona a condicao "so quando configurado")? [Ambiguity, spec.md FR-012 vs contracts/hooks.md ultima secao] {humano} — FR-012 le como proibicao absoluta ("MUST NOT apagar automaticamente"); o escopo real (guarda so ativa com config presente) e coerente com FR-017/SC-006 mas e uma nuance de ESCOPO que um mantenedor lendo so a spec nao veria. Decisao de produto (aceitar a nuance documentada so no contrato, ou elevar a spec) cabe ao dono do produto — nao e uma correcao textual mecanica como CHK006/CHK009 do dominio api.
+- [x] CHK012 - E' o requisito de host unico (FR-015) verificavel objetivamente — existe definicao precisa de "mesmo dominio" (igualdade exata de string, nao subdominios/wildcards) evitando ambiguidade de implementacao? [Mensurabilidade, Plan.md ponto 3 da tabela onda-003: "host unico por igualdade exata"] {auto}
+
+## Nao-Exfiltracao e Fail-Open dos Hooks
+
+- [x] CHK013 - Esta coberto o cenario "hook recebe `tool_input` com `session_id` (token de capacidade) e NAO deve exfiltra-lo" com um teste dedicado, nao so uma frase de intencao? [Mensurabilidade, Contracts hooks.md item 7 "Nao-exfiltracao" + Test Strategy "Hooks": "nunca imprime/grava session_id"] {auto}
+- [x] CHK014 - Credenciais expiradas/revogadas (FR-016) tem criterio de aceite que distingue claramente `auth_failed` (401, suspende) de `permission_denied` (403 em R1/R2, nao suspende drain inteiro) e de `deferred` (429/rede, adia), evitando que os 3 cenarios colidam no mesmo tratamento? [Clareza/Consistencia, data-model.md OutboxEvent transitions + correcao desta onda no dominio api CHK009] {auto} — Referencia cruzada: a distincao `auth_failed`/`permission_denied` foi introduzida nesta mesma onda (ver `checklists/api.md` CHK009, dec-038); `data-model.md` ConflictRecord ainda lista so `auth_failed` no enum `reason` — sem gap adicional porque `permission_denied` nao e um CONFLITO de sync (e falha de escrita), tratamento fica no motor/OutboxEvent, nao no ConflictRecord.
+- [x] CHK015 - Existe requisito explicito de que o hook de sync NUNCA bloqueia/atrasa a tool do orquestrador (fail-open absoluto), com criterio verificavel (`async: true` sem timeout aplicado, ou timeout maximo definido)? [Mensurabilidade, Contracts hooks.md item 6 "Fail-open absoluto" + hooks.json `async: true`] {auto}
+
+## Round r02 (2026-09-26) — SEC-6 e gate owasp-security (SEC-9..SEC-13)
+
+- [x] CHK016 - E a allowlist de nome de Fix Version (SEC-6: `^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`) suficientemente especifica para virar teste automatizado, e explicito que o nome NUNCA entra em PATH/querystring/JQL (so no corpo via `jq --arg`)? [Mensurabilidade, Plan.md SEC-6 L367] {auto}
+- [x] CHK017 - Sao as 4 condicoes do marcador de consentimento de `create-project` (bloqueio `respondido`; marcador literal `cstk-jira:create-project key=<K> name-sha256=<H> template=<T>` gerado pelo proprio plugin PARA aquele pedido; resposta afirmativa fixa `criar-projeto`; nunca consumido antes, via `runtime/consumed-consents.tsv`) verificaveis objetivamente, com mutation test dedicado (2o uso do mesmo `block-NNN` DEVE falhar, exit 2, sem requisicao)? [Mensurabilidade/ASI03, Plan.md SEC-9 L428 + Test Strategy Mutation L410] {auto}
+- [x] CHK018 - E explicito que `update.fixVersions`/`update.labels` com `remove` SO e emitido se o valor tambem constar no sidecar versionado (`jira-milestones.tsv` `current`/`superseded`) ou casar `^phase-[0-9]+$`, evitando que o plugin remova um valor gravado por humano no Jira (A08/integridade — o SyncMarker e editavel por qualquer um)? [Clareza/Seguranca, Plan.md SEC-10 L429 + data-model.md SyncMarker L409-422] {auto}
+- [x] CHK019 - Sao as duas validacoes de formato exigidas ANTES de compor o nome do marco (token de round `^r[0-9]{2,}$`; heading do CHANGELOG SemVer) explicitas, com criterio verificavel de rejeicao (nome fica NAO resolvido, nunca chute) quando a fonte diverge do formato esperado? [Mensurabilidade/Veracidade, Plan.md SEC-11 L430 + research.md Decision R2-1 L312-321] {auto}
+- [x] CHK020 - E o teto de tamanho de corpo do `jira-io.sh request` aplicado tambem as respostas NAO-paginadas de R13/R16 (que podem crescer sem paginacao e sem limite documentado), com comportamento definido para corpo acima do teto (`deferred` com diagnostico, nunca parse parcial)? [Completude/API4, Plan.md SEC-12 L431 + Contracts jira-rest.md R13 L452 "NENHUMA" paginacao] {auto}
+- [x] CHK021 - E explicito que a escolha automatica de `link_type_id` SO considera `id`s devolvidos por R16 NA MESMA execucao (nunca cacheados de execucao anterior), nunca vale quando o operador ja confirmou `link_type_id` manualmente, e que o nome/frases do tipo escolhido sao exibidos rotulados como conteudo externo (nao-confiavel) em `status`/`plan`? [Clareza/ASI01-LLM01, Plan.md SEC-13 L432] {auto}
+
+## Round r02 — Defesa em Profundidade e Nao-Exfiltracao (operacoes novas)
+
+- [x] CHK022 - E o hook `PreToolUse` que nega `createJiraProject` verificavel objetivamente (matcher `mcp__.*__createJiraProject`, exit 2, SO quando ha execucao 00c ATIVA no cwd E o plugin esta configurado; sessao interativa sem execucao ativa NAO interfere — o gate ali e o prompt do Claude Code + a confirmacao da skill), com teste dedicado citado na Test Strategy? [Mensurabilidade, Contracts hooks.md L94-102 + Plan.md Test Strategy Gate L409] {auto}
+- [x] CHK023 - E explicito, para as 7 operacoes novas R12-R18, que os metodos `DELETE` e as rotas de remocao/fusao/exclusao presentes no MESMO arquivo OpenAPI (`removeAndSwap`, `mergeVersions`/`mergeto`, `deleteProjectAsynchronously`) ficam FORA do contrato, sem excecao — mesmo estando disponiveis no schema oficial? [Completude/FR-012, Contracts jira-rest.md L405-411 + Plan.md SEC-8 L369] {auto}
+- [x] CHK024 - Esta explicito que a disciplina de nao-exfiltracao de credencial (SEC-4/SEC-5 do r01: token nunca em log/stdout, `umask 077`, `trap` de limpeza) se aplica INTEGRALMENTE as 7 operacoes novas, sem excecao ou funcao de requisicao paralela que a contorne? [Consistencia, Plan.md "SEC-4/SEC-5 inalterados, valem para todas as operacoes novas (mesmo `request`)" L366] {auto}
+- [x] CHK025 - E explicito que NENHUMA das operacoes novas usa busca JQL — marco resolvido por rota (R13), links por rota+casamento local (R15/R16) — e que nome de versao/label NUNCA entra em JQL, estendendo a mesma garantia de SEC-3 do r01 as entidades novas? [Consistencia/Seguranca, Plan.md SEC-3 extensao "nenhuma JQL nova" L365] {auto}
+
+## Notes
+
+- Items `{auto}` resolvidos pelo agente (`[x]` com citacao) ou marcados `[Gap]` com destino explicito.
+- CHK005 (`[Gap]`) -> `/create-tasks`: tarefa "rotular texto do Jira como UNTRUSTED nas skills interativas".
+- CHK011 (`{humano}`) -> decisao do dono do produto: elevar a nuance de escopo de FR-012 para a spec, ou aceitar que ela fica documentada so no contrato de hooks. Nao resolvido nesta onda (nao e correcao mecanica).
+- **Round r02**: CHK016-CHK025 cobrem SEC-6 + o gate owasp-security do plan r02 (SEC-9..SEC-13, sev. medium/low) + hook `PreToolUse` de `createJiraProject` + defesa em profundidade das operacoes novas (nunca `DELETE`, nao-exfiltracao, sem JQL nova). Todos `{auto}` resolvidos por citacao direta do plan.md/contracts; nenhum gap novo encontrado no dominio security (os medium/low do gate ja chegam como REQUISITO com teste+mutation exigidos, cabendo a `/create-tasks` converte-los em tarefa, nao ao checklist reabri-los).
+- 2 items em aberto do r01 (CHK005, CHK011) + 0 novos no r02; 25 items totais (15 do r01 + 10 do r02).

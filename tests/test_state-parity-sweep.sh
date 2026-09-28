@@ -24,7 +24,10 @@
 #     acesso real constroi "<dir>/state.json") sobre os scripts do runtime +
 #     cli/lib/00c-bootstrap.sh + plugins/cstk/skills/agente-00c-runtime/hooks/*.sh
 #     (feature hooks-db-parity FASE 7, task 7.1.1 — a lacuna original que
-#     deixou a regressao de triplicacao dos hooks passar despercebida), com
+#     deixou a regressao de triplicacao dos hooks passar despercebida) +
+#     plugins/cstk-jira/hooks/*.sh (feature cstk-jira, tasks.md 9.1.3 — mesmo
+#     motivo: hook de terceiro plugin com acesso direto tambem precisa
+#     entrar no escopo varrido), com
 #     linhas de comentario descartadas ANTES do match. Hit em arquivo fora
 #     da ALLOWLIST literal abaixo falha o teste (US5 AS2: helper novo com
 #     acesso direto e detectado).
@@ -253,6 +256,27 @@ scenario_dinamica_17_leitores_sqlite_sem_degradacao() {
 #     restam mais leituras diretas de state.json. codigo-real fora do
 #     conjunto canonico coberto por `tests/test_state-rounds.sh` (18
 #     cenarios, inclusive backend sqlite e json).
+#
+# Plugin cstk-jira (tasks.md 9.1.3) adiciona `plugins/cstk-jira/hooks/*.sh`
+# ao escopo estatico varrido por scenario_estatica_sem_acesso_direto_fora_
+# da_allowlist (abaixo) e a resolucao de path de scenario_estatica_
+# allowlist_sem_entradas_mortas (mesmo motivo do gap original de
+# hooks-db-parity: hook novo com acesso direto passaria despercebido sem
+# entrar no escopo varrido):
+#   posttooluse-jira-sync.sh:codigo-real — `_pjs_resolve_canonical_project`
+#     le `canonical_project` de `state.json`/`state.db` (fallback dual-
+#     backend simetrico) SEM sourcear `_state-read.sh`, mesma classe de
+#     `bloqueios.sh`/`spawn-tracker.sh` acima (hook, nao runtime — evita
+#     dependencia de sourcing num PostToolUse async). READ-ONLY, nunca
+#     escreve.
+#   pretooluse-jira-deny-destructive.sh — SEM hit de `/state\.json` hoje (o
+#     guard so inspeciona o `tool_input` do PreToolUse recebido via stdin,
+#     nunca abre state.json/state.db). Por isso NAO entra na allowlist:
+#     entrada sem hit real seria "morta" e falharia
+#     scenario_estatica_allowlist_sem_entradas_mortas de proposito (a
+#     mesma guarda anti-drift que este bloco documenta). Continua coberto
+#     pelo escopo varrido — se um dia passar a acessar state.json/db
+#     diretamente, o scenario acima aponta a violacao.
 _static_allowlist() {
   cat <<'EOF'
 state-rw.sh:codigo-real
@@ -272,6 +296,7 @@ posttooluse-tool-call-tick.sh:codigo-real
 posttooluse-agent-usage.sh:codigo-real
 posttooluse-loose-usage.sh:codigo-real
 state-rounds.sh:codigo-real
+posttooluse-jira-sync.sh:codigo-real
 EOF
 }
 
@@ -291,7 +316,8 @@ _static_hits() {
 scenario_estatica_sem_acesso_direto_fora_da_allowlist() {
   _viol=""
   for _f in "$R"/*.sh "$REPO_ROOT/cli/lib/00c-bootstrap.sh" \
-            "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"/*.sh; do
+            "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"/*.sh \
+            "$REPO_ROOT/plugins/cstk-jira/hooks"/*.sh; do
     [ -f "$_f" ] || continue
     _base=$(basename "$_f")
     _hits=$(_static_hits "$_f")
@@ -353,11 +379,14 @@ scenario_estatica_allowlist_sem_entradas_mortas() {
   # exigimos que cada entrada da allowlist ainda tenha pelo menos 1 hit.
   _dead=""
   _hooks_dir="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"
+  _jira_hooks_dir="$REPO_ROOT/plugins/cstk-jira/hooks"
   for _entry in $(_static_allowlist | cut -d: -f1); do
     if [ "$_entry" = "00c-bootstrap.sh" ]; then
       _f="$REPO_ROOT/cli/lib/00c-bootstrap.sh"
     elif [ -f "$_hooks_dir/$_entry" ]; then
       _f="$_hooks_dir/$_entry"
+    elif [ -f "$_jira_hooks_dir/$_entry" ]; then
+      _f="$_jira_hooks_dir/$_entry"
     else
       _f="$R/$_entry"
     fi

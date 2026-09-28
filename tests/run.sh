@@ -151,10 +151,13 @@ _find_test_files() {
 # Imprime caminho absoluto de cada .sh sob teste:
 #   - plugins/cstk/skills/<any>/scripts/*.sh  (existente desde a v1)
 #   - cli/lib/*.sh                       (FASE 9.3 — extensao da CLI cstk)
+#   - plugins/cstk-jira/scripts/*.sh     (cstk-jira FASE 2 — plugin novo,
+#     mesma convencao de teste do cli/lib: tests/cstk/test_<nome>.sh)
 _find_scripts() {
   {
     find "$REPO_ROOT/plugins/cstk/skills" -type f -path '*/scripts/*.sh' 2>/dev/null
     find "$REPO_ROOT/cli/lib" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
+    find "$REPO_ROOT/plugins/cstk-jira/scripts" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
   } | sort
 }
 
@@ -166,6 +169,7 @@ _expected_test_for_script() {
   case "$_ets_script" in
     */plugins/cstk/skills/*/scripts/*) printf '%s\n' "$TESTS_ROOT/test_$_ets_base.sh" ;;
     */cli/lib/*)                 printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
+    */plugins/cstk-jira/scripts/*) printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
     *)                           printf '\n' ;;  # categoria nao esperada
   esac
 }
@@ -213,6 +217,52 @@ _is_internal_test() {
       # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de
       # claude-plugin-packaging.
       return 0 ;;
+    test_cstk-jira-plugin-manifest.sh)
+      # Cobre plugins/cstk-jira/.claude-plugin/plugin.json — manifesto de
+      # dados estatico, sem script .sh "dono" sob a convencao de FASE 9.3
+      # (mesmo tratamento de test_plugin-hooks-manifest.sh). tasks.md
+      # cstk-jira FASE 1.1.3.
+      return 0 ;;
+    test_jira-convert-parity.sh)
+      # Prova a paridade CHK012 (caminho MCP vs REST) descrita em
+      # plugins/cstk-jira/skills/jira-convert/SKILL.md — exercita 2 scripts
+      # (jira-title.sh, jira-map.sh) + o motor jira-sync.sh, nao um unico
+      # script "dono" sob a convencao de FASE 9.3. Existence-guarded ao
+      # SKILL.md que documenta o algoritmo do caminho MCP (cstk-jira FASE 6
+      # tarefa 6.2.8). Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/skills/jira-convert/SKILL.md" ] && return 0
+      return 1 ;;
+    test_jira-contract.sh)
+      # Suite cross-cutting de CONTRATO REST (cstk-jira FASE 8 tarefa 8.1):
+      # compara metodo/path/corpo de R1-R11 contra
+      # docs/specs/cstk-jira/contracts/jira-rest.md, exercitando jira-io.sh
+      # + jira-sync.sh + a skill jira-setup (via reproducao do algoritmo de
+      # referencia board-setup.md/api-discovery.md) — nao um unico script
+      # "dono" sob a convencao de FASE 9.3. Existence-guarded ao proprio
+      # contrato que documenta as 11 operacoes. Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/docs/specs/cstk-jira/contracts/jira-rest.md" ] && return 0
+      return 1 ;;
+    test_jira-mutation.sh)
+      # Suite de MUTATION TESTS (defesa em profundidade, cstk-jira FASE 8
+      # tarefa 8.4): quebra de proposito guardas de seguranca em COPIAS
+      # mutadas de jira-io.sh + os 2 hooks (nunca o script real em disco) e
+      # prova que os testes reais correspondentes (3.1.6/8.3.4, 3.1.7/4.4.3,
+      # 5.2.5, 5.1.8/5.2.6, 3.3.4/3.3.5) detectam a regressao — nao um unico
+      # script "dono" sob a convencao de FASE 9.3. Existence-guarded a
+      # jira-io.sh (o alvo principal). Se a fonte sumir, volta a ser orfao
+      # real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/scripts/jira-io.sh" ] && return 0
+      return 1 ;;
+    test_jira-credential-setup.sh)
+      # Cobre plugins/cstk-jira/skills/jira-setup/scripts/jira-credential-
+      # setup.sh (cstk-jira FASE 12 tarefa 12.12.1 — lembrete de validade do
+      # API token). O script vive sob skills/<skill>/scripts/ do plugin
+      # cstk-jira, fora do scan de plugins/cstk-jira/scripts/*.sh acima.
+      # Existence-guarded ao proprio script; se a fonte sumir, volta a ser
+      # orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/skills/jira-setup/scripts/jira-credential-setup.sh" ] && return 0
+      return 1 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.
@@ -513,6 +563,23 @@ _is_internal_test() {
       # feature plan-usage-capture FASE 2) — mesma razao dos 4 casos acima:
       # hooks/ esta fora do escaneio por convencao. Existence-guarded.
       [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh" ] && return 0
+      return 1 ;;
+    test_posttooluse-jira-sync.sh)
+      # cobre plugins/cstk-jira/hooks/posttooluse-jira-sync.sh (hook
+      # PostToolUse do sync autonomo Jira — cstk-jira FASE 5.1) — mesma razao
+      # dos casos acima: _find_scripts so escaneia plugins/cstk-jira/scripts/
+      # (nao hooks/), entao hooks/ fica fora do mapeamento 1:1. Existence-
+      # guarded: se o hook sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/hooks/posttooluse-jira-sync.sh" ] && return 0
+      return 1 ;;
+    test_pretooluse-jira-deny-destructive.sh)
+      # cobre plugins/cstk-jira/hooks/pretooluse-jira-deny-destructive.sh
+      # (hook PreToolUse da guarda de exclusao via Rovo MCP — cstk-jira
+      # FASE 5.2, FR-012) — mesma razao do caso acima: _find_scripts so
+      # escaneia plugins/cstk-jira/scripts/ (nao hooks/), entao hooks/ fica
+      # fora do mapeamento 1:1. Existence-guarded: se o hook sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk-jira/hooks/pretooluse-jira-deny-destructive.sh" ] && return 0
       return 1 ;;
     *) return 1 ;;
   esac

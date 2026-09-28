@@ -159,10 +159,17 @@ labels are stripped before touching disk.
 │   │       ├── specify/
 │   │       ├── validate-docs-rendered/
 │   │       └── validate-documentation/
-│   └── cstk-language-go/        # Go-profile plugin (marketplace entry "cstk-language-go")
-│       ├── hooks/                # Go-specific hooks
-│       └── skills/               # Go — see docs/go-toolkit.md
-├── .claude-plugin/marketplace.json  # Marketplace manifest (2 entries: cstk, cstk-language-go)
+│   ├── cstk-language-go/        # Go-profile plugin (marketplace entry "cstk-language-go")
+│   │   ├── hooks/                # Go-specific hooks
+│   │   └── skills/               # Go — see docs/go-toolkit.md
+│   └── cstk-jira/                # Jira Cloud integration plugin (marketplace entry "cstk-jira")
+│       ├── hooks/                # jira-sync drain + destructive-op deny guard
+│       ├── scripts/              # jira-io.sh (jq + HTTP client), jira-config.sh, jira-sync.sh, ...
+│       └── skills/                # 3 skills — see docs/specs/cstk-jira/quickstart.md
+│           ├── jira-setup/       # guided setup (site, project key, credential, mappings)
+│           ├── jira-convert/     # feature -> Epic/Task/Sub-task in Jira
+│           └── jira-sync/        # sync status, conflicts and orphan cards
+├── .claude-plugin/marketplace.json  # Marketplace manifest (3 entries: cstk, cstk-language-go, cstk-jira)
 ├── cli/                          # cstk binary + POSIX libs (not shipped by the plugin — FR-006)
 └── docs/                         # Topic-based documentation (see index below)
 ```
@@ -342,6 +349,8 @@ binary, no clone, no `curl` bootstrap:
 /plugin install cstk@cstk
 # optional, Go projects only:
 /plugin install cstk-language-go@cstk
+# optional, Jira Cloud integration:
+/plugin install cstk-jira@cstk
 ```
 
 Enable the plugin and open a new session in any project — skills, the 7
@@ -378,6 +387,67 @@ onboarding of skills + guard hooks, the classic CLI when you need
 doctor`/`cstk hooks install` detect the plugin and automatically avoid
 double-registering the guard hooks (plugin wins; `cstk doctor` reports
 `aligned`/`diverged`/`duplicated-hooks` with an actionable fix for each).
+
+### Jira Cloud integration (`cstk-jira`)
+
+The 3rd marketplace plugin, distributed only as a native Claude Code plugin
+(`/plugin install cstk-jira@cstk` — no `cstk install` profile, since it has
+no dependency on the classic binary). It converts a documented feature
+(`spec.md` + `tasks.md`) into an Epic with Task/Sub-task children in Jira
+Cloud, keeps a dedicated board per target project and syncs status
+autonomously during `agente-00c`/`feature-00c` executions.
+
+| Skill | Trigger | Description |
+|-------|---------|-------------|
+| **jira-setup** | "jira-setup", "configurar jira" | Guided one-time setup: site, project key, credential (own terminal, never chat), issue-type and status-workflow mapping, filter + board |
+| **jira-convert** | "jira-convert", "converter para jira" | Converts a feature's `spec.md`/`tasks.md` into Epic/Task/Sub-task, recording the local<->Jira mapping (`jira-map.tsv`); safe to re-run — only creates what is missing |
+| **jira-sync** | "jira-sync", "status do jira" | Shows the autonomous sync queue, conflicts and orphan cards, and drives the operator through resolving each one |
+
+Two guard hooks ship with the plugin: `posttooluse-jira-sync.sh` (drains
+the outbox of task/wave outcomes into Jira during autonomous executions)
+and `pretooluse-jira-deny-destructive.sh` (blocks destructive Jira MCP
+tool calls such as issue deletion — cards are never deleted, only
+disconnected/re-linked; once the plugin is configured, it also denies
+Jira project creation via MCP while an `agente-00c`/`feature-00c`
+execution is active).
+
+Round r02 additions (opt-in via `ProjectConfig` keys, all default to the
+r01 behavior when unset):
+
+- **Milestone sync** (`milestone_mode`, default `auto`): the Epic and its
+  Tasks are tagged with a Fix Version resolved from the active round
+  (`<feature>-rNN`) or, once there is no active round, from
+  `milestone_release` or the top `## [X.Y.Z]` heading of `CHANGELOG.md`
+  (an unreleased `[Unreleased]` heading leaves the milestone `unresolved`
+  until one of the two is set, or `milestone_mode=off` disables it).
+- **Phase labels** (`labels_enabled`, default `on`): Tasks/Sub-tasks are
+  tagged `phase-<N>` from the `### FASE N` heading they belong to, kept in
+  sync when a task moves to a different phase.
+- **Dependency links** (`links_enabled`, default `on`): edges declared in
+  the backlog's `## Matriz de Dependencias` become Jira issue links between
+  the anchor Tasks of each phase; the link type is confirmed once during
+  setup (`link_type_id`) or resolved automatically when unambiguous.
+- **Project creation under a human gate** (FR-024): when no Jira project
+  exists yet, the `jira-setup` skill can offer to create one, but only
+  ever with explicit operator confirmation — inside an autonomous
+  execution it always defers to a human-answered gate, never creates one
+  on its own.
+- **Shared config across git worktrees** (FR-023): `jira-config.sh
+  resolve-path` reads `ProjectConfig` from the current worktree, falling
+  back read-only to the main worktree's config — so parallel `roadmap`
+  executions in separate worktrees can share one Jira setup while each
+  keeps its own local sync queue/lock.
+- `jira-sync status --feature F` surfaces the resolved milestone name and
+  link counts (`links_unrepresentable=N`, `links_stale=N`) alongside the
+  existing outbox/conflict/orphan report.
+
+**Prerequisites**: `jq` and a command-line HTTP client (confined to a
+single script, `jira-io.sh`, under the same zero-dependency carve-out
+documented for the rest of the toolkit). The Jira API token is generated
+by the operator and stored **outside the repository**, at
+`${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials` with `0600`
+permissions (`0700` on the containing directory) — it is never typed in
+the chat transcript. Details: [docs/specs/cstk-jira/quickstart.md](docs/specs/cstk-jira/quickstart.md).
 
 ### 00c runtime hooks (`cstk hooks`)
 
@@ -631,6 +701,7 @@ Default profile when none is given: `sdd`. Details in `cstk install --help`.
 | Loose usage tracking (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.md) |
 | Web panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
 | Go skills and hooks | [docs/go-toolkit.md](./docs/go-toolkit.md) |
+| Jira Cloud integration (`cstk-jira`) skills, hooks and setup | [docs/specs/cstk-jira/quickstart.md](docs/specs/cstk-jira/quickstart.md) |
 | Naming conventions and docs hierarchy | [docs/conventions.md](./docs/conventions.md) |
 | Browsable manual (site) | [jotjunior.github.io/cstk](https://jotjunior.github.io/cstk/) |
 

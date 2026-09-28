@@ -1,0 +1,57 @@
+{
+  "description": "Sync autonomo do cstk-jira: enfileira e drena outcomes de task/wave para o Jira Cloud durante execucoes agente-00c/feature-00c (US3, FR-005, FR-018-INFRA-SCHED). Guarda PreToolUse de exclusao via Rovo MCP (FR-012) e de criacao de projeto em execucao autonoma (FR-024).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*__(deleteJiraIssue|executeDestructive)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-jira-deny-destructive.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__createJiraProject",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-jira-deny-destructive.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*__record_task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-jira-sync.sh\" task",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__close_wave",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-jira-sync.sh\" wave",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-jira-sync.sh\" bash",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

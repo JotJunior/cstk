@@ -2,11 +2,12 @@
 # test_validate-plugin-manifests.sh — cobre scripts/validate-plugin-manifests.sh
 # (claude-plugin-packaging, FASE 5.1.3/5.1.4).
 #
-# Invariantes cobertos: MP-1 (JSON parseavel), MP-2 (exatamente 2 entradas),
-# MP-3 (source resolve para diretorio), MP-4 (source contem plugin.json),
-# MP-5 (lockstep de versao: pulado sem --version, aviso sem --strict, erro
-# com --strict), MP-6 (nomes unicos). Cada cenario monta um fixture-repo
-# sintetico em $TMPDIR_TEST (isolado, nunca toca o repo real).
+# Invariantes cobertos: MP-1 (JSON parseavel), MP-2 (exatamente 3 entradas;
+# 2 e 4 continuam falhando), MP-3 (source resolve para diretorio), MP-4
+# (source contem plugin.json), MP-5 (lockstep de versao: pulado sem
+# --version, aviso sem --strict, erro com --strict), MP-6 (nomes unicos).
+# Cada cenario monta um fixture-repo sintetico em $TMPDIR_TEST (isolado,
+# nunca toca o repo real).
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -15,16 +16,20 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 SCRIPT="$REPO_ROOT/scripts/validate-plugin-manifests.sh"
 
-# _make_valid_repo DIR VERSION1 VERSION2 -> monta um fixture-repo valido
-# com 2 plugins (cstk, cstk-language-go), cada um com plugin.json na
-# versao informada.
+# _make_valid_repo DIR VERSION1 VERSION2 [VERSION3] -> monta um fixture-repo
+# valido com 3 plugins (cstk, cstk-language-go, cstk-jira), cada um com
+# plugin.json na versao informada (VERSION3 default = VERSION2 quando
+# omitido, para nao exigir mudanca nos scenarios que ja passavam so 2
+# versoes).
 _make_valid_repo() {
   _mvr_dir=$1
   _mvr_v1=$2
   _mvr_v2=$3
+  _mvr_v3=${4:-$_mvr_v2}
   mkdir -p "$_mvr_dir/.claude-plugin" \
            "$_mvr_dir/plugins/cstk/.claude-plugin" \
-           "$_mvr_dir/plugins/cstk-language-go/.claude-plugin"
+           "$_mvr_dir/plugins/cstk-language-go/.claude-plugin" \
+           "$_mvr_dir/plugins/cstk-jira/.claude-plugin"
   cat > "$_mvr_dir/.claude-plugin/marketplace.json" <<EOF
 {
   "name": "cstk",
@@ -32,7 +37,8 @@ _make_valid_repo() {
   "description": "fixture",
   "plugins": [
     { "name": "cstk", "description": "fixture", "source": "./plugins/cstk", "version": "$_mvr_v1", "category": "development" },
-    { "name": "cstk-language-go", "description": "fixture", "source": "./plugins/cstk-language-go", "version": "$_mvr_v2", "category": "development" }
+    { "name": "cstk-language-go", "description": "fixture", "source": "./plugins/cstk-language-go", "version": "$_mvr_v2", "category": "development" },
+    { "name": "cstk-jira", "description": "fixture", "source": "./plugins/cstk-jira", "version": "$_mvr_v3", "category": "development" }
   ]
 }
 EOF
@@ -40,6 +46,8 @@ EOF
     > "$_mvr_dir/plugins/cstk/.claude-plugin/plugin.json"
   printf '{"name":"cstk-language-go","description":"fixture","version":"%s","author":{"name":"JotJunior"}}\n' "$_mvr_v2" \
     > "$_mvr_dir/plugins/cstk-language-go/.claude-plugin/plugin.json"
+  printf '{"name":"cstk-jira","description":"fixture","version":"%s","author":{"name":"JotJunior"}}\n' "$_mvr_v3" \
+    > "$_mvr_dir/plugins/cstk-jira/.claude-plugin/plugin.json"
 }
 
 # ==== MP-1..MP-4/MP-6: fixture valido, sem --version (so avisos) ====
@@ -59,32 +67,66 @@ scenario_fixture_valido_sem_version_ok_com_avisos() {
   esac
 }
 
-# ==== MP-2: numero errado de entradas ====
+# ==== MP-2: numero errado de entradas (2 — abaixo do exigido) ====
 
-scenario_mp2_numero_errado_de_entradas() {
+scenario_mp2_duas_entradas() {
   mktemp_test
   _make_valid_repo "$TMPDIR_TEST/repo" "1.0.0" "1.0.0"
-  # Remove a 2a entrada via edicao direta (jq nao e dependencia garantida
-  # no teste; reescreve o JSON a mao).
+  # Remove a 3a entrada (cstk-jira) via edicao direta (jq nao e dependencia
+  # garantida no teste; reescreve o JSON a mao).
   cat > "$TMPDIR_TEST/repo/.claude-plugin/marketplace.json" <<'EOF'
 {
   "name": "cstk",
   "owner": { "name": "JotJunior" },
   "description": "fixture",
   "plugins": [
-    { "name": "cstk", "description": "fixture", "source": "./plugins/cstk", "version": "1.0.0", "category": "development" }
+    { "name": "cstk", "description": "fixture", "source": "./plugins/cstk", "version": "1.0.0", "category": "development" },
+    { "name": "cstk-language-go", "description": "fixture", "source": "./plugins/cstk-language-go", "version": "1.0.0", "category": "development" }
   ]
 }
 EOF
 
   capture sh "$SCRIPT" --repo-root "$TMPDIR_TEST/repo"
   if [ "$_CAPTURED_EXIT" = 0 ]; then
-    _fail "exit_nao_zero" "esperado exit != 0 (MP-2 violado), obteve 0"
+    _fail "exit_nao_zero" "esperado exit != 0 (MP-2 violado com 2 entradas), obteve 0"
     return 1
   fi
   case "$_CAPTURED_STDERR" in
-    *"MP-2"*) : ;;
-    *) _fail "mensagem_mp2" "esperava MP-2 em stderr, obteve: $_CAPTURED_STDERR"; return 1 ;;
+    *"MP-2"*"encontrado: 2"*) : ;;
+    *) _fail "mensagem_mp2" "esperava MP-2 'encontrado: 2' em stderr, obteve: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# ==== MP-2: numero errado de entradas (4 — acima do exigido) ====
+
+scenario_mp2_quatro_entradas() {
+  mktemp_test
+  _make_valid_repo "$TMPDIR_TEST/repo" "1.0.0" "1.0.0"
+  mkdir -p "$TMPDIR_TEST/repo/plugins/extra-plugin/.claude-plugin"
+  printf '{"name":"extra-plugin","description":"fixture","version":"1.0.0","author":{"name":"JotJunior"}}\n' \
+    > "$TMPDIR_TEST/repo/plugins/extra-plugin/.claude-plugin/plugin.json"
+  cat > "$TMPDIR_TEST/repo/.claude-plugin/marketplace.json" <<'EOF'
+{
+  "name": "cstk",
+  "owner": { "name": "JotJunior" },
+  "description": "fixture",
+  "plugins": [
+    { "name": "cstk", "description": "fixture", "source": "./plugins/cstk", "version": "1.0.0", "category": "development" },
+    { "name": "cstk-language-go", "description": "fixture", "source": "./plugins/cstk-language-go", "version": "1.0.0", "category": "development" },
+    { "name": "cstk-jira", "description": "fixture", "source": "./plugins/cstk-jira", "version": "1.0.0", "category": "development" },
+    { "name": "extra-plugin", "description": "fixture", "source": "./plugins/extra-plugin", "version": "1.0.0", "category": "development" }
+  ]
+}
+EOF
+
+  capture sh "$SCRIPT" --repo-root "$TMPDIR_TEST/repo"
+  if [ "$_CAPTURED_EXIT" = 0 ]; then
+    _fail "exit_nao_zero" "esperado exit != 0 (MP-2 violado com 4 entradas), obteve 0"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"MP-2"*"encontrado: 4"*) : ;;
+    *) _fail "mensagem_mp2" "esperava MP-2 'encontrado: 4' em stderr, obteve: $_CAPTURED_STDERR"; return 1 ;;
   esac
 }
 
