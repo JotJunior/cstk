@@ -10,3 +10,5 @@
 {"query":"faz um commit so com o recall.sh e o test_recall.sh, mensagem algo tipo 'fix recall fts query escaping'","expect":"none","tier":"gen"}
 {"query":"formata o arquivo phase-model-map.txt com colunas alinhadas, tipo tabela, sem mudar o conteudo","expect":"none","tier":"gen"}
 {"query":"quantas skills globais tem listadas no README agora?","expect":"none","tier":"gen"}
+{"query": "cria um slide sobre o mercado de energia solar para minha aula", "expect": "none"}
+{"query": "exporta essa planilha de vendas para um pptx", "expect": "none"}

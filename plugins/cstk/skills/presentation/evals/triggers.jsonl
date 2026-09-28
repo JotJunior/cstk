@@ -1,0 +1,7 @@
+{"query": "cria uma apresentacao do projeto a partir das docs, briefing, constituicao e specs", "expect": "presentation"}
+{"query": "quero contar a historia do projeto para a diretoria em slides bonitos", "expect": "presentation"}
+{"query": "gera um deck executivo do projeto com o que cada spec entregou", "expect": "presentation"}
+{"query": "atualiza a apresentacao do projeto com as specs novas", "expect": "presentation"}
+{"query":"preciso de um relatorio humanizado do projeto, algo que eu possa mostrar pro cliente contando como cada feature foi pensada e implementada","expect":"presentation","tier":"gen"}
+{"query":"make a presentation of this project from its SDD docs for stakeholders","expect":"presentation","tier":"gen"}
+{"query":"so re-renderiza o html da apresentacao, eu editei o story.md na mao","expect":"presentation","tier":"hard"}

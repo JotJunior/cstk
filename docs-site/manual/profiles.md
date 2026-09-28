@@ -20,7 +20,7 @@ Spec-Driven Development.
   80% dos casos.
 - **`complementary`** — voce ja tem o `sdd` instalado e quer skills
   ortogonais (`advisor`, `bugfix`, `owasp-security`, `apply-insights`,
-  `validate-docs-rendered`, etc).
+  `validate-docs-rendered`, `presentation`, etc).
 - **`all`** — instala tudo, inclusive `language-go`.
   Util em maquinas de trabalho multi-stack.
 - **`language-go`** — sempre em `--scope project`,

@@ -65,6 +65,82 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
   Spec: `docs/specs/cstk-jira/`.
 
+## [10.9.0] - 2026-09-27
+
+A primeira versão da `/presentation` herdava o vocabulário técnico dos
+artefatos de origem: nomes de script, comandos, caminhos e siglas. Este
+release faz a apresentação falar com quem decide: linguagem de produto,
+tecnologia só como ilustração e rastreabilidade preservada sem poluir a
+leitura.
+
+### Changed
+
+- **Linguagem de produto, sem tecniquês**: o deck fala com quem decide.
+  O validador bloqueia no texto narrativo trechos de código, URLs,
+  endpoints, flags, caminhos e nomes de arquivo, e avisa (sem bloquear)
+  sobre termos de um glossário técnico (`references/jargon.txt`), com
+  isenção por `vocabulary:` no frontmatter. Nome técnico indispensável
+  vem com tradução curta na mesma frase; como ilustração, vira selo
+  discreto via `@tag` (até 3 por slide). O rodapé mostra rótulos
+  amigáveis (caminhos só no tooltip e no apêndice) e a linha do tempo
+  usa os títulos narrativos dos slides.
+- A regra de caminho do G-11 só reprova sequência `a/b/c` que tenha ao
+  menos uma letra: datas (`26/09/2026`) e sequências numéricas (`1/2/3`)
+  seguem livres no texto narrativo (`tech_alpha` em
+  `validate-presentation.sh`; cenários `data_nao_e_caminho` e
+  `tecniques_caminho_sem_prefixo`).
+- Rótulos de métrica, esqueleto `templates/story.md` e fixture de testes
+  reescritos em linguagem comum ("Tarefas entregues", "Dúvidas
+  esclarecidas").
+
+Spec: `docs/specs/presentation/` (reabertura: sessão de clarify
+2026-09-26, FR-018 a FR-022).
+
+## [10.8.0] - 2026-09-25
+
+Até agora, contar a história de um projeto para quem decide exigia
+reescrever à mão o que já estava documentado em briefing, constituição e
+dezenas de specs. A nova skill `/presentation` faz esse trabalho de
+redação: transforma a documentação SDD em uma apresentação narrativa,
+bonita e verificável, que serve tanto de deck formal quanto de relatório
+humanizado.
+
+### Added
+
+- **Skill complementar `presentation`** (`plugins/cstk/skills/presentation/`):
+  redatora da história do projeto. Gera, em `docs/presentation/`, o
+  `story.md` (fonte narrativa editável e retroalimentada), o
+  `inventory.tsv` (fatos e linha de base do próximo diff) e o `index.html`
+  (arquivo único e offline). Um slide por spec (ativa, arquivada ou viva),
+  com quatro blocos fixos: o que é, como foi pensada, como foi enriquecida
+  e como foi implementada. Flags `--docs`, `--out`, `--lang`,
+  `--render-only` e `--full`.
+- **`scan-project-docs.sh`**: inventário determinístico de briefing
+  (caminho atual e legado), constituição (versão e princípios) e specs
+  (estágio, artefatos, clarify, tarefas, converge, digest), mais `diff`
+  por digest para regenerar só os slides afetados.
+- **`validate-presentation.sh`**: gramática fechada do `story.md`,
+  cobertura 1:1 das specs, `@source` existente em slides factuais e
+  métricas só por chave do inventário (`@metric Rótulo | chave`), o que
+  torna estruturalmente impossível inventar número (Princípio VI).
+- **`render-presentation.sh`** + template (`presentation.html`,
+  `theme.css`, `deck.js`): render determinístico em awk, texto sempre
+  escapado, CSP `default-src 'none'`, fontes do sistema, tema claro e
+  escuro, modo slides (teclado, progresso, deep link) com auto-ajuste
+  tipográfico por slide para caber no canvas 16:9, modo relatório com
+  sumário e impressão com um slide por página.
+- Referências da skill: `slide-grammar.md`, `narrative-guide.md`,
+  `source-mapping.md` e o esqueleto `templates/story.md`.
+- Testes: `tests/test_scan-project-docs.sh`,
+  `tests/test_validate-presentation.sh`,
+  `tests/test_render-presentation.sh` sobre a fixture
+  `tests/fixtures/presentation/`. Trigger evals da skill e dois
+  negativos novos.
+- `scripts/profiles.txt.in`: `complementary:presentation` (perfil
+  `complementary` passa a 11 skills; `all` a 29).
+
+Spec: `docs/specs/presentation/`.
+
 ## [10.7.0] - 2026-09-23
 
 Ate agora, saber "o que aconteceu na onda que acabou de fechar" exigia ler
@@ -8342,6 +8418,8 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.9.0]: https://github.com/JotJunior/cstk/releases/tag/v10.9.0
+[10.8.0]: https://github.com/JotJunior/cstk/releases/tag/v10.8.0
 [10.7.0]: https://github.com/JotJunior/cstk/releases/tag/v10.7.0
 [10.6.6]: https://github.com/JotJunior/cstk/releases/tag/v10.6.6
 [10.6.5]: https://github.com/JotJunior/cstk/releases/tag/v10.6.5
