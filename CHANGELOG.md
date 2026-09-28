@@ -5,7 +5,13 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [Unreleased]
+## [10.10.0] - 2026-09-27
+
+Ate aqui o toolkit nao falava com o Jira: o andamento de uma feature so
+existia no `tasks.md` e no estado da execucao. Este release traz o plugin
+`cstk-jira`, que espelha a feature num Epic com Tasks e Sub-tasks e mantem
+o status sincronizado durante as execucoes autonomas, incluindo marco por
+release, label por FASE e dependencias como issue links.
 
 ### Added
 
@@ -62,6 +68,19 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
       propria fila/lock de sincronizacao local.
     - `jira-sync status --feature F` passa a exibir o marco resolvido e as
       contagens `links_unrepresentable=N`/`links_stale=N`.
+    - Politica `project_create` (`gated`/`never`): com `never`, a oferta de
+      criar projeto e desligada e `create-project` sai sem fazer requisicao.
+    - `jira-setup.sh check-field-support` confere, por tipo de issue, se o
+      projeto aceita Fix Version e labels antes de ligar essas chaves.
+    - Marco `blocked` nao repete a tentativa de criacao a cada
+      sincronizacao; gravar a config com sucesso libera o bloqueio
+      (`jira-sync.sh milestone-unblock` / `jira-map.sh milestone-clear-blocked`).
+    - Escritas no Jira (marco do Epic, label de FASE, titulo/descricao,
+      issue link) tratam resposta nao-2xx como falha: nada e registrado como
+      aplicado sem ter sido, 401 interrompe a fila como `auth_failed` e os
+      demais erros deixam o item `deferred` para a proxima drenagem.
+    - Suite `tests/cstk/test_jira-mutation.sh` com 29 cenarios de mutacao
+      cobrindo as guardas acima.
 
   Spec: `docs/specs/cstk-jira/`.
 
@@ -8418,6 +8437,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.10.0]: https://github.com/JotJunior/cstk/releases/tag/v10.10.0
 [10.9.0]: https://github.com/JotJunior/cstk/releases/tag/v10.9.0
 [10.8.0]: https://github.com/JotJunior/cstk/releases/tag/v10.8.0
 [10.7.0]: https://github.com/JotJunior/cstk/releases/tag/v10.7.0
