@@ -335,7 +335,7 @@ scenario_mutation_21_4_2_remove_enum_check_fails() {
 scenario_credential_check_ausente_exit4() {
   _home="$TMPDIR_TEST/home-ausente"
   mkdir -p "$_home"
-  assert_exit 4 env HOME="$_home" "$SCRIPT" credential-check || return 1
+  assert_exit 4 env HOME="$_home" XDG_CONFIG_HOME="$_home/.config" "$SCRIPT" credential-check || return 1
 }
 
 scenario_credential_check_permissao_aberta_exit4_nunca_imprime_conteudo() {
@@ -344,7 +344,7 @@ scenario_credential_check_permissao_aberta_exit4_nunca_imprime_conteudo() {
   printf 'email=alguem@example.com\napi_token=SEGREDO_NUNCA_DEVE_APARECER\n' \
     > "$_home/.config/cstk-jira/credentials"
   chmod 644 "$_home/.config/cstk-jira/credentials"
-  assert_exit 4 env HOME="$_home" "$SCRIPT" credential-check || return 1
+  assert_exit 4 env HOME="$_home" XDG_CONFIG_HOME="$_home/.config" "$SCRIPT" credential-check || return 1
   assert_stdout_not_contains "SEGREDO_NUNCA_DEVE_APARECER" || return 1
   assert_stderr_contains "permissao insegura" || return 1
   case "${_CAPTURED_STDERR:-}" in
@@ -361,7 +361,7 @@ scenario_credential_check_permissao_0600_exit0() {
   printf 'email=alguem@example.com\napi_token=abc123\n' \
     > "$_home/.config/cstk-jira/credentials"
   chmod 600 "$_home/.config/cstk-jira/credentials"
-  assert_exit 0 env HOME="$_home" "$SCRIPT" credential-check || return 1
+  assert_exit 0 env HOME="$_home" XDG_CONFIG_HOME="$_home/.config" "$SCRIPT" credential-check || return 1
 }
 
 # ==== resolve-path (r02 FASE 20 tarefa 20.1) ====

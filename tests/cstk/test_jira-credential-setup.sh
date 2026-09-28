@@ -109,7 +109,8 @@ scenario_validade_informada_grava_e_ecoa_lembrete() {
     || { _fail "cred_file_missing" "arquivo de credencial nao foi gravado"; return 1; }
   grep -q '^token_expires_at=2027-03-15$' "$(_cred_file)" \
     || { _fail "token_expires_at_missing" "token_expires_at nao foi gravado com o valor esperado"; return 1; }
-  _modo=$(stat -f '%Lp' "$(_cred_file)" 2>/dev/null || stat -c '%a' "$(_cred_file)" 2>/dev/null)
+  # GNU primeiro: no Linux `stat -f` existe e imprime o filesystem, nao o modo.
+  _modo=$(stat -c '%a' "$(_cred_file)" 2>/dev/null || stat -f '%Lp' "$(_cred_file)" 2>/dev/null)
   [ "$_modo" = "600" ] || { _fail "modo" "esperado 600, obtido '$_modo'"; return 1; }
 }
 
