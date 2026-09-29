@@ -5,6 +5,62 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.10.1] - 2026-09-29
+
+Revisao do catalogo contra os recursos atuais do Claude Code: tres hooks
+do perfil Go que nunca disparavam voltam a funcionar, um hook de metrica
+que so gravava `indisponivel` foi aposentado e duas skills de entrevista
+passam a perguntar pelo seletor nativo.
+
+### Fixed
+
+- **Hooks do perfil Go nunca disparavam.** `language-related/go/settings.json`
+  registrava os eventos `PreToolCall`/`PostToolCall`, que nao existem, e
+  `check-route-order.sh`, `check-schema-prefix.sh` e `go-build-gate.sh`
+  liam a variavel `CLAUDE_TOOL_INPUT`, que o harness nao define. Agora:
+  eventos `PreToolUse`/`PostToolUse`, entrada via stdin (`.tool_input`) e
+  exit `2` onde a intencao e bloquear (rota estatica registrada depois de
+  `/:id`) ou devolver a falha ao Claude (`go build`). Novo
+  `tests/test_go-language-hooks.sh`; `docs/go-toolkit*.md` descrevem
+  evento e efeito reais. Projetos ja instalados precisam de
+  `cstk install --scope project --profile language-go` de novo para
+  receber o `settings.json` corrigido.
+- **`e2e-integration-flow` apontava para `verify`**, skill que nao existe
+  no catalogo; agora indica a skill nativa `run`.
+
+### Changed
+
+- **`clarify` pergunta via `AskUserQuestion`** quando a tool esta
+  disponivel: uma pergunta por chamada (preserva o write atomico na spec
+  apos cada resposta), opcao recomendada primeiro e "Other" automatico
+  para resposta curta. Sem a tool (ex.: `claude -p`), segue o formato em
+  texto.
+- **`briefing` usa `AskUserQuestion` so em perguntas fechadas** (atualizar
+  vs criar novo, confirmacao de inferencia, dimensoes com respostas
+  finitas); perguntas abertas continuam em texto livre.
+- **`agente-00c-orchestrator` deixa de spawnar um subagente de dry-run**
+  antes de cada clarify so para saber se a tool `Agent` existe: confere a
+  propria lista de tools. Limite verificado empiricamente no Claude Code
+  2.1.283: subagentes das camadas 1 e 2 tem `Agent`, a 3a nao.
+- **`agente-00c-runtime` ganha `user-invocable: false`** no frontmatter
+  (antes o "NOT user-invocable" estava so no texto da description).
+
+### Removed
+
+- **Hook `posttooluse-agent-usage.sh` aposentado.** Com subagentes em
+  background por default, o `PostToolUse` do `Agent` dispara no
+  lancamento do spawn e o `tool_response` nao traz uso: todo registro
+  gravado desde 2026-07-28 saiu `indisponivel`. O custo por onda ja vem do
+  OTel (`otel-usage.sh`). Sai do `hooks.json` do plugin, do
+  `settings.snippet.json` e do provisionamento; `guard-hooks-status.sh` e
+  `cstk setup` passam a exigir 2 hooks obrigatorios. `cstk hooks install`
+  remove o registro legado de projetos provisionados antes (so no arquivo
+  de registro alvo — com `--local` o `settings.json` do time nunca e
+  tocado, e o operador recebe aviso) e apaga a copia do script quando
+  nenhum registro a referencia mais. Leitores mantidos: `agent_usage`
+  ausente segue como "nao medido", e `wave-usage-report.sh backfill`
+  continua reconstruindo o dado a partir do transcript.
+
 ## [10.10.0] - 2026-09-27
 
 Ate aqui o toolkit nao falava com o Jira: o andamento de uma feature so
@@ -8437,6 +8493,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.10.1]: https://github.com/JotJunior/cstk/releases/tag/v10.10.1
 [10.10.0]: https://github.com/JotJunior/cstk/releases/tag/v10.10.0
 [10.9.0]: https://github.com/JotJunior/cstk/releases/tag/v10.9.0
 [10.8.0]: https://github.com/JotJunior/cstk/releases/tag/v10.8.0
