@@ -8,7 +8,7 @@
 # Invariantes SEMPRE checados (independente de contexto release/nao-release):
 #   MP-1  .claude-plugin/marketplace.json e cada plugin.json referenciado
 #         sao JSON parseavel
-#   MP-2  .plugins | length == 2  (FR-003 exige exatamente 2 entradas)
+#   MP-2  .plugins | length == 3  (FR-003 exige exatamente 3 entradas)
 #   MP-3  cada .plugins[].source (string relativa) resolve para diretorio
 #         existente no repo
 #   MP-4  cada diretorio de source contem .claude-plugin/plugin.json
@@ -94,8 +94,8 @@ fi
 
 # MP-2
 _count=$(jq '.plugins | length' "$MARKETPLACE")
-if [ "$_count" != "2" ]; then
-  _err "MP-2: marketplace.json .plugins deve ter exatamente 2 entradas (encontrado: $_count)"
+if [ "$_count" != "3" ]; then
+  _err "MP-2: marketplace.json .plugins deve ter exatamente 3 entradas (encontrado: $_count)"
 fi
 
 # MP-6: nomes unicos

@@ -5,6 +5,85 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.10.0] - 2026-09-27
+
+Ate aqui o toolkit nao falava com o Jira: o andamento de uma feature so
+existia no `tasks.md` e no estado da execucao. Este release traz o plugin
+`cstk-jira`, que espelha a feature num Epic com Tasks e Sub-tasks e mantem
+o status sincronizado durante as execucoes autonomas, incluindo marco por
+release, label por FASE e dependencias como issue links.
+
+### Added
+
+- **Plugin `cstk-jira`** (3º entry do marketplace, `plugins/cstk-jira/`):
+  integracao com Jira Cloud para o toolkit. Converte uma feature
+  documentada (`spec.md` + `tasks.md`) num Epic com Tasks/Sub-tasks
+  correspondentes no Jira, mantem um board dedicado por projeto-alvo e
+  sincroniza status automaticamente durante execucoes
+  `agente-00c`/`feature-00c`.
+  - 3 skills: `jira-setup` (setup guiado — site, project key, credencial
+    em terminal proprio, mapeamento de tipos de issue e de status),
+    `jira-convert` (feature -> Epic/Task/Sub-task, mapeamento local<->Jira
+    em `jira-map.tsv`, reexecucao segura) e `jira-sync` (status da fila de
+    sincronizacao autonoma, resolucao de conflitos e cards orfaos).
+  - 2 hooks: `posttooluse-jira-sync.sh` (drena outcomes de task/onda para
+    o Jira, assincrono) e `pretooluse-jira-deny-destructive.sh` (bloqueia
+    chamadas destrutivas via Rovo MCP — cards nunca sao apagados, so
+    desconectados/religados).
+  - Credencial (API token classico) gerada pelo operador e gravada FORA
+    do repositorio, em `${XDG_CONFIG_HOME:-$HOME/.config}/cstk-jira/credentials`
+    com permissao `0600` (diretorio `0700`) — nunca digitada no chat.
+  - Dependencias confinadas a um unico script (`jira-io.sh`): `jq` + um
+    cliente HTTP de linha de comando, sob o mesmo carve-out de
+    zero-dependencia ja documentado para o restante do toolkit.
+  - Distribuido apenas como plugin nativo (`/plugin install
+    cstk-jira@cstk`) — sem profile equivalente no `cstk install` classico
+    (nao depende do binario `cstk`).
+  - **Round r02** (FR-020..FR-025, aditivo — sem as chaves novas o
+    comportamento e byte-a-byte o do incremento acima):
+    - **Marco (Fix Version) por round/release** (`milestone_mode`,
+      default `auto`): Epic e Task recebem a Fix Version resolvida do
+      round ativo (`<feature>-rNN`) ou, sem round ativo, de
+      `milestone_release`/do heading `## [X.Y.Z]` mais recente deste
+      CHANGELOG (`[Unreleased]` sem override deixa o marco `unresolved`);
+      `milestone_mode=off` desliga a sincronizacao.
+    - **Label de FASE** (`labels_enabled`, default `on`): Task/Sub-task
+      recebem `phase-<N>` derivado do heading `### FASE N`, reconciliado
+      quando a task muda de fase.
+    - **Links de dependencia** (`links_enabled`, default `on`): arestas da
+      `## Matriz de Dependencias` do backlog viram issue links entre as
+      Tasks-ancora de cada fase; `link_type_id` e confirmado uma vez no
+      setup ou resolvido automaticamente quando so ha 1 candidato no site.
+    - **Criacao de projeto sob gate humano** (FR-024): a skill
+      `jira-setup` pode oferecer criar um projeto Jira inexistente, sempre
+      com confirmacao explicita do operador; em execucao autonoma
+      (`agente-00c`/`feature-00c`) a decisao e SEMPRE delegada a um
+      bloqueio humano, a skill nunca cria sozinha. Novo hook `PreToolUse`
+      nega `createJiraProject` via MCP enquanto ha execucao 00c ativa.
+    - **Config compartilhada entre worktrees git** (FR-023):
+      `jira-config.sh resolve-path` cai para o `ProjectConfig` da
+      worktree principal (somente leitura) quando a worktree atual nao
+      tem config proprio — permite que execucoes paralelas do roadmap em
+      worktrees separadas compartilhem 1 setup do Jira, cada uma com sua
+      propria fila/lock de sincronizacao local.
+    - `jira-sync status --feature F` passa a exibir o marco resolvido e as
+      contagens `links_unrepresentable=N`/`links_stale=N`.
+    - Politica `project_create` (`gated`/`never`): com `never`, a oferta de
+      criar projeto e desligada e `create-project` sai sem fazer requisicao.
+    - `jira-setup.sh check-field-support` confere, por tipo de issue, se o
+      projeto aceita Fix Version e labels antes de ligar essas chaves.
+    - Marco `blocked` nao repete a tentativa de criacao a cada
+      sincronizacao; gravar a config com sucesso libera o bloqueio
+      (`jira-sync.sh milestone-unblock` / `jira-map.sh milestone-clear-blocked`).
+    - Escritas no Jira (marco do Epic, label de FASE, titulo/descricao,
+      issue link) tratam resposta nao-2xx como falha: nada e registrado como
+      aplicado sem ter sido, 401 interrompe a fila como `auth_failed` e os
+      demais erros deixam o item `deferred` para a proxima drenagem.
+    - Suite `tests/cstk/test_jira-mutation.sh` com 29 cenarios de mutacao
+      cobrindo as guardas acima.
+
+  Spec: `docs/specs/cstk-jira/`.
+
 ## [10.9.0] - 2026-09-27
 
 A primeira versão da `/presentation` herdava o vocabulário técnico dos
@@ -8358,6 +8437,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.10.0]: https://github.com/JotJunior/cstk/releases/tag/v10.10.0
 [10.9.0]: https://github.com/JotJunior/cstk/releases/tag/v10.9.0
 [10.8.0]: https://github.com/JotJunior/cstk/releases/tag/v10.8.0
 [10.7.0]: https://github.com/JotJunior/cstk/releases/tag/v10.7.0
