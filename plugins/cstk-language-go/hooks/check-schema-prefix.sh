@@ -1,5 +1,5 @@
 #!/bin/bash
-# PreToolCall hook: Schema Prefix Checker
+# PreToolUse hook: Schema Prefix Checker
 # Ensures SQL queries in Go files use schema-prefixed table names.
 # Unqualified table names silently query the wrong schema in production.
 #
@@ -7,7 +7,10 @@
 
 set -euo pipefail
 
-FILE_PATH=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.file_path // empty' 2>/dev/null)
+# Entrada do hook chega via stdin (JSON com .tool_input), nao via env var.
+HOOK_INPUT=$(cat)
+
+FILE_PATH=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -z "$FILE_PATH" ] && exit 0
 
 # Only check Go files in repository layer
@@ -15,11 +18,11 @@ FILE_PATH=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.file_path // empty' 2>/dev/n
 [[ "$FILE_PATH" != */repository/* ]] && exit 0
 
 # Get content (works for Write tool)
-CONTENT=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.content // empty' 2>/dev/null)
+CONTENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null)
 
 # For Edit tool, get new_string
 if [ -z "$CONTENT" ]; then
-  CONTENT=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.new_string // empty' 2>/dev/null)
+  CONTENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.new_string // empty' 2>/dev/null)
 fi
 
 [ -z "$CONTENT" ] && exit 0

@@ -208,6 +208,10 @@ _is_internal_test() {
       # tratamento de test_validate-plugin-manifests.sh). FASE 5.1-5.3 de
       # panel-monorepo (FR-015/FR-016).
       return 0 ;;
+    test_go-language-hooks.sh)
+      # Cobre plugins/cstk-language-go/hooks/*.sh + language-related/go/
+      # settings.json — fora da convencao cli/lib | skills/*/scripts.
+      return 0 ;;
     test_plugin-hooks-manifest.sh)
       # Cobre plugins/cstk/hooks/hooks.json — manifesto de dados estatico,
       # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de

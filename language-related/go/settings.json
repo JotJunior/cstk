@@ -1,6 +1,6 @@
 {
   "hooks": {
-    "PreToolCall": [
+    "PreToolUse": [
       {
         "matcher": "Write",
         "hooks": [
@@ -22,7 +22,7 @@
         ]
       }
     ],
-    "PostToolCall": [
+    "PostToolUse": [
       {
         "matcher": "Write|Edit",
         "hooks": [
