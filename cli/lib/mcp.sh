@@ -397,10 +397,10 @@ _mcp_is_active_status() {
 # ativa (precedencia agente-00c > menor short-name feature-00c) em stdout;
 # stdout vazio se nenhuma execucao ativa. Read-only. Reusa a MESMA regra
 # de precedencia de hooks/pretooluse-bash-guard.sh sem reimportar codigo
-# (duplicacao textual e o padrao ja praticado pelos 3 consumidores
-# existentes da regra: pretooluse-bash-guard.sh,
-# posttooluse-agent-usage.sh, posttooluse-tool-call-tick.sh — nenhum dos
-# tres a fatorou num helper compartilhado).
+# (duplicacao textual e o padrao ja praticado pelos consumidores
+# existentes da regra: pretooluse-bash-guard.sh e
+# posttooluse-tool-call-tick.sh — nenhum dos dois a fatorou num helper
+# compartilhado).
 _mcp_detect_active_dir() {
   _mda_proj=$1
   _mda_rw=$(_mcp_runtime_script_path state-rw.sh) || return 0

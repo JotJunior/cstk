@@ -23,16 +23,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh\"",
-            "timeout": 5
-          }
-        ]
       }
     ]
   }

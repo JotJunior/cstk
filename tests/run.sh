@@ -496,14 +496,6 @@ _is_internal_test() {
       # por convencao. Existence-guarded.
       [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh" ] && return 0
       return 1 ;;
-    test_posttooluse-agent-usage.sh)
-      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh
-      # (hook PostToolUse/matcher "Agent" de metrica de uso de tokens por
-      # spawn de subagente — wave-token-metrics FASE 2) — mesma razao dos
-      # dois casos acima: hooks/ esta fora do escaneio por convencao.
-      # Existence-guarded.
-      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh" ] && return 0
-      return 1 ;;
     test_posttooluse-loose-usage.sh)
       # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
       # (hook PostToolUse OPT-IN de captura de consumo avulso — feature

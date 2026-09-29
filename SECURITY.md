@@ -25,7 +25,7 @@ for a private channel; the maintainer will follow up.
   not replace it, and cstk does not claim to confine a malicious model — it
   confines the *documented failure modes* of autonomous runs.
 
-## The three guard hooks
+## The guard hooks
 
 Registered by `cstk hooks install` (classic path) or shipped inside the
 plugin (`plugins/cstk/hooks/hooks.json`). Source lives under
@@ -35,7 +35,6 @@ plugin (`plugins/cstk/hooks/hooks.json`). Source lives under
 |------|-----------------|--------------|
 | `pretooluse-bash-guard.sh` | `PreToolUse` / `Bash` | Delegates every Bash command to `bash-guard.sh check` **only while an autonomous 00c execution is active** (state with `status: em_andamento`). Outside an active execution it exits `0` and interferes with nothing. Violations block the command; a failure of the guard mechanism itself (missing `jq`, unreadable script, invalid stdin) **also blocks** (`MECANISMO_FALHOU`), never silently passes. |
 | `posttooluse-tool-call-tick.sh` | `PostToolUse` / `*` | Appends one line to a local sidecar file so each wave can report its real `tool_calls` count. It matches `*` because its whole job is counting **every** tool call — a narrower matcher would undercount. It writes only to the sidecar (never to `state.json`/`state.db`), emits nothing on stdout/stderr and always exits `0`; it cannot block or alter any tool call. |
-| `posttooluse-agent-usage.sh` | `PostToolUse` / `Agent` | Records per-subagent token usage to a local sidecar for per-wave cost metrics. Same contract: sidecar-only, silent, always exit `0`. |
 
 Directory hubs flag the `*` matcher as a critical signal — correctly, as a
 prompt to read what the hook does. The answer here: it is a passive local

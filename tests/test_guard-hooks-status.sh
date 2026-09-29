@@ -8,7 +8,7 @@
 #          REGISTRADO (basename citado em .claude/settings.json). Cada
 #          metade sozinha e insuficiente — foi exatamente o modo de falha
 #          de campo (arquivo la, settings.json ausente => hook nunca roda).
-#   INV-3: check -> exit 0 so com os 3 ativos; 1 caso contrario.
+#   INV-3: check -> exit 0 so com os 2 ativos; 1 caso contrario.
 #   INV-4: tick-mode -> "manual" sempre que o tick-hook nao estiver ativo
 #          (default seguro: na duvida, ticka na mao em vez de zerar a
 #          metrica em silencio).
@@ -76,9 +76,10 @@ _ghs_endpoint() {
     sh "$SCRIPT" "$@"
 }
 
+# Os 2 hooks obrigatorios (_GH_HOOKS). posttooluse-agent-usage.sh foi
+# APOSENTADO e nao faz mais parte do conjunto verificado.
 _HOOKS='pretooluse-bash-guard.sh
-posttooluse-tool-call-tick.sh
-posttooluse-agent-usage.sh'
+posttooluse-tool-call-tick.sh'
 
 # _mkproj NAME -> cria projeto-alvo vazio (com .claude/) e ecoa o path.
 _mkproj() {
@@ -163,7 +164,7 @@ _register_canonical() {
   } > "$_rc_p/.claude/settings.json"
 }
 
-# _fully_provisioned PAP -> os 3 hooks presentes E registrados.
+# _fully_provisioned PAP -> os 2 hooks presentes E registrados.
 _fully_provisioned() {
   for _h in $_HOOKS; do _put_hook "$1" "$_h"; done
   # shellcheck disable=SC2086
@@ -242,7 +243,7 @@ scenario_check_nenhum_hook_exit1() {
   _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c 'missing	unregistered')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas missing/unregistered, obtido $_n"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 linhas missing/unregistered, obtido $_n"; return 1; }
   return 0
 }
 
@@ -375,7 +376,7 @@ scenario_tick_mode_manual_sem_registro() {
 
 # ==== INV-6: copia stale (o 2o modo de falha de campo) ====
 
-# Reproduz o bug de 03/ago/2026: os 3 hooks present+registered, mas a copia
+# Reproduz o bug de 03/ago/2026: os hooks present+registered, mas a copia
 # do projeto e a de jul/2026. Antes desta dimensao, `check` dizia 3/3 ativos
 # e tool_calls zerava em silencio.
 scenario_check_stale_exit1() {
@@ -386,7 +387,7 @@ scenario_check_stale_exit1() {
   _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "copia stale deve reprovar (esperado 1, obtido $_CAPTURED_EXIT)"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	stale$')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas present/registered/stale, obtido $_n"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 linhas present/registered/stale, obtido $_n"; return 1; }
   printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'STALE' \
     || { _fail "stderr" "faltou diagnostico de stale"; return 1; }
   return 0
@@ -427,7 +428,7 @@ scenario_check_catalogo_ausente_da_unknown_e_nao_reprova() {
   [ "$_CAPTURED_EXIT" = 0 ] \
     || { _fail "exit" "catalogo irresolvivel nao pode reprovar (obtido $_CAPTURED_EXIT)"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	unknown$')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas unknown, obtido $_n"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 linhas unknown, obtido $_n"; return 1; }
   return 0
 }
 
@@ -437,7 +438,7 @@ scenario_check_hook_ausente_da_unknown() {
   _p=$(_mkproj proj-unknown-missing)
   _ghs check --projeto-alvo-path "$_p"
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	missing	unregistered	unknown$')
-  [ "$_n" = 3 ] || { _fail "TSV" "hook ausente deve dar freshness unknown, obtido $_n linhas"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "hook ausente deve dar freshness unknown, obtido $_n linhas"; return 1; }
   return 0
 }
 
@@ -551,15 +552,15 @@ scenario_funciona_sem_jq() {
 
 # ==== --include-loose-usage (feature cstk-setup, FASE 2.1, FR-002/FR-008) ====
 
-# Flag presente, hook opt-in ausente => 4a linha reflete ausencia SEM
-# afetar o exit (derivado so dos 3 hooks obrigatorios).
+# Flag presente, hook opt-in ausente => 3a linha reflete ausencia SEM
+# afetar o exit (derivado so dos 2 hooks obrigatorios).
 scenario_loose_usage_detection_current_runtime() {
   _p=$(_mkproj proj-loose-current)
   _fully_provisioned "$_p"
   _ghs check --projeto-alvo-path "$_p" --include-loose-usage
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (hook opt-in ausente nao afeta exit), obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	missing	unregistered	' \
-    || { _fail "TSV" "esperado 4a linha posttooluse-loose-usage.sh missing/unregistered"; return 1; }
+    || { _fail "TSV" "esperado 3a linha posttooluse-loose-usage.sh missing/unregistered"; return 1; }
   # 5a coluna = gate de ambiente (issue #162); _ghs pina a variavel vazia.
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	missing	unregistered	unknown	endpoint-unset$' \
     || { _fail "TSV" "esperado 5a coluna endpoint-unset na linha loose: $_CAPTURED_STDOUT"; return 1; }
@@ -567,17 +568,17 @@ scenario_loose_usage_detection_current_runtime() {
   printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'CSTK_OTEL_ENDPOINT' \
     && { _fail "stderr" "hook ausente nao deveria disparar aviso de gate"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
-  [ "$_n" = 4 ] || { _fail "TSV" "esperado 4 linhas com --include-loose-usage, obtido $_n"; return 1; }
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas com --include-loose-usage, obtido $_n"; return 1; }
   return 0
 }
 
-# Sem a flag: saida byte-a-byte identica (retro-compat) — 3 linhas so.
+# Sem a flag: saida byte-a-byte identica (retro-compat) — 2 linhas so.
 scenario_loose_usage_sem_flag_saida_identica() {
   _p=$(_mkproj proj-loose-sem-flag)
   _fully_provisioned "$_p"
   _ghs check --projeto-alvo-path "$_p"
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
-  [ "$_n" = 3 ] || { _fail "TSV" "sem a flag deve continuar 3 linhas, obtido $_n"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "sem a flag deve continuar 2 linhas, obtido $_n"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'loose-usage' \
     && { _fail "TSV" "sem a flag nao pode citar loose-usage"; return 1; }
   return 0
@@ -626,7 +627,7 @@ scenario_loose_usage_detection_stale_runtime() {
 # sem nenhuma superficie para o operador enxergar isso — a mesma classe de
 # falha silenciosa que motivou a 3a coluna (stale reportado como ativo).
 
-# _provision_loose PAP -> hook opt-in presente E registrado (alem dos 3).
+# _provision_loose PAP -> hook opt-in presente E registrado (alem dos 2).
 _provision_loose() {
   _pl_p=$1
   for _pl_h in $_HOOKS; do _put_hook "$_pl_p" "$_pl_h"; done
@@ -736,9 +737,6 @@ scenario_hook_redirected_reports_divergent() {
     printf '          }\n        ]\n      },\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
     printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
-    printf '          }\n        ]\n      },\n'
-    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-    printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-agent-usage.sh"\n'
     printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
   } > "$_p/.claude/settings.json"
   _ghs check --projeto-alvo-path "$_p" --verify-registration --quiet
@@ -765,9 +763,6 @@ scenario_decoy_line_not_canonical() {
     printf '          }\n        ]\n      },\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
     printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
-    printf '          }\n        ]\n      },\n'
-    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-    printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-agent-usage.sh"\n'
     printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
   } > "$_p/.claude/settings.json"
   _ghs check --projeto-alvo-path "$_p" --verify-registration --quiet
@@ -876,16 +871,16 @@ exit 0'
     CLAUDE_PLUGIN_ROOT="$TMPDIR_TEST/fake-plugin" \
     sh "$_solto/guard-hooks-status.sh" check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] \
-    || { _fail "exit" "esperado 0 (3 hooks current via plugin), obtido $_CAPTURED_EXIT; stdout=$_CAPTURED_STDOUT stderr=$_CAPTURED_STDERR"; return 1; }
+    || { _fail "exit" "esperado 0 (2 hooks current via plugin), obtido $_CAPTURED_EXIT; stdout=$_CAPTURED_STDOUT stderr=$_CAPTURED_STDERR"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	current$')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas current (catalogo resolvido via plugin), stdout=$_CAPTURED_STDOUT"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 linhas current (catalogo resolvido via plugin), stdout=$_CAPTURED_STDOUT"; return 1; }
   return 0
 }
 
 # ==== INV-8: hooks providos pelo PLUGIN (v7+) ====
 #
 # Regressao do 3o modo de falha de campo: com o cstk instalado como plugin
-# nativo, os 3 hooks sao registrados pelo hooks.json do plugin e NAO existe
+# nativo, os hooks obrigatorios sao registrados pelo hooks.json do plugin e NAO existe
 # copia em <PAP>/.claude/hooks/ nem registro em <PAP>/.claude/settings.json.
 # Antes deste fix o `check` acusava "3 de 3 NAO estao ativos" e o
 # `tick-mode` devolvia "manual" — este ultimo fazendo o orquestrador tickar
@@ -929,7 +924,7 @@ scenario_check_plugin_prove_hooks_exit0() {
   [ "$_CAPTURED_EXIT" = 0 ] \
     || { _fail "exit" "esperado 0 (hooks providos pelo plugin), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	current$')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas present/registered/current, stdout=$_CAPTURED_STDOUT"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 linhas present/registered/current, stdout=$_CAPTURED_STDOUT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'providos pelo PLUGIN' \
     || { _fail "stderr" "esperado aviso de origem plugin, stderr=$_CAPTURED_STDERR"; return 1; }
   # NAO pode mandar rodar `cstk hooks install` — o comando pula por dedup.
@@ -992,7 +987,7 @@ scenario_check_plugin_verify_registration_canonical() {
   _ghs_plugin "$_pj" check --projeto-alvo-path "$_p" --verify-registration
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	canonical$')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas canonical, stdout=$_CAPTURED_STDOUT"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 linhas canonical, stdout=$_CAPTURED_STDOUT"; return 1; }
   return 0
 }
 
@@ -1004,7 +999,7 @@ scenario_plugin_hooks_json_ilegivel_degrada() {
   _ghs_plugin "$TMPDIR_TEST/nao-existe/hooks.json" check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (degrada p/ sem plugin), obtido $_CAPTURED_EXIT"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c 'missing	unregistered')
-  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 missing/unregistered, stdout=$_CAPTURED_STDOUT"; return 1; }
+  [ "$_n" = 2 ] || { _fail "TSV" "esperado 2 missing/unregistered, stdout=$_CAPTURED_STDOUT"; return 1; }
   return 0
 }
 

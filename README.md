@@ -132,7 +132,7 @@ labels are stripped before touching disk.
 │   ├── cstk/                    # Default plugin (marketplace entry "cstk")
 │   │   ├── commands/            # The 7 /agente-00c*, /feature-00c*, /roadmap-wave slash commands
 │   │   ├── agents/              # Orchestrators, clarify asker/answerer, data-veracity
-│   │   ├── hooks/hooks.json     # 3 enforced guard hooks (bash-guard, tool-call-tick, agent-usage)
+│   │   ├── hooks/hooks.json     # 2 enforced guard hooks (bash-guard, tool-call-tick)
 │   │   ├── .mcp.json            # registers the cstk-state MCP server (auto-starts on the plugin path)
 │   │   ├── mcp/state-server/    # MCP server source (Node/TS, stdio) — ships INSIDE the plugin
 │   │   ├── evals/               # `claude plugin eval` suite (generated from the skills' triggers.jsonl)
@@ -346,8 +346,8 @@ binary, no clone, no `curl` bootstrap:
 
 Enable the plugin and open a new session in any project — skills, the 7
 `/agente-00c*`/`/feature-00c*`/`/roadmap-wave` commands and the enforced guard hooks
-(`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
-`posttooluse-agent-usage`) activate automatically, with **no**
+(`pretooluse-bash-guard`, `posttooluse-tool-call-tick`) activate
+automatically, with **no**
 `cstk hooks install` step (confirmed empirically — see
 [`docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md`](docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md)
 §Clarifications, assumption A1). `posttooluse-loose-usage.sh` (opt-in
@@ -381,9 +381,9 @@ double-registering the guard hooks (plugin wins; `cstk doctor` reports
 
 ### 00c runtime hooks (`cstk hooks`)
 
-The three 00c runtime hooks — `pretooluse-bash-guard.sh` (fail-closed Bash
-guard), `posttooluse-tool-call-tick.sh` and `posttooluse-agent-usage.sh`
-(per-wave metrics) — only run in a target project once they are copied into
+The two 00c runtime hooks — `pretooluse-bash-guard.sh` (fail-closed Bash
+guard) and `posttooluse-tool-call-tick.sh` (per-wave tool-call metric) — only
+run in a target project once they are copied into
 `.claude/hooks/` **and** registered in `.claude/settings.json`.
 
 `cstk install --scope project agente-00c-runtime` does that, but it also

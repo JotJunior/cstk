@@ -208,14 +208,14 @@ Se o preflight imprimir `status=port-conflict` (porta do exporter presa por
 OUTRO processo — `owner_pid`/`owner_cwd` na saida) ou `status=exporter-down`,
 REPASSE o aviso ao operador antes de seguir: a execucao inteira sairia com
 `otel_usage` null em toda onda. `ok`/`disabled`/`unverified` seguem sem
-mencao. Se os tres hooks ja estao ativos E `current`, siga para o passo 3 sem
+mencao. Se os hooks ja estao ativos E `current`, siga para o passo 3 sem
 incomodar o operador.
 
 A 4a coluna do TSV (`current|stale|unknown`) diz se a copia do projeto ainda
 bate com a do catalogo. `stale` reprova igual a ausente e pede a MESMA
 remediacao (`cstk hooks install`): copia stale roda codigo de uma versao
 anterior — foi assim que o cutover `state.json`->`state.db` zerou
-`tool_calls` em projetos que exibiam "3/3 hooks ativos". `unknown` (catalogo
+`tool_calls` em projetos que exibiam todos os hooks como ativos. `unknown` (catalogo
 irresolvivel) nao e veredito: siga.
 
 **Se faltar algum OU algum estiver `stale`, PECA a instalacao explicitamente** — nao instale por
@@ -229,7 +229,6 @@ espere a resposta:
    |------|-----------|---------------|
    | `pretooluse-bash-guard.sh` | Guarda fail-closed de Bash (sudo/push/deploy bloqueados, rede contra whitelist) | **Nao.** E seguranca, nao metrica. Sem ele a guarda que a doc promete simplesmente nao existe. |
    | `posttooluse-tool-call-tick.sh` | Alimenta `tool_calls`, o proxy de orcamento que fecha a onda | **Nao.** A telemetria OTel conta API requests e tokens, nao tool calls — nao ha outra fonte. |
-   | `posttooluse-agent-usage.sh` | Consumo POR SPAWN (`agent_id`, `agent_type`) | **Parcialmente.** O total por onda hoje vem da telemetria OTel, com mais precisao; este hook ainda e a unica fonte do detalhe por spawn. |
 
 2. **O custo — diga o numero, nao "tem um custo"** (medido, macOS/zsh; nao ha
    custo de token, os hooks sao shell local):
@@ -243,7 +242,7 @@ espere a resposta:
 3. **Como o operador ativa** — dois opt-ins independentes:
 
    ```sh
-   # (a) hooks: guarda + tool_calls + detalhe por spawn — uma vez por projeto
+   # (a) hooks: guarda + tool_calls — uma vez por projeto
    cd <PROJETO_ALVO_PATH> && cstk hooks install
 
    # (b) custo/tokens reais por onda (main vs subagent) — no ambiente

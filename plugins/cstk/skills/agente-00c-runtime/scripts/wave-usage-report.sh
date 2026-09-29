@@ -347,7 +347,7 @@ _wur_render_md() {
         )
       else
         (
-          "Metrica de uso de subagente nao foi coletada nesta execucao (hook `posttooluse-agent-usage.sh` ausente/nao provisionado, ou nenhum subagente foi spawnado ate agora). Nao reportar como \"0 tokens\" — o dado simplesmente nao foi observado."
+          "Metrica de uso de subagente nao foi coletada nesta execucao (o hook de captura ao vivo foi aposentado — rode `wave-usage-report.sh backfill` com o transcript da sessao; o custo por onda vem do OTel). Nao reportar como \"0 tokens\" — o dado simplesmente nao foi observado."
         )
       end
     )
