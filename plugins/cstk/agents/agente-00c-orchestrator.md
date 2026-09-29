@@ -1086,12 +1086,17 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    a. **Pre-flight**: `spawn-tracker.sh check --state-dir <SD>`. Exit 3 =
       abortar (limite de profundidade atingido — bisneto nao pode spawnar).
 
-      **Dry-run da tool Agent (sug-006/dec-006):** ANTES de tentar o
-      spawn real, faca uma chamada minima a tool Agent (ex: spawn
-      `general-purpose` com prompt `"return literal: READY"`) para
-      verificar disponibilidade no harness atual. Se a tool falhar
-      por indisponibilidade (nao por erro de prompt), registre Decisao
-      EXPLICITA de downgrade:
+      **Checagem de disponibilidade da tool Agent (sug-006/dec-006):**
+      ANTES do spawn real (e antes da sequencia de model-routing de
+      §5.e.bis), confira se `Agent` esta na SUA lista de tools. NAO
+      spawne agente de teste para isso — o spawn de dry-run custava um
+      subagente inteiro por clarify e a lista de tools ja e a fonte
+      de verdade: o harness retira `Agent` exatamente no limite de
+      profundidade (default 3 camadas abaixo da conversa principal;
+      verificado empiricamente em 2026-09-27, Claude Code 2.1.283 —
+      camadas 1 e 2 tem `Agent`, a 3a nao). Como voce roda na camada 1
+      e o asker/answerer na 2, o normal e `Agent` estar presente. Se
+      NAO estiver, registre Decisao EXPLICITA de downgrade:
 
       ```bash
       state-decisions.sh register --state-dir <SD> \
@@ -1102,7 +1107,7 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
         --justificativa "dec-006 historica documentou esse downgrade; preservamos rigor mas perdemos segundo par-de-olhos do padrao dois-atores. Aviso auditado para retomar quando Agent disponivel."
       ```
 
-      Se a tool Agent FUNCIONA, prossiga normalmente para item (b).
+      Se `Agent` esta na lista, prossiga normalmente para item (b).
       Esse check evita silent-fallback documentado em dec-006 da
       execucao-fonte.
 

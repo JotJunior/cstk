@@ -8,6 +8,7 @@ allowed-tools:
   - Edit
   - Glob
   - Grep
+  - AskUserQuestion
 ---
 
 # Skill: Clarificar Spec
@@ -20,7 +21,8 @@ estruturadas, integrando as respostas diretamente no documento.
 Esta skill suporta dois modos:
 
 1. **Interativo (default)** — humano executa `/clarify`; skill faz Q&A
-   direto com o usuario, uma pergunta por vez (ETAPA 4 deste documento).
+   direto com o usuario, uma pergunta por vez (ETAPA 4 deste documento),
+   via tool nativa `AskUserQuestion` quando disponivel.
 
 2. **Padrao de dois atores (apenas dentro de `agente-00c`)** — o
    orquestrador spawna `agente-00c-clarify-asker` (gera perguntas) +
@@ -32,7 +34,8 @@ Esta skill suporta dois modos:
    no harness (sintoma: spawn falha com erro de tool, nao com erro
    de prompt), o orquestrador faz downgrade EXPLICITO via Decisao
    auditada — nao silently fallback. Ver
-   `agente-00c-orchestrator.md` §5.a (Dry-run da tool Agent).
+   `agente-00c-orchestrator.md` §5.e.a (checagem de disponibilidade
+   da tool Agent).
 
 ## Pre-requisitos
 
@@ -270,6 +273,28 @@ Aplicar essa ordem dentro do top-5 final.
 
 ### 4.1 Formato — Uma Pergunta por Vez
 
+**Canal preferencial: tool `AskUserQuestion`.** Se a tool estiver disponivel
+na sessao, TODA pergunta vai por ela — o usuario escolhe num seletor em vez
+de digitar a letra. Regras de mapeamento:
+
+- **Uma chamada por pergunta** (`questions` com 1 item) — preserva o ciclo
+  pergunta → write atomico na spec (ETAPA 5). Nunca mandar as 5 de uma vez.
+- `question`: a pergunta especifica + 1 linha de contexto citando a secao
+  da spec (ex.: "FR-004 nao define retencao. Por quanto tempo guardar os
+  logs de auditoria?").
+- `header`: o topico em ate 12 caracteres (ex.: "Retencao", "Auth", "Escala").
+- `options`: 2-4 opcoes (limite da tool). A **recomendada vem primeiro**,
+  com ` (Recommended)` no fim do `label`; o raciocinio de 1-2 frases vai no
+  `description` dela. Se a analise gerou 5 opcoes, descarte a menos
+  plausivel — o "Other" automatico da tool cobre o resto.
+- **Resposta curta**: a sugestao vira a opcao `(Recommended)`, com 1-3
+  alternativas plausiveis; o usuario usa "Other" para texto proprio
+  (aplicar a regra de <= 5 palavras da §4.2 sobre o texto recebido).
+- `multiSelect: false` (respostas de clarify sao mutuamente exclusivas).
+
+**Fallback em texto** — so quando a tool NAO estiver disponivel (ex.: sessao
+headless `claude -p`, harness sem a tool). Formato abaixo.
+
 **Para perguntas multiple-choice:**
 
 1. Analisar todas as opcoes e determinar a **mais adequada** baseado em:
@@ -314,6 +339,8 @@ ou forneca sua propria resposta.
 
 ### 4.2 Apos Cada Resposta
 
+- Via `AskUserQuestion`: a opcao escolhida e a resposta; texto de "Other"
+  passa pela validacao abaixo como resposta curta
 - Se usuario responde "sim", "recomendado" ou "sugestao": usar a opcao recomendada/sugerida
 - Validar que resposta mapeia a uma opcao ou cabe no constraint de 5 palavras
 - Se ambiguo: pedir desambiguacao rapida (nao conta como nova pergunta)

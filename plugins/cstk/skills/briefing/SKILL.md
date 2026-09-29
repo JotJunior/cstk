@@ -9,6 +9,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
+  - AskUserQuestion
 ---
 
 # Skill: Briefing de Projeto
@@ -136,6 +137,25 @@ Dimensoes:
 7. **Visao de Futuro** — evolucao em 6-12 meses
 
 **Perguntas sao feitas UMA POR VEZ**, aguardando resposta antes de avancar.
+
+### 3.1.1 Canal: `AskUserQuestion` para perguntas fechadas
+
+Se a tool `AskUserQuestion` estiver disponivel na sessao, use-a (1 pergunta
+por chamada) sempre que a resposta cabe em opcoes enumeraveis — o usuario
+escolhe num seletor e ainda tem "Other" automatico para texto proprio:
+
+- **Atualizar vs criar novo** (Etapa 1) — 2 opcoes.
+- **Confirmacao de inferencia** (`[inferido]`, ex.: "Detectei Go + PostgreSQL
+  pelo `go.mod`/`docker-compose.yml`. Correto?") — opcao confirmando vem
+  primeiro com ` (Recommended)`; alternativas plausiveis em seguida.
+- **Dimensoes com respostas finitas** — ex.: nivel de testes esperado,
+  hospedagem, tamanho de equipe, horizonte de prazo. Ate 4 opcoes; `header`
+  com o nome curto da dimensao (<= 12 chars).
+
+Perguntas ABERTAS (elevator pitch, quem sao os usuarios, visao de futuro)
+continuam em texto livre — forcar opcoes ali induz a resposta e contamina o
+briefing com palavras que nao sao do usuario (ver Gotcha "Nunca reescrever
+em jargao tecnico"). Sem a tool (ex.: `claude -p`), tudo em texto.
 
 ### 3.2 Regras da Entrevista
 
