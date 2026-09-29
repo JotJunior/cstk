@@ -212,6 +212,10 @@ _is_internal_test() {
       # tratamento de test_validate-plugin-manifests.sh). FASE 5.1-5.3 de
       # panel-monorepo (FR-015/FR-016).
       return 0 ;;
+    test_go-language-hooks.sh)
+      # Cobre plugins/cstk-language-go/hooks/*.sh + language-related/go/
+      # settings.json — fora da convencao cli/lib | skills/*/scripts.
+      return 0 ;;
     test_plugin-hooks-manifest.sh)
       # Cobre plugins/cstk/hooks/hooks.json — manifesto de dados estatico,
       # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de
@@ -541,14 +545,6 @@ _is_internal_test() {
       # do test_pretooluse-bash-guard.sh acima: hooks/ esta fora do escaneio
       # por convencao. Existence-guarded.
       [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh" ] && return 0
-      return 1 ;;
-    test_posttooluse-agent-usage.sh)
-      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh
-      # (hook PostToolUse/matcher "Agent" de metrica de uso de tokens por
-      # spawn de subagente — wave-token-metrics FASE 2) — mesma razao dos
-      # dois casos acima: hooks/ esta fora do escaneio por convencao.
-      # Existence-guarded.
-      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh" ] && return 0
       return 1 ;;
     test_posttooluse-loose-usage.sh)
       # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh

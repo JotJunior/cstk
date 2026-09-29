@@ -4,7 +4,7 @@
 #
 # PROBLEMA QUE ISTO RESOLVE
 # -------------------------
-# Os tres hooks do runtime 00c so chegam a um projeto-alvo via
+# Os hooks do runtime 00c so chegam a um projeto-alvo via
 # `apply_guard_hooks()` (cli/lib/hooks.sh), que roda EXCLUSIVAMENTE quando
 # `cstk install`/`cstk update` e invocado com `--scope project` E com
 # `agente-00c-runtime` na selecao. O default de ambos os comandos e
@@ -17,7 +17,9 @@
 #     sem a protecao que a doc afirma estar ativa. E o item GRAVE.
 #   - posttooluse-tool-call-tick.sh ausente => tool_calls fica 0 em todas
 #     as ondas (proxy de orcamento inutilizado).
-#   - posttooluse-agent-usage.sh ausente => agent_usage/tokens ficam null.
+#   (posttooluse-agent-usage.sh foi APOSENTADO: o PostToolUse do Agent
+#   dispara no lancamento do spawn em background e nunca trazia uso; o
+#   consumo por onda vem do OTel.)
 #
 # Como o `cstk install` roda no repo do cstk e nao no projeto-alvo, nao ha
 # momento natural para avisar o operador la. O ponto de checagem correto e
@@ -39,7 +41,7 @@
 # que detectava execucao ativa lendo SO `state.json`. Com backend sqlite o
 # hook nao enxerga mais a execucao, sai 0 mudo, e o sidecar
 # tool-call-ticks.log nunca e criado => tool_calls=0 em TODAS as ondas de
-# 2 projetos. Falha dupla: `check` dizia "3/3 ativos" e `tick-mode` dizia
+# 2 projetos. Falha dupla: `check` dizia "N/N ativos" e `tick-mode` dizia
 # "hook", entao o orquestrador tambem nao tickava na mao.
 #
 # Dai a 3a dimensao (`current|stale|unknown`) e o rebaixamento do tick-mode
@@ -85,7 +87,7 @@
 #         e sai 0 mudo sem ela — present+registered+current descrevia um
 #         hook que capturava ZERO, sem nenhuma superficie para enxergar
 #         isso. Mesma classe do caso que motivou a 3a coluna (hook stale
-#         reportado como "3/3 ativos" com tool_calls zerado por 15 ondas).
+#         reportado como "N/N ativos" com tool_calls zerado por 15 ondas).
 #
 #         LIMITE DA OBSERVACAO (nao e veredito, e por isso os tokens sao
 #         `endpoint-set`/`endpoint-unset` e nao `armed`/`inert`): o
@@ -175,11 +177,11 @@ fi
 _gh_die_usage() { printf '%s: %s\n' "$_GH_NAME" "$1" >&2; exit 2; }
 _gh_err()       { printf '%s: %s\n' "$_GH_NAME" "$1" >&2; }
 
-# Os 3 hooks provisionados por apply_guard_hooks(). Ordem = a do
-# settings.snippet.json (guard primeiro, metricas depois).
+# Os hooks obrigatorios provisionados por apply_guard_hooks(). Ordem = a do
+# settings.snippet.json (guard primeiro, metrica depois).
 _GH_HOOKS='pretooluse-bash-guard.sh
-posttooluse-tool-call-tick.sh
-posttooluse-agent-usage.sh'
+posttooluse-tool-call-tick.sh'
+_GH_HOOKS_TOTAL=$(printf '%s\n' "$_GH_HOOKS" | grep -c .)
 
 # _gh_present PAP HOOK -> 0 se o arquivo existe e e executavel
 _gh_present() {
@@ -220,7 +222,7 @@ _gh_registered_in() {
 # TERCEIRO MODO DE FALHA DE CAMPO: o hook vem do PLUGIN, nao do projeto
 # ---------------------------------------------------------------------------
 # Desde a v7 (feature claude-plugin-packaging) o cstk pode ser instalado como
-# plugin nativo do Claude Code. Nesse modo os 3 hooks sao registrados pelo
+# plugin nativo do Claude Code. Nesse modo os hooks obrigatorios sao registrados pelo
 # `hooks/hooks.json` do plugin, via ${CLAUDE_PLUGIN_ROOT} — e NAO existe
 # copia em <PAP>/.claude/hooks/ nem registro em <PAP>/.claude/settings.json.
 # `cstk hooks install` inclusive PULA o provisionamento classico nesse caso
@@ -538,7 +540,7 @@ _gh_cmd_check() {
 
   # --include-loose-usage: 4a linha aditiva para o hook opt-in. NUNCA soma
   # a _missing/_stale/_divergent — o hook e opt-in, sua ausencia jamais e
-  # anomalia; o exit continua derivado apenas dos 3 hooks de _GH_HOOKS.
+  # anomalia; o exit continua derivado apenas dos hooks de _GH_HOOKS.
   if [ "$_include_loose" = 1 ]; then
     _lh="posttooluse-loose-usage.sh"
     if _gh_present "$_pap" "$_lh"; then
@@ -596,10 +598,10 @@ _gh_cmd_check() {
   fi
 
   # Origem plugin: informativo, nunca anomalia. Sem esta linha o operador ve
-  # "3/3 ativos" sem saber de onde vem, e nao entende por que nao ha nada em
+  # "N/N ativos" sem saber de onde vem, e nao entende por que nao ha nada em
   # <PAP>/.claude/hooks/.
   if [ "$_quiet" = 0 ] && [ "$_plugin_hooks" -gt 0 ]; then
-    _gh_err "$_plugin_hooks de 3 hooks 00c sao providos pelo PLUGIN cstk (hooks.json), nao pela copia classica em $_pap/.claude/hooks/ — ativos, nada a provisionar."
+    _gh_err "$_plugin_hooks de $_GH_HOOKS_TOTAL hooks 00c sao providos pelo PLUGIN cstk (hooks.json), nao pela copia classica em $_pap/.claude/hooks/ — ativos, nada a provisionar."
   fi
   if [ "$_quiet" = 0 ] && [ "$_dup_hooks" -gt 0 ]; then
     _gh_err "ATENCAO: $_dup_hooks hook(s) registrados DUAS vezes (plugin + copia classica em $_pap/.claude/settings.json ou settings.local.json) — cada tool call e contado em dobro."
@@ -610,13 +612,13 @@ _gh_cmd_check() {
 
   if [ "$_quiet" = 0 ]; then
     if [ "$_missing" -gt 0 ]; then
-      _gh_err "$_missing de 3 hooks 00c NAO estao ativos em $_pap/.claude/"
+      _gh_err "$_missing de $_GH_HOOKS_TOTAL hooks 00c NAO estao ativos em $_pap/.claude/"
     fi
     if [ "$_stale" -gt 0 ]; then
-      _gh_err "$_stale de 3 hooks 00c estao STALE em $_pap/.claude/hooks/ (copia diverge do catalogo)"
+      _gh_err "$_stale de $_GH_HOOKS_TOTAL hooks 00c estao STALE em $_pap/.claude/hooks/ (copia diverge do catalogo)"
     fi
     if [ "$_divergent" -gt 0 ]; then
-      _gh_err "$_divergent de 3 hooks 00c estao com registro DIVERGENTE (settings.json/settings.local.json aponta para outro comando)"
+      _gh_err "$_divergent de $_GH_HOOKS_TOTAL hooks 00c estao com registro DIVERGENTE (settings.json/settings.local.json aponta para outro comando)"
     fi
     if [ "$_guard_missing" = 1 ]; then
       _gh_err "ATENCAO: pretooluse-bash-guard.sh inativo — a guarda fail-closed de Bash NAO esta enforced nesta execucao."
@@ -631,7 +633,7 @@ _gh_cmd_check() {
     _gh_err "  cstk hooks install --project-path $_pap"
     _gh_err "Alternativa (tambem duplica skill+commands+agents no repo):"
     _gh_err "  cd $_pap && cstk install --scope project agente-00c-runtime"
-    _gh_err "Sem isso: tool_calls fica 0 e agent_usage fica null em todas as ondas."
+    _gh_err "Sem isso: a guarda de Bash nao e enforced e tool_calls fica 0 em todas as ondas."
   fi
   return 1
 }

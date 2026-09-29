@@ -1131,7 +1131,7 @@ _setup_print_summary_line() {
 # fora de escopo desta feature) e (b) o `SetupRunSummary` (FR-010): uma
 # linha por area, na ordem fixa de FR-001.
 _setup_print_run_summary() {
-  printf 'setup: escopo da verificacao — apenas os 3 hooks obrigatorios de _GH_HOOKS (pretooluse-bash-guard.sh, posttooluse-tool-call-tick.sh, posttooluse-agent-usage.sh) foram verificados nesta execucao. Demais entradas de .claude/settings.json, e entradas de .mcp.json alem de mcpServers.cstk-state, NAO foram auditadas — nenhuma garantia e feita sobre elas.\n'
+  printf 'setup: escopo da verificacao — apenas os 2 hooks obrigatorios de _GH_HOOKS (pretooluse-bash-guard.sh, posttooluse-tool-call-tick.sh) foram verificados nesta execucao. Demais entradas de .claude/settings.json, e entradas de .mcp.json alem de mcpServers.cstk-state, NAO foram auditadas — nenhuma garantia e feita sobre elas.\n'
   printf '\n'
   _setup_print_summary_line "hooks" "$_SU_HOOKS_OUTCOME" "" "$_SU_HOOKS_OUTCOME_REASON"
   _setup_print_summary_line "state-backend" "$_SU_SB_OUTCOME" "global" "$_SU_SB_OUTCOME_REASON"

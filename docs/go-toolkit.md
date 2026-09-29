@@ -24,10 +24,10 @@ Hooks in `plugins/cstk-language-go/hooks/` for automatic validations:
 
 | Hook | Description |
 |------|-------------|
-| **go-build-gate.sh** | Validates the build before operations |
-| **check-uncommitted.sh** | Checks for uncommitted changes |
-| **check-schema-prefix.sh** | Validates the schema prefix in migrations |
-| **check-route-order.sh** | Checks route ordering in the router |
+| **go-build-gate.sh** | `PostToolUse` (Write/Edit on `.go`): runs `go build ./...` in the affected service and feeds failures back to Claude |
+| **check-uncommitted.sh** | `Stop`: reminds to commit when there are staged changes |
+| **check-schema-prefix.sh** | `PreToolUse` (Write/Edit on `*/repository/*.go`): warns about SQL without a schema prefix (non-blocking) |
+| **check-route-order.sh** | `PreToolUse` (Write on `*_handler.go`): blocks a static route registered after `/:id` (Fiber trie conflict) |
 
 Installation in a Go project (skills + hooks + settings.json merge):
 

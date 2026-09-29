@@ -37,7 +37,7 @@
 #      install` em paste-instructed carrega aviso, nao vira applied cego.
 #  10  scenario_loose_usage_declined_mandatory_still_applied (task 3.3.4,
 #      quickstart Scenario 9, FR-008) — default skip do hook opt-in nao
-#      impede a aplicacao dos 3 hooks obrigatorios.
+#      impede a aplicacao dos 2 hooks obrigatorios.
 #  11  scenario_hooks_divergent_no_install_call (task 3.4.4, quickstart
 #      Scenario 13, I6) — status=divergent nunca chama `hooks install`;
 #      .claude nem chega a ser criado no projeto.
@@ -97,7 +97,7 @@
 #      `failed`); `[escopo]=global` so na linha de state-backend; texto
 #      de diagnostico/progresso continua so em stderr.
 #  23  scenario_summary_declares_verification_scope (task 7.2.2, achado
-#      SEC-07/CHK009) — o summary declara que so os 3 hooks obrigatorios
+#      SEC-07/CHK009) — o summary declara que so os 2 hooks obrigatorios
 #      de `_GH_HOOKS` foram verificados, sem implicar auditoria do
 #      `settings.json`/`.mcp.json` inteiro.
 #
@@ -140,14 +140,14 @@ _make_repo() {
 # ==== Helpers FASE 3 (area de hooks) ====
 
 # _make_fake_catalog HOME_DIR -> cria um catalogo MINIMO em
-# $HOME_DIR/.claude/skills/agente-00c-runtime/hooks com os 3 hooks
+# $HOME_DIR/.claude/skills/agente-00c-runtime/hooks com os 2 hooks
 # obrigatorios (scripts triviais, so precisam existir+ser copiaveis) e o
 # settings.snippet.json REAL do repo (para que jq faca merge de verdade).
 # Ecoa o path do catalogo em stdout.
 _make_fake_catalog() {
   _mfc_dir="$1/.claude/skills/agente-00c-runtime/hooks"
   mkdir -p "$_mfc_dir"
-  for _mfc_h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh; do
+  for _mfc_h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh; do
     printf '#!/bin/sh\nexit 0\n' > "$_mfc_dir/$_mfc_h"
     chmod +x "$_mfc_dir/$_mfc_h"
   done
@@ -376,18 +376,15 @@ case "\$*" in
   *--verify-registration*)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tcanonical\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\tcanonical\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\tcanonical\n'
     exit 0 ;;
   *--include-loose-usage*)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-loose-usage.sh\tmissing\tunregistered\tunknown\n'
     exit 0 ;;
   *)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
     exit 0 ;;
 esac
 STUB
@@ -449,18 +446,15 @@ case "\$*" in
   *--verify-registration*)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tcanonical\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\tcanonical\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\tcanonical\n'
     exit 0 ;;
   *--include-loose-usage*)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
     printf '$_sgl_loose_line'
     exit 0 ;;
   *)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
     exit 0 ;;
 esac
 STUB
@@ -653,18 +647,15 @@ case "$*" in
   *--verify-registration*)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tdivergent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\tcanonical\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\tcanonical\n'
     exit 1 ;;
   *--include-loose-usage*)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-loose-usage.sh\tmissing\tunregistered\tunknown\n'
     exit 0 ;;
   *)
     printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
     printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
-    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
     exit 0 ;;
 esac
 STUB
@@ -1303,9 +1294,8 @@ scenario_summary_declares_verification_scope() {
     return 1
   fi
 
-  # Cita os 3 hooks obrigatorios REAIS de _GH_HOOKS (nunca inventados).
-  for _sv_hook in "pretooluse-bash-guard.sh" "posttooluse-tool-call-tick.sh" \
-                  "posttooluse-agent-usage.sh"; do
+  # Cita os 2 hooks obrigatorios REAIS de _GH_HOOKS (nunca inventados).
+  for _sv_hook in "pretooluse-bash-guard.sh" "posttooluse-tool-call-tick.sh"; do
     case "$_CAPTURED_STDOUT" in
       *"$_sv_hook"*) : ;;
       *)
