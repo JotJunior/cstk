@@ -87,10 +87,11 @@
     }
     if (mode === 'slides') {
       fit();
-      if (!fitted) { fitSlides(); }
+      if (!fitted) { fitSlides(); } else { fitMetricValues(); }
       show(current, false);
     } else {
       for (var k = 0; k < total; k++) { slides[k].removeAttribute('aria-hidden'); }
+      fitMetricValues();
       slides[current].scrollIntoView({ block: 'start' });
       onScroll();
     }
@@ -101,9 +102,27 @@
      canvas 1600x900. Mede no layout de slides; o valor fica inline e vale
      tambem para a impressao. */
   var fitted = false;
+  /* Encolhe so os valores de metrica do slide de numeros que nao cabem na
+     largura do proprio card (passos de 8%, piso de 40% do tamanho do CSS).
+     Numeros curtos mantem o tamanho original. Mede no layout corrente. */
+  function fitMetricValues() {
+    var values = deck.querySelectorAll('.slide--numbers .metric__value');
+    for (var i = 0; i < values.length; i++) {
+      var v = values[i];
+      v.style.fontSize = '';
+      var base = parseFloat(window.getComputedStyle(v).fontSize) || 0;
+      var size = base;
+      while (v.scrollWidth > v.clientWidth + 1 && size > base * 0.4) {
+        size = size * 0.92;
+        v.style.fontSize = size.toFixed(2) + 'px';
+      }
+    }
+  }
+
   function fitSlides() {
     var wasSlides = root.classList.contains('is-slides');
     if (!wasSlides) { root.classList.add('is-slides'); }
+    fitMetricValues();
     for (var i = 0; i < total; i++) {
       var s = slides[i];
       var body = s.querySelector('.slide__body');
@@ -235,8 +254,17 @@
   if (total) { slides[current].classList.add('is-current'); }
   setMode(initial, false);
 
-  window.addEventListener('resize', function () { if (mode === 'slides') { fit(); } });
-  window.addEventListener('beforeprint', function () { if (!fitted) { fitSlides(); } });
+  window.addEventListener('resize', function () {
+    if (mode === 'slides') { fit(); } else { fitMetricValues(); }
+  });
+  /* a impressao usa o canvas dos slides: reajusta nele e volta depois */
+  window.addEventListener('beforeprint', function () {
+    if (mode === 'slides') { return; }
+    root.classList.add('is-slides');
+    if (!fitted) { fitSlides(); } else { fitMetricValues(); }
+    root.classList.remove('is-slides');
+  });
+  window.addEventListener('afterprint', function () { if (mode === 'report') { fitMetricValues(); } });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('hashchange', function () {
     var i = indexFromHash();

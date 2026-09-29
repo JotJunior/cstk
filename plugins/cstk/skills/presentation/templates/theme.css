@@ -527,14 +527,22 @@ em { font-style: italic; }
 }
 
 .slide--numbers .metric {
+  min-width: 0;
+  overflow: hidden;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: flex-start;
   gap: 0.3em;
   padding: 24px 26px;
   border-radius: 18px;
 }
 
+/* valor longo (ex.: 2264/2268) nunca vaza do card: largura limitada e
+   fonte reduzida por deck.js (fitMetricValues) so quando nao couber */
 .slide--numbers .metric__value {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-size: var(--fs-metric);
   font-weight: 600;
