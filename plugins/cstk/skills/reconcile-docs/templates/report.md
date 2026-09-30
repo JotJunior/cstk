@@ -1,8 +1,8 @@
 # Relatorio de reconciliacao
 
-- Modo: `<single|all>` | dry-run: `<sim|nao>`
+- Modo: `<single|all>` | dry-run: `<sim|nao|forcado (no-git ou --all sem operador)>`
 - Auditoria pos-execucao: `<clean|violation|skipped-no-git>`
-- Avisos: `<lista de notices: constitution-unavailable, no-git, versao arquivada existente, ...>` (omitir se vazio)
+- Avisos: `<lista de notices: constitution-unavailable, no-git-write-refused, versao arquivada existente, ...>` (omitir se vazio)
 
 ## Resumo por feature
 

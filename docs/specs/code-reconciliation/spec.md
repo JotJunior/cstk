@@ -31,6 +31,10 @@ sobre documentacao — jamais altera codigo.
 - Q: O que e "divergencia por acerto pontual" (denominador de SC-005)? → A: Divergencia dos tipos `stale`, `removed` ou `undocumented` (data-model) que a skill consegue resolver com evidencia observavel; `possible-regression` e `unverifiable` ficam fora do denominador por exigirem decisao humana ou fonte inexistente. Nenhum limiar numerico (linhas, tamanho) e usado. Decisao operacional dec-028 (execute-task 1.2).
 - Q: A skill pode reproduzir valores sensiveis do codigo ao citar evidencia? → A: Nao; evidencia e sempre por referencia `arquivo:linha` (ou `absent:<caminho>`), nunca reproduzindo chaves, tokens ou credenciais em documentos, marcadores ou relatorio (FR-019). O cumprimento e regra da skill (`references/` + Gotcha), sem detector deterministico novo. Decisao operacional dec-029 (execute-task 1.3).
 
+- Q: Como SC-005 (>= 90% sem edicao manual) e medido, e por quem? → A: Por AMOSTRAGEM MANUAL feita pelo dono do produto: apos um periodo de uso, ele revisa por amostragem as reconciliacoes reais (entradas em `reconciliation.md`) e conta quantas precisaram de edicao manual; nenhuma automacao nova. Decisao humana dec-035 (classe operacional), block-002 (execute-task 1.4).
+- Q: O modo padrao "grava direto" vale em projeto SEM controle de versao (FR-016)? → A: Nao. Sem git a skill RECUSA gravar: so roda em `--dry-run` (relatorio), nunca grava; a reversao pelo VCS e a unica rede de seguranca. Decisao humana dec-035, block-002 (execute-task 1.5).
+- Q: `--all` grava direto em portfolio com features arquivadas? → A: Nao sem confirmacao: no `--all` a skill mostra o resumo do que vai mudar em todas as features e pede UMA confirmacao antes de gravar (FR-020); sem operador presente, cai em `--dry-run`. Decisao humana dec-035, block-002 (execute-task 1.6).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Reconciliar UMA feature com o codigo atual (Priority: P1)
@@ -93,6 +97,11 @@ reconciliadas e que o relatorio consolidado traz uma linha por feature.
    sao processadas e a falha aparece no relatorio consolidado sem interromper o lote.
 3. **Given** um projeto sem nenhuma feature em `docs/specs/`, **When** a skill e invocada
    com `--all`, **Then** ela informa que nao ha features a reconciliar e nao altera nada.
+4. **Given** uma execucao `--all` (sem `--dry-run`) em projeto com git e operador presente,
+   **When** a skill termina a analise de todas as features, **Then** ela exibe o resumo do
+   que mudara em cada feature (ativas e arquivadas) e pede UMA confirmacao antes de gravar;
+   sem confirmacao nada e gravado, e sem operador presente a execucao cai em `--dry-run`
+   (FR-020).
 
 ---
 
@@ -139,6 +148,9 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 1. **Given** a opcao de pre-visualizacao (`--dry-run`), **When** a skill e invocada para uma
    feature ou com `--all`, **Then** o relatorio descreve cada alteracao que seria feita
    (documento, trecho, evidencia) e nenhum arquivo do projeto e modificado.
+2. **Given** um projeto sem controle de versao (git ausente ou fora de repositorio),
+   **When** a skill e invocada sem `--dry-run`, **Then** ela recusa gravar, roda em
+   `--dry-run` forcado e o relatorio traz o aviso `no-git-write-refused` (FR-016).
 
 ---
 
@@ -158,9 +170,13 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   aviso se nenhum documento reconciliavel existir.
 - **Nome ambiguo**: o nome informado casa com mais de uma feature (prefixo comum). A skill
   nao escolhe sozinha: lista os candidatos e encerra sem alterar nada.
-- **Sem controle de versao** (projeto fora de repositorio versionado): a skill funciona,
-  mas sem o atalho de identificar mudancas recentes por historico; a reconciliacao passa a
-  depender apenas da leitura do codigo atual.
+- **Sem controle de versao** (projeto fora de repositorio versionado): a skill RECUSA
+  gravar — so roda em `--dry-run` forcado (relatorio), nunca grava, porque o VCS e a unica
+  rede de seguranca para reverter (dec-035). Tambem fica sem o atalho de identificar mudancas
+  recentes por historico; a verificacao depende apenas da leitura do codigo atual e o
+  relatorio traz o aviso `no-git-write-refused` (FR-016).
+- **`--all` sem operador presente** (execucao nao interativa): a skill nao pode pedir a
+  confirmacao unica de FR-020; cai em `--dry-run` e nao grava nada.
 - **Reexecucao**: rodar a skill duas vezes seguidas sobre a mesma feature nao produz
   alteracoes na segunda execucao (idempotencia).
 - **Documento com edicoes manuais recentes**: trechos ja coerentes com o codigo nao sao
@@ -234,9 +250,14 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   candidatos ou as features disponiveis.
 - **FR-015**: Quando a mesma feature existir ativa e arquivada, o sistema MUST reconciliar
   a versao ativa por padrao e informar a existencia da arquivada, sem mescla-las.
-- **FR-016**: O sistema MUST funcionar em projeto sem historico de controle de versao,
-  usando-o apenas como atalho opcional para priorizar o que mudou; a verificacao MUST
-  sempre se basear na leitura do codigo atual.
+- **FR-016**: O sistema MUST analisar e reportar em projeto sem historico de controle de
+  versao, usando o git apenas como atalho opcional para priorizar o que mudou; a verificacao
+  MUST sempre se basear na leitura do codigo atual. Porem, sem git (ausente ou fora de
+  repositorio) o sistema MUST NOT gravar documento algum: MUST forcar `--dry-run`, reportar
+  as alteracoes como `proposed-*` e emitir o aviso `no-git-write-refused`, pois a reversao
+  pelo VCS e a unica rede de seguranca da escrita (dec-035). A recusa e deterministica
+  (`git-probe.sh can-write`; qualquer resultado != permitido, inclusive script ausente,
+  equivale a recusa).
 - **FR-017**: O sistema MUST aplicar a features arquivadas (`docs/specs/_archived/`) a mesma
   politica de escrita das features ativas (FR-005 a FR-009), editando diretamente a
   documentacao delas, e MUST NEVER escrever no corpus canonico de comportamento atual
@@ -255,6 +276,12 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   feature, marcadores inline ou relatorio; a evidencia MUST ser referenciada apenas por
   `arquivo:linha` (ou `absent:<caminho>`), sem copiar o conteudo da linha quando ele
   contiver valor sensivel.
+- **FR-020**: Na opcao `--all` sem `--dry-run`, o sistema MUST, antes de gravar qualquer
+  documento, exibir o resumo do que mudara em todas as features (ativas e arquivadas) e
+  pedir UMA confirmacao (unica para o lote, nao por feature); sem confirmacao afirmativa
+  nada e gravado. Sem operador presente (execucao nao interativa) o sistema MUST cair em
+  `--dry-run`. Uma feature unica (sem `--all`) continua gravando direto, sem confirmacao
+  (FR-016 aplica-se a ambas).
 
 ### Key Entities
 
@@ -287,7 +314,10 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   90% dos casos de divergencia por acerto pontual. "Acerto pontual" = divergencia dos tipos
   `stale`, `removed` ou `undocumented` (data-model) resolvivel com evidencia observavel;
   `possible-regression` e `unverifiable` nao entram no denominador, pois exigem decisao
-  humana ou fonte inexistente por desenho (FR-007, FR-008).
+  humana ou fonte inexistente por desenho (FR-007, FR-008). Medicao: por AMOSTRAGEM MANUAL
+  do dono do produto, apos um periodo de uso — ele revisa por amostragem as reconciliacoes
+  reais (entradas em `reconciliation.md`) e conta quantas precisaram de edicao manual; nao
+  ha teste automatizado nem automacao nova (dec-035).
 - **SC-006**: Uma execucao `--all` sobre o portfolio processa 100% das features localizadas
   mesmo quando algumas falham, e o relatorio consolidado contabiliza todas.
 - **SC-007**: Com `--dry-run`, zero arquivos do projeto sao modificados e o relatorio
@@ -307,9 +337,12 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   de decisoes e nao sao reescritos. `tasks.md` nao e reescrito; divergencias com tarefas
   marcadas como concluidas cujo codigo foi removido aparecem apenas no relatorio. O corpus
   `docs/specs/current/` nunca e reescrito (FR-017).
-- **Modo padrao grava direto**: sem `--dry-run` as alteracoes sao gravadas na hora; o
-  controle de versao do projeto e a rede de seguranca para reverter. Nenhuma confirmacao
-  interativa por alteracao.
+- **Modo padrao grava direto (com git)**: em projeto versionado e sem `--dry-run`, as
+  alteracoes de UMA feature sao gravadas na hora; o controle de versao e a rede de
+  seguranca para reverter. Nenhuma confirmacao interativa por alteracao. Excecoes
+  decididas pelo dono do produto (dec-035): (a) sem git a skill recusa gravar e so roda em
+  `--dry-run` (FR-016); (b) `--all` mostra o resumo global e pede UMA confirmacao antes de
+  gravar, caindo em `--dry-run` sem operador presente (FR-020).
 - **Identidade da feature**: o nome da feature e o do diretorio; diretorios arquivados
   ignoram o prefixo `AAAA-MM-DD-` na comparacao. Diretorios de arquivo sem prefixo
   (legados) tambem sao aceitos.

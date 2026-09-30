@@ -25,6 +25,13 @@ encerra informando (US2 cenario 3 cobre `docs/specs/` vazio).
 Saida: relatorio na conversa conforme `templates/report.md` (data-model
 §ReconciliationReport). Escritas permitidas: so as validadas por `doc-guard.sh check`.
 
+Politica de gravacao (dec-035): (a) **sem git** (`git-probe.sh can-write` com exit != 0,
+inclusive script ausente) a skill RECUSA gravar: executa como `--dry-run` forcado e o
+relatorio traz o aviso `no-git-write-refused` (FR-016); (b) **`--all` sem `--dry-run`**:
+depois da analise de todas as features a skill exibe o resumo do que mudara e pede UMA
+confirmacao antes de gravar; sem confirmacao afirmativa ou sem operador presente, cai em
+`--dry-run` (FR-020). Feature unica em projeto com git continua gravando direto.
+
 Constitution do projeto (`docs/constitution.md`): insumo de FR-007, nao pre-requisito.
 Se ausente ou ilegivel, a execucao prossegue e o relatorio traz o aviso
 `constitution-unavailable` em `notices`; `possible-regression` passa a considerar apenas
@@ -114,11 +121,14 @@ entradas existentes.
 ```
 git-probe.sh changed-since --root <dir> --feature-dir <dir>
 git-probe.sh status --root <dir>
+git-probe.sh can-write --root <dir>
 ```
 
 `changed-since`: caminhos alterados em commits posteriores ao ultimo commit que tocou
 os documentos da feature (um por linha). `status`: snapshot `git status --porcelain`
-normalizado e ordenado. Toda invocacao usa `git -c core.fsmonitor=false ...` e apenas
+normalizado e ordenado. `can-write`: pre-condicao de escrita (dec-035) — em repositorio git
+`WRITE\tallowed`, exit 0; sem git `WRITE\tdenied-no-git`, exit 3 (o chamador trata
+qualquer exit != 0 como recusa e forca `--dry-run`). Toda invocacao usa `git -c core.fsmonitor=false ...` e apenas
 subcomandos de leitura (`status --porcelain`, `log --name-only`, `rev-parse`). Com git: dados + linha final `STATUS\tok`. Sem `git` ou fora de
 repositorio: nenhuma linha de dados, so a linha `STATUS\tno-git`, exit 0 (fallback —
-FR-016).
+FR-016); a excecao e `can-write`, que recusa com exit 3 (nao ha escrita sem git).

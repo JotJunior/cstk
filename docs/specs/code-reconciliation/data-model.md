@@ -92,7 +92,7 @@ Em `--dry-run`, `reconciled` e exibido como "alteracoes propostas" e nada e grav
 | results | list<FeatureResult> | uma por feature processada | SC-006: todas contabilizadas |
 | divergences | list<Divergence> | agrupadas por feature | |
 | audit | enum | `clean` \| `violation` \| `skipped-no-git` | camada 2 da guarda (research Decision 5) |
-| notices | list<string> | | ex.: versao arquivada existente (FR-015), `no-git` (FR-016), `constitution-unavailable` (FR-007) |
+| notices | list<string> | | ex.: versao arquivada existente (FR-015), `no-git-write-refused` (FR-016, dec-035: sem git a execucao e `--dry-run` forcado), `constitution-unavailable` (FR-007) |
 
 ## Entity: ReconciliationLog (`<feature-dir>/reconciliation.md`)
 

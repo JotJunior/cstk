@@ -88,6 +88,8 @@ Antes de nomear os scripts, conferir colisao de nome com `tests/test_*.sh` exist
 
 **Structure Decision**: seis scripts de responsabilidade unica (research Decision 2),
 cada um com teste 1:1. O SKILL.md orquestra: parse de argumentos → `locate-feature.sh`
+→ pre-condicao de escrita: `git-probe.sh can-write` (exit != 0 = `--dry-run` forcado, FR-016/dec-035;
+em `--all` sem `--dry-run`, resumo global + UMA confirmacao antes de gravar, FR-020)
 → por feature: `git-probe.sh status` (snapshot) → `extract-anchors.sh` →
 `git-probe.sh changed-since` (priorizacao) → leitura semantica do codigo e
 classificacao (`references/classification.md`) → para cada escrita:
@@ -116,6 +118,9 @@ relatorio localizados.
 |-------|-----------|
 | LLM "corrige" um MUST para acomodar o codigo (viola FR-007) | `references/classification.md` com regra explicita MUST/MUST NOT/constitution → `possible-regression`; quickstart Scenario 1 planta esse caso; Gotcha dedicado |
 | Evidencia confabulada (Principio VI) | evidencia obrigatoria `arquivo:linha` conferivel; SKILL.md manda reler a linha citada antes de gravar; `absent:` so a partir de ancora `absent` de `extract-anchors.sh` |
+| Gravar sem rede de seguranca em projeto sem git (FR-016, CHK031) | `git-probe.sh can-write` (exit 3 = `denied-no-git`; exit != 0 ou script ausente = recusa): a skill so roda em `--dry-run` forcado e o relatorio traz `no-git-write-refused`; nunca grava sem VCS (dec-035) |
+| `--all` gravando direto em portfolio com features arquivadas (FR-020, CHK013 seguranca) | no `--all` sem `--dry-run` a skill exibe o resumo do que mudara em todas as features e pede UMA confirmacao antes de gravar; sem operador presente cai em `--dry-run` (regra da skill, dec-035; o VCS segue como reversao) |
+| SC-005 sem teste automatizavel (CHK022) | medicao por amostragem manual do dono do produto sobre `reconciliation.md` apos periodo de uso; sem automacao nova (dec-035; tarefa 6.5) |
 | Escrita fora de documentos (FR-006) | `doc-guard.sh check` antes de toda escrita + auditoria `git-probe.sh status` pos-execucao (research Decision 5) |
 | Reescrita por estilo quebrando idempotencia (FR-012) | regra "so muda o que diverge"; marcadores existentes nao sao re-datados; Scenario 2 |
 | `--all` esgota contexto num portfolio grande | processamento uma feature por vez retendo so a linha-resumo; recomendacao de subagente por feature e de `--all --dry-run` primeiro |

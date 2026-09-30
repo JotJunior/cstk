@@ -80,12 +80,14 @@ nenhum sob `docs/specs/current/` (SC-001).
    `not-in-allowlist`, `outside-feature`, `symlink-escape`;
    `docs/specs/alpha/spec.md` e `docs/specs/alpha/contracts/api.md` exit 0.
 
-## Scenario 9: Sem git (FR-016)
+## Scenario 9: Sem git (FR-016, dec-035)
 
 1. Copia da fixture SEM `git init` (ou `PATH` sem `git`); rodar `/reconcile-docs alpha`.
-2. **Expected**: reconciliacao igual ao Scenario 1; relatorio traz aviso `no-git`
-   (priorizacao e auditoria pos-execucao puladas); `git-probe.sh` retorna exit 0
-   com so `STATUS\tno-git`.
+2. **Expected**: a skill RECUSA gravar e roda como `--dry-run` forcado: relatorio com
+   acoes `proposed-*` iguais as do Scenario 1 e aviso `no-git-write-refused`
+   (priorizacao e auditoria pos-execucao puladas); nenhum arquivo e criado ou alterado;
+   `git-probe.sh status` retorna exit 0 com so `STATUS\tno-git` e
+   `git-probe.sh can-write` retorna exit 3 com `WRITE\tdenied-no-git`.
 
 ## Scenario 10: Feature sem `spec.md` (Edge Case)
 
@@ -122,3 +124,33 @@ nenhum sob `docs/specs/current/` (SC-001).
    e o relatorio trazem so `arquivo:linha`; o valor do segredo nao aparece em nenhum deles
    (`grep` do valor ficticio nos documentos da feature e na saida do relatorio = 0
    ocorrencias).
+
+## Scenario 14: Confirmacao unica no `--all` (FR-020, dec-035)
+
+1. Fixture com git e divergencias em `alpha` (ativa) e `2026-01-15-beta` (arquivada);
+   rodar `/reconcile-docs --all` com operador presente.
+2. **Expected**: a skill analisa todas as features, exibe o resumo do que mudara em cada
+   uma e pede UMA confirmacao antes de gravar; recusada/sem resposta: nada e gravado
+   (`git status --porcelain` vazio). Confirmada: grava como no Scenario 1 e o relatorio
+   consolidado traz uma linha por feature.
+3. Repetir em execucao nao interativa (sem operador presente): cai em `--dry-run`, acoes
+   `proposed-*`, nada gravado.
+
+## Medicao de SC-005 (amostragem manual — dec-035, CHK022)
+
+Nao ha teste automatizado nem automacao nova: a medicao e manual, pelo dono do produto, apos
+um periodo de uso real da skill.
+
+1. **Amostra**: as reconciliacoes reais gravadas (entradas `## <data>` em
+   `docs/specs/*/reconciliation.md` e `docs/specs/_archived/*/reconciliation.md`); a fixture de
+   teste e execucoes `--dry-run` NAO contam.
+2. **Contagem**: para cada divergencia de acerto pontual (`stale`, `removed`,
+   `undocumented`; `possible-regression` e `unverifiable` ficam fora) da amostra, o dono do
+   produto verifica se o documento ficou correto sem edicao manual posterior
+   (`git log -p -- <doc>` apos a entrada do log mostra se houve edicao manual).
+3. **Resultado**: `sem edicao manual / total do denominador`; meta >= 90%.
+4. **Se abaixo de 90%**: abrir tarefa de ajuste em `references/` ou `SKILL.md`.
+
+**Estado em 2026-09-30**: 0 reconciliacoes reais (o dogfooding da tarefa 6.4 foi somente
+`--dry-run` e nao grava `reconciliation.md`); resultado pendente ate haver amostra.
+

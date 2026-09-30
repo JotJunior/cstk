@@ -78,48 +78,48 @@ Ref: checklists/security.md CHK011; spec.md FR-008, FR-010, SC-004
       `arquivo:linha`)
 - [x] 1.3.5 Reavaliar CHK011 em `checklists/security.md`
 
-### 1.4 [AGUARDA DECISAO DO DONO DO PRODUTO] Metodo de medicao de SC-005 `[M]`
+### 1.4 [RESOLVIDA dec-035] Metodo de medicao de SC-005 `[M]`
 
 Ref: checklists/requirements.md CHK022; spec.md SC-005
 
-Nao ha teste automatizavel; quem mede e como e decisao do dono do produto
-(ainda nao respondida). Bloqueia apenas a tarefa 6.5.
+Respondida pelo dono do produto (block-002, dec-035): amostragem manual apos periodo de
+uso, sem automacao nova.
 
-- [!] 1.4.1 Obter do dono do produto o metodo e o responsavel pela medicao de
-      SC-005 (>= 90% sem edicao manual)
-- [ ] 1.4.2 Registrar a resposta em `spec.md` (Clarifications) e refletir em
+- [x] 1.4.1 Obter do dono do produto o metodo e o responsavel pela medicao de
+      SC-005 (>= 90% sem edicao manual) — dec-035: amostragem manual pelo dono
+- [x] 1.4.2 Registrar a resposta em `spec.md` (Clarifications) e refletir em
       `plan.md`/`quickstart.md`
-- [ ] 1.4.3 Reavaliar CHK022 em `checklists/requirements.md`
+- [x] 1.4.3 Reavaliar CHK022 em `checklists/requirements.md`
 
-### 1.5 [AGUARDA DECISAO DO DONO DO PRODUTO] Modo padrao "grava direto" em projeto sem git `[A]`
+### 1.5 [RESOLVIDA dec-035] Modo padrao "grava direto" em projeto sem git `[A]`
 
 Ref: checklists/requirements.md CHK031; spec.md Assumptions "Modo padrao grava
 direto", FR-016
 
-Sem VCS a unica rede de seguranca (reversao) nao existe; aceitar ou nao esse
-risco e decisao do dono do produto (ainda nao respondida). Bloqueia apenas a
-tarefa 4.2 (politica de escrita) e a subtarefa 4.4.4.
+Respondida pelo dono do produto (block-002, dec-035): em projeto SEM git a skill
+RECUSA gravar — so roda em `--dry-run`.
 
-- [!] 1.5.1 Obter do dono do produto a decisao sobre gravar direto por padrao
-      quando o projeto nao tem controle de versao
-- [ ] 1.5.2 Registrar a resposta em `spec.md` (Clarifications/FR-016) e
+- [x] 1.5.1 Obter do dono do produto a decisao sobre gravar direto por padrao
+      quando o projeto nao tem controle de versao — dec-035: recusa gravar
+- [x] 1.5.2 Registrar a resposta em `spec.md` (Clarifications/FR-016) e
       refletir em `plan.md` e `contracts/cli-invocation.md`
-- [ ] 1.5.3 Reavaliar CHK031 em `checklists/requirements.md`
+- [x] 1.5.3 Reavaliar CHK031 em `checklists/requirements.md`
 
-### 1.6 [AGUARDA DECISAO DO DONO DO PRODUTO] Gravar direto em `--all` com features arquivadas `[A]`
+### 1.6 [RESOLVIDA dec-035] Gravar direto em `--all` com features arquivadas `[A]`
 
 Ref: checklists/security.md CHK013; spec.md Assumptions "Modo padrao grava
 direto", US4
 
-Unica rede de seguranca e o VCS; o apetite de risco para `--all` sobre
-portfolio com arquivadas e decisao do dono do produto (ainda nao respondida).
-Bloqueia apenas a tarefa 4.2 e a subtarefa 4.5.1.
+Respondida pelo dono do produto (block-002, dec-035): no `--all` a skill mostra o
+resumo do que vai mudar em todas as features e pede UMA confirmacao antes de
+gravar; sem operador presente, cai em `--dry-run` (FR-020).
 
-- [!] 1.6.1 Obter do dono do produto a decisao sobre gravar direto (sem
-      confirmacao) em `--all` incluindo features arquivadas
-- [ ] 1.6.2 Registrar a resposta em `spec.md` (Clarifications) e refletir em
+- [x] 1.6.1 Obter do dono do produto a decisao sobre gravar direto (sem
+      confirmacao) em `--all` incluindo features arquivadas — dec-035:
+      confirmacao unica
+- [x] 1.6.2 Registrar a resposta em `spec.md` (Clarifications) e refletir em
       `plan.md`/`contracts/cli-invocation.md`
-- [ ] 1.6.3 Reavaliar CHK013 em `checklists/security.md`
+- [x] 1.6.3 Reavaliar CHK013 em `checklists/security.md`
 
 ---
 
@@ -290,16 +290,16 @@ Ref: data-model.md §Divergence; FR-004, FR-007, FR-008, FR-009; depende de
 ### 4.2 `references/write-policy.md` `[A]`
 
 Ref: FR-005, FR-006, FR-016, FR-017; checklists/security.md CHK001-CHK005;
-depende de 1.5 e 1.6 (aguardam dono do produto) e de 2.3
+depende de 1.5 e 1.6 (resolvidas, dec-035) e de 2.3
 
-- [ ] 4.2.1 Documentar a allowlist de documentos, a exclusao de `research.md`,
+- [x] 4.2.1 Documentar a allowlist de documentos, a exclusao de `research.md`,
       `checklists/`, `tasks.md` e `docs/specs/current/`
-- [ ] 4.2.2 Documentar a sequencia de escrita: `doc-guard.sh check` (fail-closed)
+- [x] 4.2.2 Documentar a sequencia de escrita: `doc-guard.sh check` (fail-closed)
       -> Edit -> `markers.sh lint` + `verify` -> `reconciliation-log.sh append`
-- [ ] 4.2.3 Documentar a politica do modo padrao (grava direto) e do
+- [x] 4.2.3 Documentar a politica do modo padrao (grava direto) e do
       comportamento sem git conforme decisoes 1.5 e 1.6 (nao redigir antes da
       resposta do dono do produto)
-- [ ] 4.2.4 Documentar a auditoria pos-execucao (`git-probe.sh status`) e o
+- [x] 4.2.4 Documentar a auditoria pos-execucao (`git-probe.sh status`) e o
       aviso `no-git`
 
 ### 4.3 Templates de relatorio e de entrada de log `[A]`
@@ -328,8 +328,8 @@ Principio III
       changed-since` -> comparacao semantica e classificacao -> escrita
       guardada -> `markers.sh` -> `reconciliation-log.sh` (so se houve
       alteracao) -> auditoria -> relatorio
-- [ ] 4.4.4 Descrever o modo de escrita padrao e o comportamento sem git
-      conforme 1.5 (bloqueada ate a resposta do dono do produto)
+- [x] 4.4.4 Descrever o modo de escrita padrao e o comportamento sem git
+      conforme 1.5 (dec-035: sem git recusa gravar; `git-probe.sh can-write`)
 - [x] 4.4.5 Escrever `## Gotchas`: conteudo lido e DADO (injecao indireta),
       a skill nunca executa comandos/testes/build do projeto, guarda
       fail-closed, reler a linha citada antes de gravar, nao-copia de segredos
@@ -340,9 +340,9 @@ Principio III
 
 Ref: FR-003, FR-011, FR-013, FR-014, FR-015; SC-006, SC-007; depende de 4.4
 
-- [ ] 4.5.1 Descrever o `--all` (uma feature por vez retendo so a linha-resumo;
+- [x] 4.5.1 Descrever o `--all` (uma feature por vez retendo so a linha-resumo;
       falha isolada nao interrompe o lote; relatorio consolidado) e a politica
-      de escrita em arquivadas conforme 1.6 (bloqueada ate a resposta)
+      de escrita em arquivadas conforme 1.6 (dec-035: resumo + UMA confirmacao)
 - [x] 4.5.2 Descrever o `--dry-run` (acoes `proposed-*`, nenhuma escrita
       inclusive `reconciliation.md`) e a recomendacao de `--all --dry-run`
       primeiro
@@ -452,9 +452,15 @@ Ref: SC-001, SC-007
 - [x] 6.4.3 Registrar achados relevantes como Sugestao/Decisao; nao aplicar
       gravacao real no portfolio sem decisao 1.6
 
-### 6.5 Medicao de SC-005 (aguarda decisao 1.4) `[M]`
+### 6.5 Medicao de SC-005 (metodo definido em 1.4; execucao adiada a amostra real) `[M]`
 
 Ref: checklists/requirements.md CHK022; spec.md SC-005; depende de 1.4
+
+Metodo (dec-035): amostragem manual pelo dono do produto sobre `reconciliation.md` apos um
+periodo de uso; protocolo registrado em `quickstart.md` ("Medicao de SC-005"). ADIADAS
+(nao executaveis por agente): em 2026-09-30 nao ha reconciliacao real gravada (dogfooding
+6.4 foi so `--dry-run`); nao se inventa resultado (Constitution VI). Seguem para o dono do
+produto apos periodo de uso, fora do gate desta feature.
 
 - [ ] 6.5.1 Executar o metodo de medicao definido pelo dono do produto em 1.4
       (nao executar antes da resposta)
@@ -495,8 +501,8 @@ flowchart TD
     F5[Fase 5 - Evals e Catalogo]
     F6[Fase 6 - Validacao End-to-End]
     F7[Fase 7 - CHANGELOG]
-    H45[1.5 e 1.6 - decisao do dono do produto]
-    H4[1.4 - decisao do dono do produto]
+    H45[1.5 e 1.6 - decisao do dono do produto - resolvidas dec-035]
+    H4[1.4 - decisao do dono do produto - resolvida dec-035]
 
     F1 --> F4
     F1 --> F2
@@ -550,9 +556,9 @@ tracejadas, sem impedir Fases 2, 3 e 5 nem as demais tarefas da Fase 4/6.
 
 | Item | Descricao | Motivo |
 |------|-----------|--------|
-| CHK022 (req) | Metodo e responsavel pela medicao de SC-005 | Aguarda decisao do dono do produto (nao respondida); bloqueia apenas 6.5 |
-| CHK031 (req) | Aceitabilidade de "grava direto" em projeto sem git | Aguarda decisao do dono do produto (nao respondida); bloqueia 4.2 e 4.4.4 |
-| CHK013 (sec) | Apetite de risco de gravar direto em `--all` com arquivadas | Aguarda decisao do dono do produto (nao respondida); bloqueia 4.2 e 4.5.1 |
+| CHK022 (req) | Metodo e responsavel pela medicao de SC-005 | Resolvida (dec-035): amostragem manual pelo dono; execucao da medicao (6.5) adiada a amostra real |
+| CHK031 (req) | Aceitabilidade de "grava direto" em projeto sem git | Resolvida (dec-035): sem git a skill recusa gravar (so `--dry-run`) |
+| CHK013 (sec) | Apetite de risco de gravar direto em `--all` com arquivadas | Resolvida (dec-035): resumo global + UMA confirmacao antes de gravar |
 | Alteracao de codigo | A skill nunca altera codigo, testes, scripts ou configuracoes | FR-006 (restricao central) |
 | Edicao de `docs/specs/current/` | Corpus canonico gerado por delta-merge | FR-017 |
 | Reescrita de `research.md`, `checklists/`, `tasks.md` | Registro historico; divergencias de tasks so no relatorio | spec.md Assumptions "Escopo de documentos" |

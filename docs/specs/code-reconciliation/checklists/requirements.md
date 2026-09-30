@@ -38,7 +38,7 @@ Gate deterministico `requirement-coverage.sh spec.md`: `RESULT|requirements=18|c
 
 - [x] CHK020 - SC-001, SC-003 e SC-007 sao objetivamente verificaveis por comparacao de conjuntos de arquivos modificados? [Mensurabilidade, Spec §SC-001, SC-003, SC-007; Independent Test US3] {auto}
 - [x] CHK021 - SC-002 ("100% das divergencias plantadas") tem base de teste definida? [Mensurabilidade, Spec §SC-002 "projeto de teste"; Plan §Testing fixture `tests/fixtures/reconcile-docs/`] {auto}
-- [ ] CHK022 - Como SC-005 (>= 90% sem edicao manual) sera medido, e por quem, esta definido? [Gap, Spec §SC-005 — sem metodo de medicao; nao ha teste automatizavel] {humano}
+- [x] CHK022 - Como SC-005 (>= 90% sem edicao manual) sera medido, e por quem, esta definido? [Fechado por decisao humana dec-035 (block-002, tarefa 1.4): Spec §SC-005 + Clarifications — AMOSTRAGEM MANUAL pelo dono do produto sobre `reconciliation.md` apos periodo de uso, contando reconciliacoes que precisaram de edicao manual; sem automacao nova; Plan §Riscos] {humano}
 - [x] CHK023 - O limite de desempenho de `--all` esta especificado? [Requisitos Nao-Funcionais, Plan §Performance Goals "cada script < 2 s"; custo semantico do LLM declarado fora de controle] {auto}
 
 ## Cenarios e Edge Cases
@@ -53,9 +53,9 @@ Gate deterministico `requirement-coverage.sh spec.md`: `RESULT|requirements=18|c
 
 - [x] CHK029 - A relacao com `converge` (complementar, sem chamada cruzada) esta documentada? [Premissas, Spec §Assumptions "Diferenca para converge"; Plan §Structure "Relacao com converge"] {auto}
 - [x] CHK030 - O nome da skill e a alternativa estao registrados como premissa (nao como requisito ambiguo)? [Premissas, Spec §Assumptions "Nome da skill"; FR-001] {auto}
-- [ ] CHK031 - A prioridade relativa entre "gravar direto por padrao" (sem confirmacao) e a reversibilidade apenas via VCS e aceitavel para projetos sem git? [Risco, Spec §Assumptions "Modo padrao grava direto" x §FR-016 projeto sem VCS] {humano}
+- [x] CHK031 - A prioridade relativa entre "gravar direto por padrao" (sem confirmacao) e a reversibilidade apenas via VCS e aceitavel para projetos sem git? [Fechado por decisao humana dec-035 (block-002, tarefa 1.5): NAO aceitavel — Spec §FR-016 + Assumptions + Edge Cases: sem git a skill recusa gravar e so roda em `--dry-run` forcado (`git-probe.sh can-write`, aviso `no-git-write-refused`); Plan §Riscos; contracts/cli-invocation.md §1/§7; quickstart Scenario 9] {humano}
 
 ## Notes
 
 - Items `{auto}` foram resolvidos contra spec/plan/contratos com a citacao; `[ ]` + marcador = gap aberto.
-- Gaps `{auto}` CHK007 e CHK013 fechados em execute-task 1.1/1.2; CHK022 e CHK031 seguem abertos -> decisao do dono do produto.
+- Gaps `{auto}` CHK007 e CHK013 fechados em execute-task 1.1/1.2; CHK022 e CHK031 fechados pela decisao humana dec-035 (block-002, tarefas 1.4/1.5).

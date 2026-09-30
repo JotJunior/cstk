@@ -26,8 +26,11 @@ para tras, a skill traz a documentacao de volta para o que o codigo faz hoje.
   (fail-closed). Seis scripts POSIX em `scripts/` (`locate-feature.sh`,
   `extract-anchors.sh`, `doc-guard.sh`, `markers.sh`,
   `reconciliation-log.sh`, `git-probe.sh` — o unico que usa `git`, opcional,
-  com fallback `no-git`) e registro append-only `reconciliation.md` por
-  feature, gravado so quando ha alteracao. Contagens do README e dos
+  com fallback `no-git` na leitura) e registro append-only
+  `reconciliation.md` por feature, gravado so quando ha alteracao. Politica
+  de gravacao: sem git a skill recusa gravar (so `--dry-run`, via
+  `git-probe.sh can-write`) e `--all` mostra o resumo global e pede UMA
+  confirmacao antes de gravar (sem operador presente cai em `--dry-run`). Contagens do README e dos
   perfis atualizadas (23 skills globais, 12 em `complementary`, 30 em
   `all`). Nenhuma `description` de skill existente foi alterada.
 

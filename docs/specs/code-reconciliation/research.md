@@ -129,6 +129,12 @@ opcional: `docs/specs/_archived/atomic-commit-pr/plan.md` (commit-mode.sh) e
 (espalha a dep pela prosa, sem fallback testado); nao usar git — rejeitado (perde a
 priorizacao que FR-016 permite e a auditoria da Decision 5).
 
+**Adendo (dec-035, execute-task 1.5)**: sem git a skill RECUSA gravar (so `--dry-run`
+forcado). A recusa e deterministica no subcomando `can-write` do mesmo `git-probe.sh`
+(`rev-parse` apenas, leitura): `WRITE\tallowed` exit 0 com git; `WRITE\tdenied-no-git`
+exit 3 sem git; o chamador trata exit != 0 (inclusive script ausente) como recusa. Nenhum
+script novo e nenhuma nova chamada de `git` fora de `git-probe.sh`.
+
 ## Decision 7: Escopo de busca no codigo (FR-004, clarify Q2)
 
 **Decision**: `extract-anchors.sh` extrai dos documentos da feature os tokens entre

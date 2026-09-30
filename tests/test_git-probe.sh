@@ -123,6 +123,45 @@ scenario_uso_incorreto_e_raiz_inexistente() {
   capture sh "$SCRIPT" changed-since --root "$_GP_D" --feature-dir ../fora; _gp_exit 2 || return 1
 }
 
+# dec-035 (1.5): em projeto SEM git a skill recusa gravar — `can-write` e a
+# pre-condicao deterministica; o chamador trata exit != 0 como recusa (dry-run forcado).
+scenario_can_write_em_repositorio_git_permite() {
+  _gp_setup || return 2
+  capture sh "$SCRIPT" can-write --root "$_GP_D"
+  _gp_exit 0 || return 1
+  [ "$_CAPTURED_STDOUT" = "WRITE${TAB}allowed" ] || { _fail "stdout" "esperado WRITE allowed, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_can_write_fora_de_repositorio_recusa() {
+  _gp_setup nogit || return 2
+  capture sh "$SCRIPT" can-write --root "$_GP_D"
+  _gp_exit 3 || return 1
+  [ "$_CAPTURED_STDOUT" = "WRITE${TAB}denied-no-git" ] || { _fail "stdout" "esperado WRITE denied-no-git, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_can_write_sem_git_no_path_recusa() {
+  _gp_setup || return 2
+  _bin="$_GP_D/.nogit-bin"; mkdir -p "$_bin"
+  for _t in sh cat tr sed sort grep awk cut wc head tail dirname pwd; do
+    _p=$(command -v "$_t" 2>/dev/null || true)
+    case "$_p" in /*) ln -s "$_p" "$_bin/$_t" ;; esac
+  done
+  _shbin=$(command -v sh)
+  capture env -i PATH="$_bin" "$_shbin" "$SCRIPT" can-write --root "$_GP_D"
+  _gp_exit 3 || return 1
+  [ "$_CAPTURED_STDOUT" = "WRITE${TAB}denied-no-git" ] || { _fail "stdout" "esperado WRITE denied-no-git, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_can_write_nao_altera_o_repositorio_e_valida_uso() {
+  _gp_setup || return 2
+  _b=$(cd "$_GP_D" && find .git -type f | LC_ALL=C sort | cksum)
+  capture sh "$SCRIPT" can-write --root "$_GP_D"
+  _a=$(cd "$_GP_D" && find .git -type f | LC_ALL=C sort | cksum)
+  [ "$_b" = "$_a" ] || { _fail "read-only" "arquivos de .git mudaram"; return 1; }
+  capture sh "$SCRIPT" can-write; _gp_exit 2 || return 1
+  capture sh "$SCRIPT" can-write --root "$_GP_D/nao-existe"; _gp_exit 1 || return 1
+}
+
 # 3.4.2/3.4.5 — `git` confinado a git-probe.sh; so subcomandos de leitura; fsmonitor off.
 scenario_git_confinado_a_este_arquivo() {
   for _f in "$SKILL_SCRIPTS"/*.sh; do

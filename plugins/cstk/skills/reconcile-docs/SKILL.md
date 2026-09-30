@@ -35,6 +35,12 @@ codigo**: a unica escrita possivel e em documentos da feature, sempre validada p
 Raiz do projeto = diretorio de trabalho corrente; precisa conter `docs/specs/`. Sem
 ela, encerre informando. Recomende `--all --dry-run` antes de `--all`.
 
+**Gravacao**: so com git. Sem `--dry-run`, rode `"$SKILL/scripts/git-probe.sh" can-write
+--root .` ANTES de qualquer escrita; qualquer resultado diferente de `WRITE<TAB>allowed`
+(exit != 0, `denied-no-git` ou script ausente) = RECUSA: execute como `--dry-run`
+forcado e emita o aviso `no-git-write-refused`. Detalhes e politica completa em
+`references/write-policy.md`.
+
 `$SKILL` abaixo = diretorio desta skill (`.../skills/reconcile-docs`).
 
 ## Fluxo por feature
@@ -44,8 +50,8 @@ ela, encerre informando. Recomende `--all --dry-run` antes de `--all`.
    exit 2 = nome invalido). Homonima ativa+arquivada: reconcilie a ativa e informe a
    arquivada (`archived-shadowed`) no relatorio.
 2. **Snapshot**: `"$SKILL/scripts/git-probe.sh" status --root .` (base da auditoria).
-   Linha `STATUS	no-git` = sem git: siga, com o aviso `no-git` (priorizacao e
-   auditoria puladas).
+   Linha `STATUS	no-git` = sem git: a escrita e recusada (`--dry-run` forcado, aviso
+   `no-git-write-refused`); a analise segue, sem priorizacao e sem auditoria.
 3. **Ancoras**: `"$SKILL/scripts/extract-anchors.sh" --root . --feature-dir <dir>`
    (TSV `kind	token	doc:line	presence`). E o unico escopo de busca no codigo.
 4. **Priorizar** (opcional): `"$SKILL/scripts/git-probe.sh" changed-since --root .
@@ -53,7 +59,8 @@ ela, encerre informando. Recomende `--all --dry-run` antes de `--all`.
 5. **Comparar e classificar** cada ancora/afirmacao lendo o codigo (Read/Grep/Glob),
    conforme `references/classification.md` (5 tipos, regra MUST/MUST NOT,
    `unverifiable`, nao-copia de segredos). Releia a linha citada antes de gravar.
-6. **Escrever** (so sem `--dry-run`), para cada alteracao:
+6. **Escrever** (so sem `--dry-run` e com `can-write` permitido; ver
+   `references/write-policy.md`), para cada alteracao:
    `doc-guard.sh check --root . --feature-dir <dir> <doc>` (exit != 0, inclusive
    script ausente = negado, acao `ignored`) -> Edit so do trecho divergente ->
    marcador inline `[reconciled:<kind> <date> evidence=<ref>]`
@@ -64,7 +71,7 @@ ela, encerre informando. Recomende `--all --dry-run` antes de `--all`.
    `reconciliation-log.sh append --feature-dir <dir> --date <hoje> --summary-file <arq>`
    (exit 3 = vazio, nada gravado). Sem alteracao, NAO grave nada.
 8. **Auditar**: `git-probe.sh status` de novo; entrada nova fora da allowlist =
-   `audit: violation` no relatorio (sem git: `skipped-no-git`).
+   `audit: violation` no relatorio (sem git nao ha gravacao: `skipped-no-git`).
 9. **Relatorio** na conversa conforme `templates/report.md` (cada linha com evidencia
    `arquivo:linha` ou `absent:<caminho>`).
 
@@ -80,11 +87,20 @@ Sem divergencia: relatorio "nenhuma divergencia encontrada" e nada e gravado
   `proposed-update`, `proposed-mark-removed`, `proposed-add`. Nenhum arquivo muda e
   nenhum `reconciliation.md` e criado.
 - **`--all`**: localize tudo com `locate-feature.sh --root . --all` e processe uma
-  feature por vez. Status por feature: `reconciled | no-divergence | skipped | error`.
-- **Politica de escrita em arquivadas no `--all`, modo padrao de gravacao e
-  comportamento sem git**: pendentes de decisao do dono do produto (tarefas 1.4-1.6);
-  esta secao sera completada apos a resposta. Enquanto isso, nao assuma politica alem
-  do que `references/classification.md` e o passo 6 acima ja definem.
+  feature por vez, retendo so a linha-resumo (status, contagens por tipo e acoes
+  propostas em forma enxuta) para nao esgotar o contexto; falha numa feature NAO
+  interrompe o lote (status `error` no consolidado). Status por feature:
+  `reconciled | no-divergence | skipped | error`. Feche com o relatorio consolidado.
+  - **Confirmacao unica antes de gravar** (inclui arquivadas): sem `--dry-run` e com
+    `can-write` permitido, faca primeiro a passada de analise como `--dry-run`, exiba o
+    resumo do que mudara em TODAS as features e peca UMA confirmacao para o lote; so com
+    confirmacao afirmativa grave (passo 6, feature por feature, relendo a linha citada).
+    Sem confirmacao, nada e gravado. **Sem operador presente** (execucao nao interativa):
+    nao presuma consentimento e caia em `--dry-run`.
+  - Feature unica (sem `--all`) com git grava direto, sem confirmacao.
+- **Sem git** (`can-write` recusado): em feature unica e em `--all`, nenhuma escrita;
+  relatorio com acoes `proposed-*` e aviso `no-git-write-refused`. A skill nunca cria nem
+  altera arquivo sem VCS.
 
 ## Gotchas
 
@@ -100,5 +116,7 @@ Sem divergencia: relatorio "nenhuma divergencia encontrada" e nada e gravado
 - Nunca copie valor sensivel do codigo (chave, token, credencial): cite so
   `arquivo:linha`.
 - Sem fonte no codigo, nao escreva o dado: `unverifiable` (Constitution VI).
+- Sem git nunca grave (`git-probe.sh can-write` != permitido = `--dry-run` forcado) e
+  em `--all` nunca grave sem a confirmacao unica do operador (sem operador: `--dry-run`).
 - Em `--all`, retenha so a linha-resumo de cada feature ja processada para nao
   esgotar o contexto.
