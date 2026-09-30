@@ -269,9 +269,9 @@ Ref: spec.md FR-015, SC-003; plan.md §Ordem passo 8; feedback de contagens (`te
 
 Ref: spec.md SC-002, SC-003; quickstart.md Cenario 7
 
-- [ ] 9.2.1 Rodar a suite completa (`LC_ALL=C sh tests/run.sh`) em background preso ao pai, com log em arquivo, e ler o log completo (sem `tail`); confirmar verde (flaky conhecidos passam isolados)
-- [ ] 9.2.2 Conferir SC-002 (100% dos literais e diff zero de blocos de comando) e SC-004 (100% dos caminhos resolvem) com os testes desta feature
-- [ ] 9.2.3 Reunir evidencias no relatorio da feature e preparar o fechamento para `converge`/`review-task`
+- [x] 9.2.1 Rodar a suite completa (`LC_ALL=C sh tests/run.sh`) em background preso ao pai, com log em arquivo, e ler o log completo (sem `tail`); confirmar verde (flaky conhecidos passam isolados)
+- [x] 9.2.2 Conferir SC-002 (100% dos literais e diff zero de blocos de comando) e SC-004 (100% dos caminhos resolvem) com os testes desta feature
+- [x] 9.2.3 Reunir evidencias no relatorio da feature e preparar o fechamento para `converge`/`review-task`
 
 ---
 
