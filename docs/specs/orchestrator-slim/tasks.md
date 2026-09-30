@@ -228,17 +228,17 @@ Ref: spec.md FR-003, FR-010, FR-018, SC-001
 
 Ref: spec.md FR-008, FR-009, SC-004, US4; quickstart.md Cenario 4; research.md Decision 1
 
-- [ ] 7.1.1 Estender `tests/test_orchestrator-refs.sh` (ou teste dedicado): todo marcador `ORCH-REF` dos dois prompts-base resolve via `orchestrator-refs.sh path` no subtree do repositorio (exit 0, arquivo existente, limite de 2000 linhas, ultima linha `ORCH-REF-END`)
-- [ ] 7.1.2 Gerar o tarball (`scripts/build-release.sh`) e afirmar `catalog/skills/agente-00c-runtime/references/orchestrators/<o>/<p>.md` para cada marcador; repetir a partir de `cp -R` do skill dir em `$HOME` temporario
-- [ ] 7.1.3 Error case: apagar uma referencia na copia temporaria e afirmar `path` exit 1 com stdout vazio
+- [x] 7.1.1 Estender `tests/test_orchestrator-refs.sh` (ou teste dedicado): todo marcador `ORCH-REF` dos dois prompts-base resolve via `orchestrator-refs.sh path` no subtree do repositorio (exit 0, arquivo existente, limite de 2000 linhas, ultima linha `ORCH-REF-END`)
+- [x] 7.1.2 Gerar o tarball (`scripts/build-release.sh`) e afirmar `catalog/skills/agente-00c-runtime/references/orchestrators/<o>/<p>.md` para cada marcador; repetir a partir de `cp -R` do skill dir em `$HOME` temporario
+- [x] 7.1.3 Error case: apagar uma referencia na copia temporaria e afirmar `path` exit 1 com stdout vazio
 
 ### 7.2 Verificacao literal da falha segura (FR-010) `[A]`
 
 Ref: spec.md FR-010, US4 cenario 3; quickstart.md Cenario 5
 
-- [ ] 7.2.1 Testar que todo stub e a secao "Referencias de fase" dos dois prompts-base contem a instrucao literal de nao executar a fase de memoria, registrar Decisao (`--classe operacional`) e bloqueio humano e encerrar a onda quando `path` ou o Read falhar
-- [ ] 7.2.2 Testar a variante `bootstrap` (sem onda aberta: sem `state-ondas.sh start`, sem `Schedule intent`, devolver ao pai) definida na tarefa 1.3
-- [ ] 7.2.3 Testar a regra de leitura truncada (ausencia do marcador `ORCH-REF-END` = falha de leitura) e a regra de leitura unica por fase (SC-006: no maximo uma referencia citada por fase)
+- [x] 7.2.1 Testar que todo stub e a secao "Referencias de fase" dos dois prompts-base contem a instrucao literal de nao executar a fase de memoria, registrar Decisao (`--classe operacional`) e bloqueio humano e encerrar a onda quando `path` ou o Read falhar
+- [x] 7.2.2 Testar a variante `bootstrap` (sem onda aberta: sem `state-ondas.sh start`, sem `Schedule intent`, devolver ao pai) definida na tarefa 1.3
+- [x] 7.2.3 Testar a regra de leitura truncada (ausencia do marcador `ORCH-REF-END` = falha de leitura) e a regra de leitura unica por fase (SC-006: no maximo uma referencia citada por fase)
 
 ---
 
@@ -248,10 +248,10 @@ Ref: spec.md FR-010, US4 cenario 3; quickstart.md Cenario 5
 
 Ref: spec.md FR-011, FR-012, FR-017, FR-018, SC-001, SC-005, SC-006; quickstart.md Cenarios 1, 2 e 8
 
-- [ ] 8.1.1 Rodar `measure-orchestrator-prompts.sh --ref HEAD` (com e sem `--observed`) e salvar em `docs/specs/orchestrator-slim/measurements/after.md`
-- [ ] 8.1.2 Conferir prompt-base de O `<= 87608` e de F `<= 62821` bytes; conferir para toda fase `loaded_bytes` (base + 1 referencia) menor que o `base_bytes` do baseline do mesmo orquestrador
-- [ ] 8.1.3 Se alguma meta nao for atingida sem violar paridade, registrar "meta nao atingida" com a limitacao (FR-017); nunca declarar ganho nao medido nem reducao de tokens observada sem fonte
-- [ ] 8.1.4 Conferir que todo numero observado traz origem e `n` (SC-005) e que a limitacao "tokens indisponivel offline" esta declarada no relatorio (dec-010)
+- [x] 8.1.1 Rodar `measure-orchestrator-prompts.sh --ref HEAD` (com e sem `--observed`) e salvar em `docs/specs/orchestrator-slim/measurements/after.md`
+- [x] 8.1.2 Conferir prompt-base de O `<= 87608` e de F `<= 62821` bytes; conferir para toda fase `loaded_bytes` (base + 1 referencia) menor que o `base_bytes` do baseline do mesmo orquestrador
+- [x] 8.1.3 Se alguma meta nao for atingida sem violar paridade, registrar "meta nao atingida" com a limitacao (FR-017); nunca declarar ganho nao medido nem reducao de tokens observada sem fonte
+- [x] 8.1.4 Conferir que todo numero observado traz origem e `n` (SC-005) e que a limitacao "tokens indisponivel offline" esta declarada no relatorio (dec-010)
 
 ---
 

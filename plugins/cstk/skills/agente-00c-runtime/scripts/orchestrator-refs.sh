@@ -67,10 +67,12 @@ _or_valid_orch() {
 }
 
 # _or_valid_phase VALOR -> 0 se nao-vazio e composto so de [a-z0-9-]
+# Classe enumerada (nao o intervalo a-z): em locales nao-C o intervalo pode
+# casar maiusculas (colacao), o que aceitaria `Clarify` como fase.
 _or_valid_phase() {
   [ -n "$1" ] || return 1
   case "$1" in
-    *[!a-z0-9-]*) return 1 ;;
+    *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;;
     *) return 0 ;;
   esac
 }

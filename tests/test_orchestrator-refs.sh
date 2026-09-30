@@ -193,4 +193,43 @@ scenario_todo_marcador_orch_ref_resolve_no_subtree() {
   return 0
 }
 
+# FR-009 (limite de leitura): cada referencia tem no maximo 2000 linhas (uma
+# chamada da tool Read carrega o arquivo inteiro) e termina em ORCH-REF-END.
+scenario_toda_referencia_respeita_limite_e_marcador_final() {
+  _n=0
+  for _f in "$RUNTIME_SRC"/references/orchestrators/root/*.md \
+            "$RUNTIME_SRC"/references/orchestrators/feature/*.md; do
+    [ -f "$_f" ] || { _error "referencia ausente" "$_f"; return 2; }
+    _lines=$(wc -l < "$_f" | tr -d ' ')
+    [ "$_lines" -le 2000 ] || { _fail "limite de 2000 linhas" "$_f tem $_lines linhas"; return 1; }
+    _last=$(tail -n 1 "$_f")
+    [ "$_last" = '<!-- ORCH-REF-END -->' ] \
+      || { _fail "ultima linha" "$_f termina em '$_last' em vez de <!-- ORCH-REF-END -->"; return 1; }
+    _n=$((_n + 1))
+  done
+  [ "$_n" -gt 0 ] || { _fail "nenhuma referencia encontrada" "$RUNTIME_SRC"; return 1; }
+}
+
+# FR-009: o caminho resolvido de cada marcador aponta para arquivo existente
+# sob references/orchestrators/<o>/<p>.md do subtree.
+scenario_marcador_resolve_para_arquivo_existente_no_subtree() {
+  _real=$(cd "$RUNTIME_SRC" && pwd -P)
+  _n=0
+  for _f in "$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md" \
+            "$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"; do
+    _markers=$(grep -oE '<!-- ORCH-REF: (root|feature)/[a-z0-9-]+ -->' "$_f" | sed -e 's/<!-- ORCH-REF: //' -e 's/ -->//' | sort -u)
+    [ -n "$_markers" ] || { _fail "prompt-base sem marcadores" "$_f"; return 1; }
+    for _m in $_markers; do
+      _o=${_m%%/*}
+      _p=${_m#*/}
+      assert_exit 0 _run "$REFS_SCRIPT" path --orchestrator "$_o" --phase "$_p" || return 1
+      [ "$_CAPTURED_STDOUT" = "$_real/references/orchestrators/$_o/$_p.md" ] \
+        || { _fail "caminho do marcador $_m" "obtido $_CAPTURED_STDOUT"; return 1; }
+      [ -f "$_CAPTURED_STDOUT" ] || { _fail "arquivo inexistente" "$_CAPTURED_STDOUT"; return 1; }
+      _n=$((_n + 1))
+    done
+  done
+  [ "$_n" -gt 0 ] || { _fail "nenhum marcador verificado" "prompts-base"; return 1; }
+}
+
 run_all_scenarios "$@"
