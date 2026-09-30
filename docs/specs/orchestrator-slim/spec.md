@@ -41,6 +41,27 @@
   (consulta direta a knowledge.db) — a cobertura observada e parcial e
   desigual entre as colunas.
 
+## Clarifications
+
+### Session 2026-09-29
+
+- Q: Qual a meta minima de reducao do prompt-base por onda (FR-018)? → A:
+  40% de reducao em CADA orquestrador (fonte: resposta humana do operador ao
+  block-001, registrada na dec-015, opcao A).
+- Q: Qual a metrica-gate da meta de reducao (bytes vs tokens)? → A: bytes E
+  tokens; sem contagem de tokens disponivel offline, cai para bytes e declara
+  a limitacao (dec-010).
+- Q: Qual prevalece em conflito, paridade comportamental ou meta de reducao?
+  → A: a paridade (FR-002/FR-004) prevalece; se a meta so for atingivel
+  violando paridade, a meta nao e atingida e a limitacao e registrada, sem
+  declarar ganho nao medido (dec-011).
+- Q: Qual o criterio para mover uma secao para referencia? → A: a secao NAO
+  roda em 100% das ondas E o ganho liquido de tokens da onda e positivo;
+  decisao secao a secao no plano (dec-012).
+- Q: Qual a granularidade dos arquivos de referencia? → A: um arquivo por
+  fase, mais uma referencia compartilhada para o conteudo comum aos dois
+  orquestradores (dec-013).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Cada onda carrega so o que a fase corrente precisa (Priority: P1)
@@ -196,7 +217,11 @@ resolver cada caminho de referencia citado nos prompts.
 - **FR-001**: O sistema MUST reduzir o prompt-base de cada um dos dois
   orquestradores movendo secoes especificas de fase (e detalhamentos de
   gates/protocolos usados so em certas fases) para arquivos de referencia
-  lidos sob demanda.
+  lidos sob demanda. Uma secao so e movida se (a) NAO roda em 100% das ondas
+  e (b) o ganho liquido de tokens da onda, considerando a leitura da
+  referencia, e positivo (SC-006); a decisao e tomada secao a secao no plano.
+  As referencias sao um arquivo por fase mais uma referencia compartilhada
+  para o conteudo comum aos dois orquestradores (sem duplicacao).
 - **FR-002**: O sistema MUST manter no prompt-base todo conteudo que governa
   TODAS as ondas (contrato de conclusao de turno, regra de `Schedule intent`,
   fronteira lock/init, principios MUST, anti-padroes, disciplina de output,
@@ -209,7 +234,9 @@ resolver cada caminho de referencia citado nos prompts.
   nenhum passo, comando, flag, literal contratual ou regra "REGRA DURA"
   pode ser removido, reescrito ou enfraquecido; alteracoes permitidas se
   limitam a (i) mover o texto, (ii) reescrever referencias internas
-  ("ver secao X") para apontarem ao novo local.
+  ("ver secao X") para apontarem ao novo local. Em conflito com a meta de
+  reducao (FR-018), este requisito e o FR-002 prevalecem: a meta nunca justifica
+  remover, reescrever ou enfraquecer conteudo contratual.
 - **FR-005**: O sistema MUST manter a pipeline com comportamento identico:
   mesmas etapas, mesma ordem, mesmas Decisoes/bloqueios/skills registrados,
   mesmo fechamento de onda e mesma linha `Schedule intent`.
@@ -236,7 +263,9 @@ resolver cada caminho de referencia citado nos prompts.
 - **FR-011**: O sistema MUST fornecer um procedimento reproduzivel de medicao
   deterministica que, para cada orquestrador e para cada fase, reporte bytes
   e tokens do que e carregado numa onda (prompt-base + referencias da fase),
-  para as versoes anterior e nova, declarando o metodo de contagem de tokens.
+  para as versoes anterior e nova, declarando o metodo de contagem de tokens. A meta de reducao (FR-018) e
+  avaliada em bytes E em tokens; se a contagem de tokens nao estiver disponivel
+  offline, o gate cai para bytes e o relatorio declara essa limitacao.
 - **FR-012**: O relatorio de medicao MUST complementar a medicao
   deterministica com o consumo observado por onda (knowledge.db/OTel) quando
   disponivel, MUST declarar `n` de ondas e cobertura por coluna, e MUST NOT
@@ -260,17 +289,21 @@ resolver cada caminho de referencia citado nos prompts.
 - **FR-017**: Se nenhuma fonte observavel de tokens por onda existir para
   sustentar a comparacao, a feature MUST reportar so a medicao
   deterministica e registrar a limitacao, e NUNCA declarar reducao de tokens
-  observada.
-- **FR-018**: [NEEDS CLARIFICATION: qual a meta minima de reducao do prompt-base
-  por onda para considerar a feature bem-sucedida? Default adotado nesta
-  spec: 40% de reducao do prompt-base de cada orquestrador; e uma proposta de
-  projeto, nao dado factual, e deve ser confirmada ou ajustada no clarify]
+  observada. O mesmo vale se a meta de FR-018 so for atingivel violando a
+  paridade (FR-002/FR-004): a meta e declarada nao atingida e a limitacao
+  registrada, nunca um ganho nao medido.
+- **FR-018**: O prompt-base de CADA orquestrador MUST ser reduzido em pelo
+  menos 40% em relacao ao baseline (FR-013) para a feature ser considerada
+  bem-sucedida. Fonte do valor: resposta humana do operador ao block-001
+  (Decisao dec-015, opcao A — 40% em cada orquestrador). Sujeita a precedencia
+  da paridade (FR-004/FR-017) e a metrica-gate de FR-011.
 
 ### Key Entities
 
 - **Prompt-base**: o arquivo do agente carregado inteiro a cada spawn de onda.
 - **Referencia de fase**: arquivo lido sob demanda contendo secoes movidas do
-  prompt-base, associado a uma ou mais fases/condicoes.
+  prompt-base, associado a uma fase (um arquivo por fase) ou, quando o conteudo e comum aos
+  dois orquestradores, a referencia compartilhada.
 - **Inventario contratual**: lista de literais e blocos de comando verificados
   por teste ou exigidos pelo contrato, usada para provar paridade.
 - **Relatorio de medicao**: par antes/depois com metodo, fonte, `n` e
@@ -281,8 +314,10 @@ resolver cada caminho de referencia citado nos prompts.
 ### Measurable Outcomes
 
 - **SC-001**: O prompt-base de cada orquestrador fica pelo menos 40% menor
-  (em bytes e em tokens pelo metodo declarado) que o baseline de 146014 e
-  104702 bytes, respectivamente (meta sujeita a FR-018).
+  (em bytes e em tokens pelo metodo declarado; sem contagem de tokens, gate em
+  bytes com limitacao declarada — FR-011) que o baseline de 146014 e 104702
+  bytes, respectivamente (meta de FR-018, fonte: resposta humana ao block-001;
+  subordinada a paridade — FR-017).
 - **SC-002**: 100% dos literais contratuais inventariados antes da feature
   continuam presentes depois (prompt-base ou referencias declaradas), e 100%
   dos testes que os verificam continuam passando; diferenca zero no inventario
