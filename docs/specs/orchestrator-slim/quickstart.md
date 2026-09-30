@@ -49,6 +49,11 @@ Todos os cenarios rodam localmente, sem rede. Suite completa: `LC_ALL=C`
 2. **Expected**: instrucao literal de nao executar a fase de memoria,
    registrar Decisao + bloqueio humano e encerrar a onda quando
    `orchestrator-refs.sh path` falhar ou o Read falhar.
+3. Inspecionar o stub da fase `bootstrap` (variante sem onda aberta, em
+   `contracts/pointer-format.md`). **Expected**: instrucao literal de NAO
+   chamar `state-ondas.sh start`, registrar Decisao (`--classe operacional`)
+   + bloqueio humano e devolver o turno ao command pai sem relatorio de onda
+   e sem `Schedule intent`.
 
 ## Cenario 6 — Sincronia de fragmentos e MCP-vs-Bash (FR-007)
 

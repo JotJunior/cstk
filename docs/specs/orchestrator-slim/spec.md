@@ -61,6 +61,12 @@
 - Q: Qual a granularidade dos arquivos de referencia? → A: um arquivo por
   fase, mais uma referencia compartilhada para o conteudo comum aos dois
   orquestradores (dec-013).
+  Reconciliacao (execute-task 1.1, CHK018): a medicao do plano (research
+  Decision 2) nao achou bloco movivel byte-identico entre os dois
+  orquestradores; a redacao do FR-001 passou a refletir a estrutura vigente
+  (um arquivo por par orquestrador/fase; compartilhada so se houver bloco
+  byte-identico; fragmentos intra-orquestrador por SC-006). Sem mudanca de
+  decisao — dec-013 permanece valida como regra condicional.
 
 ## User Scenarios & Testing
 
@@ -189,12 +195,17 @@ resolver cada caminho de referencia citado nos prompts.
   no `.md` do orquestrador: o teste deve ser migrado para checar prompt-base
   + referencias (nao afrouxado).
 - Duas secoes sao byte-identicas por contrato nos dois orquestradores (MCP-vs-
-  Bash): permanecem no prompt-base de ambos, ou, se movidas, permanecem
-  byte-identicas na mesma referencia unica compartilhada.
+  Bash): permanecem no prompt-base de ambos (rodam em 100% das ondas), ou, se
+  movidas, permanecem byte-identicas numa referencia compartilhada unica
+  (hoje nao aplicavel — a unica secao byte-identica fica no prompt-base).
 - Secao referenciada por outra secao ("ver X abaixo"): links internos
   precisam ser reescritos para apontar a referencia, sem ficar dangling.
-- Trecho que so o orquestrador raiz usa vs. que ambos usam: conteudo comum a
-  ambos deve viver em UMA referencia compartilhada, nao duplicada.
+- Trecho que so o orquestrador raiz usa vs. que ambos usam: conteudo movivel
+  byte-identico nos dois orquestradores viveria em UMA referencia
+  compartilhada; sem bloco byte-identico (medido: nenhum), cada orquestrador
+  tem suas referencias e a duplicacao restante e apenas por fragmento entre
+  arquivos de fase do MESMO orquestrador (SC-006), com teste de
+  byte-identidade.
 - Fase que ocorre em toda onda (fechamento de onda, checks de aborto,
   budget): nao pode ser movida — o custo de um Read por onda anularia o ganho
   e aumentaria o risco de esquecimento.
@@ -220,8 +231,13 @@ resolver cada caminho de referencia citado nos prompts.
   lidos sob demanda. Uma secao so e movida se (a) NAO roda em 100% das ondas
   e (b) o ganho liquido de tokens da onda, considerando a leitura da
   referencia, e positivo (SC-006); a decisao e tomada secao a secao no plano.
-  As referencias sao um arquivo por fase mais uma referencia compartilhada
-  para o conteudo comum aos dois orquestradores (sem duplicacao).
+  As referencias sao um arquivo por (orquestrador, fase). Uma referencia
+  compartilhada entre os dois orquestradores so existe quando houver bloco
+  movivel byte-identico entre eles (medido: nenhum — research Decision 2).
+  Conteudo movido que o mesmo orquestrador usa em mais de uma fase e
+  duplicado, entre marcadores `FRAGMENT`, nos arquivos de fase desse MESMO
+  orquestrador — exigido por SC-006 (no maximo uma leitura por fase) e
+  guardado por teste de byte-identidade entre as copias.
 - **FR-002**: O sistema MUST manter no prompt-base todo conteudo que governa
   TODAS as ondas (contrato de conclusao de turno, regra de `Schedule intent`,
   fronteira lock/init, principios MUST, anti-padroes, disciplina de output,
@@ -259,7 +275,13 @@ resolver cada caminho de referencia citado nos prompts.
   MUST falhar se qualquer caminho citado nao existir.
 - **FR-010**: Se uma referencia exigida pela fase nao puder ser lida em
   runtime, o orquestrador MUST NOT prosseguir com os passos daquela fase de
-  memoria e MUST registrar bloqueio humano.
+  memoria e MUST registrar bloqueio humano. Quando a falha ocorre na
+  referencia `bootstrap` ANTES de a onda-001 abrir (nenhuma onda aberta), o
+  orquestrador MUST NOT chamar `state-ondas.sh start`, MUST registrar Decisao
+  (`--classe operacional`) e bloqueio humano (o runtime aceita ambos sem onda
+  aberta — verificado em execute-task 1.3) e MUST devolver o turno ao command
+  pai sem relatorio de onda e sem `Schedule intent`; a regra geral (nao
+  prosseguir de memoria + bloqueio humano) permanece integral.
 - **FR-011**: O sistema MUST fornecer um procedimento reproduzivel de medicao
   deterministica que, para cada orquestrador e para cada fase, reporte bytes
   e tokens do que e carregado numa onda (prompt-base + referencias da fase),
@@ -302,8 +324,11 @@ resolver cada caminho de referencia citado nos prompts.
 
 - **Prompt-base**: o arquivo do agente carregado inteiro a cada spawn de onda.
 - **Referencia de fase**: arquivo lido sob demanda contendo secoes movidas do
-  prompt-base, associado a uma fase (um arquivo por fase) ou, quando o conteudo e comum aos
-  dois orquestradores, a referencia compartilhada.
+  prompt-base, associado a um par (orquestrador, fase) — um arquivo por par.
+  Blocos multi-fase do mesmo orquestrador aparecem como fragmentos
+  byte-identicos em mais de um arquivo de fase; a referencia compartilhada
+  entre os dois orquestradores so existe se houver bloco byte-identico entre
+  eles (hoje nenhum).
 - **Inventario contratual**: lista de literais e blocos de comando verificados
   por teste ou exigidos pelo contrato, usada para provar paridade.
 - **Relatorio de medicao**: par antes/depois com metodo, fonte, `n` e

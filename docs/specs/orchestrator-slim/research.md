@@ -177,6 +177,12 @@ stubs):
 | O | 146014 | 82627 | ~67400 | ~54% |
 | F | 104702 | 61519 | ~46200 | ~56% |
 
+**Atualizacao (execute-task 1.2, CHK021)**: o bloco "Finalize terminal" fica
+no prompt-base (O: 946 bytes, F: 460 bytes), logo movido = 81681 (O) e 61059
+(F); a projecao recalculada (stubs a 650 bytes + secao "Referencias de fase")
+esta em `data-model.md` §Projecao: O ~48%, F ~50%. A tabela acima e o valor
+original de planejamento, mantido por historico.
+
 \* Projecao = baseline − movido + estimativa de stubs (~250 bytes x 16 stubs
 em O, x 12 em F). E ESTIMATIVA de planejamento, nao resultado; o numero
 oficial vem do script de medicao apos a implementacao. A margem sobre a meta

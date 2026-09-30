@@ -110,7 +110,8 @@ Bytes medidos com `awk` somando `length+1` por linha no baseline `9f97e99`.
 | 5.f.ter Gate delta-gate (1821-1876) | 2924 | nao | mover | review-features |
 | 6 Detectar conclusao (1877-1945) | 3480 | sim | manter | — |
 | 7, 8, 9, 9.bis (1946-2015) | 4149 | sim | manter | — |
-| 9.ter Commit atomico por etapa (2016-2086) | 3782 | nao | mover (fragmento) | specify, clarify, plan, checklist, create-tasks |
+| 9.ter Commit atomico por etapa, sem o bloco Finalize terminal (2016-2066) | 2836 | nao | mover (fragmento `stage-commit-hook`) | specify, clarify, plan, checklist, create-tasks |
+| 9.ter Finalize terminal (FR-008) + paragrafo Modo roadmap (2067-2085) | 946 | nao (onda terminal), sem fase com referencia propria | manter (decisao 1.2, FR-002/FR-005) | — |
 | 9.quater Encerramento terminal roadmap (2087-2164) | 4258 | nao | mover | roadmap |
 | 10-13 (2165-2346) | 9854 | sim | manter | — |
 | Score-de-decisao (2347-2460) | 6345 | sim (toda Decisao) | manter | — |
@@ -120,7 +121,8 @@ Bytes medidos com `awk` somando `length+1` por linha no baseline `9f97e99`.
 | Defesa em profundidade (2568-2642) | 4538 | sim | manter | — |
 | Estado atual (2643-2649) | 313 | sim | manter | — |
 
-Soma movida: 82627 bytes.
+Soma movida: 81681 bytes (82627 do inventario original menos 946 do bloco
+Finalize terminal, mantido no prompt-base — decisao da tarefa 1.2, CHK021).
 
 ## Inventario de secoes — Orquestrador de feature (F)
 
@@ -138,7 +140,8 @@ Soma movida: 82627 bytes.
 | Disciplina de output (368-385) | 991 | sim | manter | — |
 | Loop principal, exceto 7.bis e 10.qui (386-646) | 8706 | sim | manter | — |
 | Loop 7.bis commit por task (478-533) | 3139 | nao | mover | execute-task |
-| Loop 10.qui commit por etapa + finalize (574-639) | 3367 | nao | mover (fragmento) | specify, clarify, plan, checklist, create-tasks |
+| Loop 10.qui commit por etapa, sem o bloco Finalize terminal (574-626) | 2907 | nao | mover (fragmento `stage-commit-hook`) | specify, clarify, plan, checklist, create-tasks |
+| Loop 10.qui Finalize terminal (FR-008) (627-637) | 460 | nao (onda terminal), sem fase com referencia propria | manter (decisao 1.2, FR-002/FR-005) | — |
 | Invariante retomada/onda fechada (647-672) | 1514 | sim | manter | — |
 | Camada B: `.tasks[]` (683-744) | 3310 | nao | mover | execute-task |
 | Camada B: cabecalho, `.events[]`, custo, retro-compat (673-682, 745-799) | 3494 | sim | manter | — |
@@ -158,13 +161,44 @@ Soma movida: 82627 bytes.
 | Defesa em profundidade (1859-1871) | 1145 | sim | manter | — |
 | Anti-padroes (1872-1891) | 1222 | sim | manter (FR-002) | — |
 
-Soma movida: 61519 bytes.
+Soma movida: 61059 bytes (61519 do inventario original menos 460 do bloco
+Finalize terminal, mantido no prompt-base — decisao da tarefa 1.2, CHK021).
 
 Os limites de linha acima sao do baseline e servem de guia; o limite exato
 de cada corte e conferido na execucao pela verificacao de preservacao de
 linhas (research Decision 8). Qualquer trecho cuja classificacao se revele
 errada (ex. roda em toda onda) volta ao prompt-base — a margem sobre a meta
 (research Decision 6) absorve isso.
+
+## Decisao: destino do bloco "Finalize terminal" (CHK021)
+
+O bloco `commit-mode.sh finalize` (push + PR do modo atomic-commit) roda na
+onda terminal (`review-features` em O, `review-task` em F). Em F nao existe
+referencia `review-task`, e em O `review-features` so recebe o delta-gate
+(5.f.ter); mover o bloco para o fragmento `stage-commit-hook` o deixaria fora
+da leitura da onda terminal (regressao de FR-005). Decisao: o bloco permanece
+NO PROMPT-BASE, fora do fragmento, em ambos os orquestradores. Medido no
+baseline `9f97e99`: O linhas 2067-2075 (bloco, 379 bytes) e 2077-2085
+(paragrafo "Modo roadmap", 567 bytes) = 946 bytes; F linhas 627-637 = 460
+bytes. O paragrafo "Modo roadmap" de O acompanha o bloco por descrever o
+gatilho/ordem do mesmo finalize (a sequencia de 4 passos vive em
+`root/roadmap.md`, 9.quater). O teste de paridade afirma a presenca de
+`commit-mode.sh finalize` no prompt-base de O e de F.
+
+## Projecao da reducao (estimativa de planejamento, recalculada)
+
+Formula: `baseline − movido + stubs`, com estimativa conservadora de 650
+bytes por stub (o exemplo do contrato `pointer-format.md` mede ~506 bytes;
+stubs de fragmento com varios marcadores sao maiores) e ~1000 bytes para a
+secao "Referencias de fase". O valor oficial vem do script de medicao.
+
+| Orquestrador | Baseline | Movido | Stubs (n x 650) + secao | Prompt-base projetado | Reducao projetada | Limite FR-018 |
+|--------------|----------|--------|-------------------------|-----------------------|-------------------|---------------|
+| O | 146014 | 81681 | 10400 + 1000 | ~75733 | ~48% | <= 87608 |
+| F | 104702 | 61059 | 7800 + 1000 | ~52443 | ~50% | <= 62821 |
+
+A margem sobre o limite (~11800 bytes em O, ~10400 em F) preserva a
+alcancabilidade da meta com o bloco Finalize terminal no prompt-base.
 
 ## Testes que dependem do texto (migracao — research Decision 9)
 

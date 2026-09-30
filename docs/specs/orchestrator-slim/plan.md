@@ -28,7 +28,13 @@ Abordagem (research.md):
   declarada (dec-010); observado via knowledge.db com `n`/cobertura
   (Decision 7).
 
-Projecao (estimativa de planejamento, research Decision 6): O ~54%, F ~56%.
+Bloco "Finalize terminal" (`commit-mode.sh finalize`, onda terminal) fica no
+prompt-base de ambos, fora do fragmento `stage-commit-hook` (data-model
+§Decisao CHK021): O 946 bytes, F 460 bytes nao sao movidos.
+
+Projecao (estimativa de planejamento recalculada com 650 bytes por stub e o
+bloco Finalize no prompt-base; data-model §Projecao): O ~48%, F ~50% (meta
+FR-018: 40% em cada).
 
 ## Technical Context
 
@@ -38,7 +44,7 @@ Projecao (estimativa de planejamento, research Decision 6): O ~54%, F ~56%.
 **Testing**: suite shell do repositorio (`tests/run.sh`, `tests/test_*.sh`), `LC_ALL=C`
 **Target Platform**: qualquer ambiente POSIX onde o toolkit roda (fonte: briefing §Stack linha 79 "roda em qualquer ambiente POSIX sem setup"), pelos dois canais de instalacao da spec FR-008 (`cstk install` e plugin nativo)
 **Project Type**: toolkit/CLI (prompts de agente + runtime POSIX)
-**Performance Goals**: prompt-base de O <= 87608 bytes e de F <= 62821 bytes; toda fase com `loaded_bytes` < baseline
+**Performance Goals**: prompt-base de O <= 87608 bytes e de F <= 62821 bytes (projecao ~75.7k e ~52.4k com o bloco Finalize terminal mantido no prompt-base); toda fase com `loaded_bytes` < baseline
 **Constraints**: paridade comportamental total (FR-004/FR-005); <= 1 leitura de referencia por fase percorrida (SC-006); sem rede
 **Scale/Scope**: 2 prompts (250716 bytes), ~23 referencias novas, 1 script de runtime, 1 script de desenvolvimento, 12 testes migrados + 3 testes novos
 
@@ -133,7 +139,8 @@ payload entre camadas).
 
 | Risco | Mitigacao |
 |-------|-----------|
-| Trecho classificado "fase" que na verdade roda em toda onda | verificacao manual guiada pelo inventario + margem de ~14 pontos sobre a meta permite devolver trechos ao prompt-base |
+| Trecho classificado "fase" que na verdade roda em toda onda | verificacao manual guiada pelo inventario + margem de ~8-10 pontos percentuais sobre a meta (projecao ~48%/~50% contra 40%) permite devolver trechos ao prompt-base |
+| Onda terminal nao leria o bloco `commit-mode.sh finalize` (CHK021) | bloco mantido no prompt-base de O e de F, fora de fragmento; teste de paridade afirma sua presenca |
 | Orquestrador esquece de ler a referencia | stub no lugar exato do passo + secao "Referencias de fase" junto ao Contrato de conclusao de turno + regra FR-010 |
 | Referencia ausente em instalacao antiga (catalogo e orquestrador fora de sincronia) | `path` exit 1 => bloqueio humano, nunca improviso (FR-010) |
 | Teste migrado afrouxado sem perceber | inventario `contract-literals.tsv` roda contra baseline e corpus novo — padrao removido ou alterado aparece como diferenca |

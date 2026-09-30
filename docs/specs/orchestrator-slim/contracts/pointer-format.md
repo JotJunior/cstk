@@ -31,6 +31,37 @@ Regras:
    geram nova leitura (SC-006). Em retomada, a referencia da fase corrente e
    relida (contexto anterior nao existe).
 
+## Variante do stub para a fase `bootstrap` (sem onda aberta — FR-010, CHK022)
+
+A referencia `bootstrap` e lida na onda-001 ANTES de `state-ondas.sh start`
+(invariante I-2: opt-ins coletados antes de abrir a onda) e no re-spawn pos
+fallback de opt-ins. Nesse momento `wave-status` e `none`, entao "encerre a
+onda" nao se aplica (`state-ondas.sh end` sai com `no-open-wave`). Verificado
+empiricamente (state-dir descartavel, `wave-status` = `none`): `state-decisions.sh
+register` (com `wave_id` nulo) e `bloqueios.sh register` funcionam sem onda
+aberta; `state-ondas.sh record-skill` e `end` NAO (exit 1, `no-open-wave`) e
+`state-ondas.sh start` recusa abrir a onda-001 sem opt-ins (I-2). O stub de
+`bootstrap` substitui a ultima frase do stub padrao por:
+
+```markdown
+> Se o comando falhar ou a leitura falhar (arquivo ausente ou sem o marcador
+> final `ORCH-REF-END`), NAO execute a fase de memoria e NAO chame
+> `state-ondas.sh start` (nenhuma onda esta aberta): registre Decisao
+> (`--classe operacional`) e bloqueio humano (`bloqueios.sh register`) e
+> devolva o turno ao command pai IMEDIATAMENTE, sem relatorio de onda e sem
+> `Schedule intent` (FR-010).
+```
+
+Sequencia executavel: (1) `state-decisions.sh register --classe operacional
+--escolha bloqueio-humano-<motivo> --score 0 ...`; (2) `bloqueios.sh register
+--decisao-id <dec> --pergunta ...`; (3) devolver o turno. Nao ha `end`,
+`record-skill` nem `Schedule intent`. O bloqueio fica registrado no state (fonte de verdade do
+command pai, nunca o texto do retorno). Como nao existe onda aberta, o
+invariante "retomada sempre segue onda fechada" nao tem onda a fechar
+(`wave-status` = `none`). O tratamento do pai ao receber o turno de volta e
+o do fluxo de bloqueio ja existente (fora do escopo desta feature). A regra geral (nao prosseguir de memoria + bloqueio humano) e
+a mesma dos demais stubs.
+
 ## Marcadores
 
 | Marcador | Onde | Consumidor |

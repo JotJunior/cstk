@@ -25,36 +25,36 @@ Gaps `[Gap]`/`[Ambiguity]` do checklist que precisam de decisao escrita ANTES de
 
 Ref: checklists/requirements.md CHK018; spec.md FR-001, Key Entities, Edge Cases, Clarifications (dec-013); research.md Decision 2
 
-- [ ] 1.1.1 Reescrever o FR-001 em `spec.md`: uma referencia por (orquestrador, fase); referencia compartilhada entre O e F somente quando existir bloco movivel byte-identico entre os dois (medido: nenhum); conteudo multi-fase duplicado entre arquivos de fase do MESMO orquestrador por marcadores `FRAGMENT`, exigido por SC-006 (uma leitura por fase) e guardado por teste de byte-identidade
-- [ ] 1.1.2 Alinhar o texto dos Edge Cases (bloco MCP-vs-Bash e "trecho comum aos dois orquestradores") e da entidade Referencia de fase em Key Entities com a mesma estrutura, sem alterar nenhum outro requisito
-- [ ] 1.1.3 Registrar em `## Clarifications` uma linha de reconciliacao apontando para dec-013 e para a Decision 2 da pesquisa, e conferir que `requirement-coverage.sh` continua com 18/18 FRs cobertos
-- [ ] 1.1.4 Validar que o plano (Summary e Structure Decision) e a data-model (entidade PhaseReference, campo `fragments`) ja descrevem a mesma estrutura do novo texto do FR-001; corrigir divergencia residual se houver
+- [x] 1.1.1 Reescrever o FR-001 em `spec.md`: uma referencia por (orquestrador, fase); referencia compartilhada entre O e F somente quando existir bloco movivel byte-identico entre os dois (medido: nenhum); conteudo multi-fase duplicado entre arquivos de fase do MESMO orquestrador por marcadores `FRAGMENT`, exigido por SC-006 (uma leitura por fase) e guardado por teste de byte-identidade
+- [x] 1.1.2 Alinhar o texto dos Edge Cases (bloco MCP-vs-Bash e "trecho comum aos dois orquestradores") e da entidade Referencia de fase em Key Entities com a mesma estrutura, sem alterar nenhum outro requisito
+- [x] 1.1.3 Registrar em `## Clarifications` uma linha de reconciliacao apontando para dec-013 e para a Decision 2 da pesquisa, e conferir que `requirement-coverage.sh` continua com 18/18 FRs cobertos
+- [x] 1.1.4 Validar que o plano (Summary e Structure Decision) e a data-model (entidade PhaseReference, campo `fragments`) ja descrevem a mesma estrutura do novo texto do FR-001; corrigir divergencia residual se houver
 
 ### 1.2 Definir o destino do bloco "Finalize terminal" (commit-mode.sh finalize) `[A]`
 
 Ref: checklists/requirements.md CHK021; spec.md FR-002, FR-005; data-model.md §Inventario (O 9.ter, F 10.qui); baseline O:2067-2085 e F:627-637
 
-- [ ] 1.2.1 Confirmar no baseline `9f97e99` as linhas exatas do bloco "Finalize terminal (FR-008)" em O (dentro de 9.ter) e em F (dentro de 10.qui) e registrar bytes de cada um
-- [ ] 1.2.2 Decidir e registrar a opcao: o bloco (invocacao de `commit-mode.sh finalize`, push + PR do modo atomic-commit) roda na onda terminal (`review-features` em O, `review-task` em F), fase sem referencia propria; portanto o bloco permanece no prompt-base, fora do fragmento `stage-commit-hook`, por FR-002 e FR-005
-- [ ] 1.2.3 Atualizar `data-model.md` (inventarios de O e de F): dividir as linhas 9.ter (O) e 10.qui (F) em "commit atomico por etapa" (mover, fragmento) e "Finalize terminal" (manter, sem destino) e recalcular a soma movida e a projecao da reducao
-- [ ] 1.2.4 Atualizar `plan.md` (Summary, Performance Goals e Riscos) com a mesma decisao e confirmar que a meta FR-018 continua alcancavel com a margem restante; acrescentar ao teste de paridade uma verificacao de que o bloco `commit-mode.sh finalize` esta no prompt-base de O e de F
+- [x] 1.2.1 Confirmar no baseline `9f97e99` as linhas exatas do bloco "Finalize terminal (FR-008)" em O (dentro de 9.ter) e em F (dentro de 10.qui) e registrar bytes de cada um
+- [x] 1.2.2 Decidir e registrar a opcao: o bloco (invocacao de `commit-mode.sh finalize`, push + PR do modo atomic-commit) roda na onda terminal (`review-features` em O, `review-task` em F), fase sem referencia propria; portanto o bloco permanece no prompt-base, fora do fragmento `stage-commit-hook`, por FR-002 e FR-005
+- [x] 1.2.3 Atualizar `data-model.md` (inventarios de O e de F): dividir as linhas 9.ter (O) e 10.qui (F) em "commit atomico por etapa" (mover, fragmento) e "Finalize terminal" (manter, sem destino) e recalcular a soma movida e a projecao da reducao
+- [x] 1.2.4 Atualizar `plan.md` (Summary, Performance Goals e Riscos) com a mesma decisao e confirmar que a meta FR-018 continua alcancavel com a margem restante; acrescentar ao teste de paridade uma verificacao de que o bloco `commit-mode.sh finalize` esta no prompt-base de O e de F
 
 ### 1.3 Definir a sequencia executavel de falha da referencia `bootstrap` sem onda aberta `[A]`
 
 Ref: checklists/requirements.md CHK022; spec.md FR-010, US4 cenario 3; contracts/pointer-format.md (Stub de secao); invariante I-2 de opt-ins e "Invariante: retomada sempre segue onda fechada" nos prompts
 
-- [ ] 1.3.1 Verificar empiricamente, com um state-dir descartavel, se `state-decisions.sh register` e `bloqueios.sh register` funcionam com `wave-status` igual a `none`/`closed` (nenhuma onda aberta) e registrar o resultado observado
-- [ ] 1.3.2 Definir a sequencia exata da falha de `bootstrap`: nao chamar `state-ondas.sh start`, registrar Decisao (`--classe operacional`) e bloqueio humano, devolver o turno ao command pai sem relatorio de onda e sem `Schedule intent`; caso o registro sem onda nao seja possivel, definir o fallback observado em 1.3.1
-- [ ] 1.3.3 Escrever a regra em `contracts/pointer-format.md` (variante do stub para a fase `bootstrap`) e ajustar o texto do FR-010 em `spec.md` para cobrir o caso "antes de a onda-001 abrir", sem enfraquecer a regra geral (nao prosseguir de memoria + bloqueio humano)
-- [ ] 1.3.4 Acrescentar o caso ao Cenario 5 do quickstart (inspecao literal da variante do stub de `bootstrap`) e a um item do teste de falha segura da FASE 7
+- [x] 1.3.1 Verificar empiricamente, com um state-dir descartavel, se `state-decisions.sh register` e `bloqueios.sh register` funcionam com `wave-status` igual a `none`/`closed` (nenhuma onda aberta) e registrar o resultado observado
+- [x] 1.3.2 Definir a sequencia exata da falha de `bootstrap`: nao chamar `state-ondas.sh start`, registrar Decisao (`--classe operacional`) e bloqueio humano, devolver o turno ao command pai sem relatorio de onda e sem `Schedule intent`; caso o registro sem onda nao seja possivel, definir o fallback observado em 1.3.1
+- [x] 1.3.3 Escrever a regra em `contracts/pointer-format.md` (variante do stub para a fase `bootstrap`) e ajustar o texto do FR-010 em `spec.md` para cobrir o caso "antes de a onda-001 abrir", sem enfraquecer a regra geral (nao prosseguir de memoria + bloqueio humano)
+- [x] 1.3.4 Acrescentar o caso ao Cenario 5 do quickstart (inspecao literal da variante do stub de `bootstrap`) e a um item do teste de falha segura da FASE 7
 
 ### 1.4 Fechar os itens do checklist e reverificar `[M]`
 
 Ref: checklists/requirements.md CHK018, CHK021, CHK022
 
-- [ ] 1.4.1 Marcar CHK018, CHK021 e CHK022 como `[x]` em `checklists/requirements.md`, citando a evidencia (tarefas 1.1, 1.2 e 1.3) em cada item
-- [ ] 1.4.2 Atualizar a secao Notes do checklist (zero itens abertos) e re-rodar `requirement-coverage.sh` na spec
-- [ ] 1.4.3 Commitar os artefatos alterados (spec, plan, data-model, contracts, checklist) em commit unico de requisitos
+- [x] 1.4.1 Marcar CHK018, CHK021 e CHK022 como `[x]` em `checklists/requirements.md`, citando a evidencia (tarefas 1.1, 1.2 e 1.3) em cada item
+- [x] 1.4.2 Atualizar a secao Notes do checklist (zero itens abertos) e re-rodar `requirement-coverage.sh` na spec
+- [x] 1.4.3 Commitar os artefatos alterados (spec, plan, data-model, contracts, checklist) em commit unico de requisitos
 
 ---
 
@@ -66,18 +66,18 @@ Capturar o "antes" e a prova de paridade ANTES de tocar nos prompts (plan §Orde
 
 Ref: spec.md FR-011, FR-012, FR-017, US3; contracts/measure-cli.md; research.md Decision 7
 
-- [ ] 2.1.1 Implementar o script POSIX (`#!/bin/sh`, `set -eu`) com `--ref`, `--observed`, `--db`, lendo os prompts via `git show <ref>:<path>` e emitindo cabecalho, tabela prompt-base e tabela por fase (`base_bytes`, `ref_bytes`, `loaded_bytes`)
-- [ ] 2.1.2 Implementar a coluna de tokens: usar `ORCH_TOKEN_COUNTER` quando definida (registrando o comando) e caso contrario `indisponivel` com a declaracao "gate avaliado em bytes (dec-010)"; nunca derivar tokens de bytes
-- [ ] 2.1.3 Implementar a secao `--observed` por fase e por grupo de execucao com `n`, cobertura por coluna e mediana so sobre linhas nao-nulas, `sqlite3 -readonly`, janela temporal validada por regex antes de entrar em SQL (S3, exit 2 se invalida) e fallback `indisponivel` sem `sqlite3` ou sem db
-- [ ] 2.1.4 Escrever `tests/test_measure-orchestrator-prompts.sh`: medicao deterministica contra o baseline, `ORCH_TOKEN_COUNTER` ausente e presente, `--db` inexistente (exit 0 com `indisponivel`), data invalida (exit 2), nota fixa de cache_creation
+- [x] 2.1.1 Implementar o script POSIX (`#!/bin/sh`, `set -eu`) com `--ref`, `--observed`, `--db`, lendo os prompts via `git show <ref>:<path>` e emitindo cabecalho, tabela prompt-base e tabela por fase (`base_bytes`, `ref_bytes`, `loaded_bytes`)
+- [x] 2.1.2 Implementar a coluna de tokens: usar `ORCH_TOKEN_COUNTER` quando definida (registrando o comando) e caso contrario `indisponivel` com a declaracao "gate avaliado em bytes (dec-010)"; nunca derivar tokens de bytes
+- [x] 2.1.3 Implementar a secao `--observed` por fase e por grupo de execucao com `n`, cobertura por coluna e mediana so sobre linhas nao-nulas, `sqlite3 -readonly`, janela temporal validada por regex antes de entrar em SQL (S3, exit 2 se invalida) e fallback `indisponivel` sem `sqlite3` ou sem db
+- [x] 2.1.4 Escrever `tests/test_measure-orchestrator-prompts.sh`: medicao deterministica contra o baseline, `ORCH_TOKEN_COUNTER` ausente e presente, `--db` inexistente (exit 0 com `indisponivel`), data invalida (exit 2), nota fixa de cache_creation
 
 ### 2.2 Baseline versionado `measurements/baseline.md` `[A]`
 
 Ref: spec.md FR-013, SC-001; plan.md §Ordem de implementacao passo 1
 
-- [ ] 2.2.1 Rodar o script sobre `9f97e994d5cde46d1447744c68c9def8da14e6e3` (com e sem `--observed`) e salvar em `docs/specs/orchestrator-slim/measurements/baseline.md`
-- [ ] 2.2.2 Conferir os valores do baseline (146014 e 104702 bytes) contra `git show <ref>:<path> | wc -c` e registrar o comando usado no proprio arquivo
-- [ ] 2.2.3 Conferir que todo numero observado do baseline traz `n` e origem da fonte e que nao ha valor estimado (SC-005)
+- [x] 2.2.1 Rodar o script sobre `9f97e994d5cde46d1447744c68c9def8da14e6e3` (com e sem `--observed`) e salvar em `docs/specs/orchestrator-slim/measurements/baseline.md`
+- [x] 2.2.2 Conferir os valores do baseline (146014 e 104702 bytes) contra `git show <ref>:<path> | wc -c` e registrar o comando usado no proprio arquivo
+- [x] 2.2.3 Conferir que todo numero observado do baseline traz `n` e origem da fonte e que nao ha valor estimado (SC-005)
 
 ### 2.3 Inventarios contratuais em `tests/fixtures/orchestrator-slim/` `[A]`
 

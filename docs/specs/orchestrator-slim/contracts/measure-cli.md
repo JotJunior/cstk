@@ -1,4 +1,4 @@
-# Contract: `scripts/measure-orchestrator-prompts.sh` [PROPOSTA — a validar na implementacao]
+# Contract: `scripts/measure-orchestrator-prompts.sh` [implementado — execute-task 2.1]
 
 Script de desenvolvimento (fora do catalogo instalado), POSIX sh.
 Dependencias: `git`, `wc`, `awk`, `sort`. `sqlite3` OPCIONAL (so para a secao
@@ -16,6 +16,11 @@ measure-orchestrator-prompts.sh --ref <git-ref> [--observed] [--db PATH]
 - `--observed`: inclui a secao de consumo observado (knowledge.db).
 - `--db`: default `$HOME/.claude/cstk/knowledge.db`, aberto com
   `sqlite3 -readonly`.
+- `--since DATA` / `--until DATA` (implementado em execute-task 2.1): janela
+  `started_at >= since` e `started_at < until`. Sem `--until`, o default e a
+  data do commit de `--ref` em UTC (ondas anteriores ao commit — usado no
+  baseline); para o periodo "depois", o operador passa `--since` com a data
+  do release. Sem `--since`, sem limite inferior.
 - Contagem de tokens: se `ORCH_TOKEN_COUNTER` estiver definida, e um comando
   que recebe texto em stdin e imprime um inteiro; o relatorio registra o
   comando usado. Se indefinida => coluna "tokens" = `indisponivel` e o
