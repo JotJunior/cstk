@@ -54,6 +54,8 @@ forcado e emita o aviso `no-git-write-refused`. Detalhes e politica completa em
    `no-git-write-refused`); a analise segue, sem priorizacao e sem auditoria.
 3. **Ancoras**: `"$SKILL/scripts/extract-anchors.sh" --root . --feature-dir <dir>`
    (TSV `kind	token	doc:line	presence`). E o unico escopo de busca no codigo.
+   exit != 0 (inclusive documento ilegivel, exit 1) = nao verificavel: reporte
+   `unverifiable` e nao trate a lista parcial como completa.
 4. **Priorizar** (opcional): `"$SKILL/scripts/git-probe.sh" changed-since --root .
    --feature-dir <dir>`. So atalho; a verificacao le SEMPRE o codigo atual.
 5. **Comparar e classificar** cada ancora/afirmacao lendo o codigo (Read/Grep/Glob),

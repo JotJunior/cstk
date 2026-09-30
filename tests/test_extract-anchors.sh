@@ -117,6 +117,37 @@ scenario_uso_incorreto_exit_2() {
   _ea_exit 2 || return 1
 }
 
+# 8.1 — documento da allowlist presente mas ilegivel: fail-closed (exit != 0 +
+# diagnostico em stderr), nunca exit 0 com ancoras omitidas (FR-004).
+scenario_documento_ilegivel_falha_fechado() {
+  _ea_setup || return 2
+  chmod 000 "$_EA_DIR/docs/specs/alpha/spec.md"
+  if [ -r "$_EA_DIR/docs/specs/alpha/spec.md" ]; then
+    chmod 644 "$_EA_DIR/docs/specs/alpha/spec.md"
+    return 0 # executando como root: chmod 000 nao torna o arquivo ilegivel
+  fi
+  _ea_run docs/specs/alpha
+  chmod 644 "$_EA_DIR/docs/specs/alpha/spec.md"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "exit" "documento ilegivel terminou com exit 0"; return 1; }
+  assert_stderr_contains "ilegivel" || return 1
+  assert_stderr_contains "spec.md" || return 1
+}
+
+scenario_contracts_ilegivel_falha_fechado() {
+  _ea_setup || return 2
+  mkdir -p "$_EA_DIR/docs/specs/alpha/contracts"
+  printf 'Cita `cli/lib/run.sh`.\n' > "$_EA_DIR/docs/specs/alpha/contracts/c.md"
+  chmod 000 "$_EA_DIR/docs/specs/alpha/contracts/c.md"
+  if [ -r "$_EA_DIR/docs/specs/alpha/contracts/c.md" ]; then
+    chmod 644 "$_EA_DIR/docs/specs/alpha/contracts/c.md"
+    return 0
+  fi
+  _ea_run docs/specs/alpha
+  chmod 644 "$_EA_DIR/docs/specs/alpha/contracts/c.md"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "exit" "contrato ilegivel terminou com exit 0"; return 1; }
+  assert_stderr_contains "ilegivel" || return 1
+}
+
 scenario_nao_escreve_nada() {
   _ea_setup || return 2
   _b=$(cd "$_EA_DIR" && find . -type f | LC_ALL=C sort | cksum)

@@ -589,8 +589,8 @@ status e o do `while` final (linhas 70-133): com `spec.md` ilegivel
 "awk: can't open file" em stderr, sai 0 e omite as 5 ancoras do spec.md,
 sem sinal que o SKILL.md passo 3 consiga tratar.
 
-- [ ] 8.1.1 Corrigir `plugins/cstk/skills/reconcile-docs/scripts/extract-anchors.sh` conforme 3.1: documento da allowlist presente mas ilegivel nao pode resultar em exit 0 silencioso (checar legibilidade ou propagar a falha do awk, com codigo de saida documentado no contrato §3 e no SKILL.md passo 3)
-- [ ] 8.1.2 Cobrir o caso em `tests/test_extract-anchors.sh` (documento ilegivel na fixture copiada)
+- [x] 8.1.1 Corrigir `plugins/cstk/skills/reconcile-docs/scripts/extract-anchors.sh` conforme 3.1: documento da allowlist presente mas ilegivel nao pode resultar em exit 0 silencioso (checar legibilidade ou propagar a falha do awk, com codigo de saida documentado no contrato §3 e no SKILL.md passo 3)
+- [x] 8.1.2 Cobrir o caso em `tests/test_extract-anchors.sh` (documento ilegivel na fixture copiada)
 
 <!-- converge-key: 5b904d2d8f58 -->
 
@@ -608,7 +608,7 @@ ilegivel, `lint` e `verify` imprimem "awk: can't open file" e saem 0
 legivel da exit 1 nos dois). Fail-open no passo de conferencia do
 write-policy §2.3.
 
-- [ ] 8.2.1 Corrigir `plugins/cstk/skills/reconcile-docs/scripts/markers.sh` conforme 3.2: arquivo presente mas ilegivel nao pode passar em `lint`/`verify`/`list`/`next-fr` com exit 0 (checar legibilidade em `_mk_need_file` ou propagar a falha do awk)
-- [ ] 8.2.2 Cobrir o caso em `tests/test_markers.sh`
+- [x] 8.2.1 Corrigir `plugins/cstk/skills/reconcile-docs/scripts/markers.sh` conforme 3.2: arquivo presente mas ilegivel nao pode passar em `lint`/`verify`/`list`/`next-fr` com exit 0 (checar legibilidade em `_mk_need_file` ou propagar a falha do awk)
+- [x] 8.2.2 Cobrir o caso em `tests/test_markers.sh`
 
 <!-- converge-key: 25aa12a14bda -->

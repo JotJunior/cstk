@@ -204,6 +204,27 @@ scenario_uso_incorreto_e_arquivo_inexistente_exit_2() {
   _mk next-fr "$_MK_DIR/nao-existe.md"; _mk_exit 2 || return 1
 }
 
+# 8.2 — arquivo presente mas ilegivel: fail-closed em TODOS os subcomandos
+# (exit != 0 + diagnostico em stderr), nunca exit 0 (write-policy §2.3).
+scenario_arquivo_ilegivel_falha_fechado() {
+  _mk_setup || return 2
+  printf '%s\n' '- x [reconciled:updated 2026-10-02 evidence=nao/existe.sh:9] [reconciled:oops' > "$_MK_DIR/unread.md"
+  chmod 000 "$_MK_DIR/unread.md"
+  if [ -r "$_MK_DIR/unread.md" ]; then
+    chmod 644 "$_MK_DIR/unread.md"
+    return 0 # executando como root: chmod 000 nao torna o arquivo ilegivel
+  fi
+  for _c in "lint" "list" "next-fr" "verify --root $_MK_DIR"; do
+    # shellcheck disable=SC2086
+    _mk $_c "$_MK_DIR/unread.md"
+    if [ "$_CAPTURED_EXIT" = 0 ]; then
+      chmod 644 "$_MK_DIR/unread.md"; _fail "exit" "$_c com arquivo ilegivel terminou com exit 0"; return 1
+    fi
+    assert_stderr_contains "ilegivel" || { chmod 644 "$_MK_DIR/unread.md"; return 1; }
+  done
+  chmod 644 "$_MK_DIR/unread.md"
+}
+
 scenario_sem_bashismos() {
   capture sh -n "$SCRIPT"
   _mk_exit 0 || return 1

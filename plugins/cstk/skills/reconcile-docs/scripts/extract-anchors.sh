@@ -26,7 +26,9 @@
 # Ignora linhas dentro de cercas de codigo (```). Dedupe por (kind, token,
 # doc:line) preservando a ordem.
 #
-# Exit: 0 (0+ linhas) | 1 feature-dir inexistente | 2 uso incorreto
+# Exit: 0 (0+ linhas) | 1 feature-dir inexistente OU documento da allowlist presente
+#       mas ilegivel (fail-closed: nunca omite ancoras em silencio; diagnostico em
+#       stderr) | 2 uso incorreto
 # POSIX sh + awk (sem intervalos de regex — compativel com mawk/BWK/gawk), sem jq, sem git.
 
 set -eu
@@ -60,11 +62,28 @@ for _d in spec.md plan.md data-model.md quickstart.md; do
 "
 done
 if [ -d "$_EA_FDIR/contracts" ]; then
+  if [ ! -r "$_EA_FDIR/contracts" ] || [ ! -x "$_EA_FDIR/contracts" ]; then
+    printf '%s: diretorio ilegivel: %s\n' "$_EA_NAME" "$_EA_FDIR/contracts" >&2
+    exit 1
+  fi
   _EA_C=$(cd "$_EA_FDIR/contracts" && for _f in *.md; do [ -f "$_f" ] && printf 'contracts/%s\n' "$_f"; done | LC_ALL=C sort) || _EA_C=""
   [ -n "$_EA_C" ] && _EA_DOCS="$_EA_DOCS$_EA_C
 "
 fi
 [ -n "$_EA_DOCS" ] || exit 0
+
+# Fail-closed (FR-004): documento presente mas ilegivel nao pode virar exit 0 com
+# ancoras omitidas (o awk so reportaria "can't open file" num pipeline).
+_EA_UNREADABLE=$(printf '%s' "$_EA_DOCS" | while IFS= read -r _doc; do
+  [ -n "$_doc" ] || continue
+  [ -r "$_EA_FDIR/$_doc" ] || printf '%s\n' "$_doc"
+done)
+if [ -n "$_EA_UNREADABLE" ]; then
+  printf '%s\n' "$_EA_UNREADABLE" | while IFS= read -r _doc; do
+    printf '%s: documento ilegivel: %s\n' "$_EA_NAME" "$_EA_FDIR/$_doc" >&2
+  done
+  exit 1
+fi
 
 # Fase 1 (awk): tokens candidatos "kind TAB token TAB doc:line".
 printf '%s' "$_EA_DOCS" | while IFS= read -r _doc; do

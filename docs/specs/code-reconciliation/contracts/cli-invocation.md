@@ -74,7 +74,9 @@ extract-anchors.sh --root <dir> --feature-dir <dir>
 
 stdout TSV: `<kind>\t<token>\t<doc>:<line>\t<presence>` (data-model §Anchor), dedupe
 por (`kind`, `token`, `doc:line`) preservando a ordem. Varre so os documentos da
-allowlist presentes. exit 0 (0+ linhas); 1 feature-dir inexistente; 2 uso.
+allowlist presentes. exit 0 (0+ linhas); 1 feature-dir inexistente ou documento da
+allowlist presente mas ilegivel (fail-closed, diagnostico em stderr, nenhuma linha
+parcial e tratada como completa); 2 uso.
 
 ## 4. `doc-guard.sh`
 
@@ -93,7 +95,7 @@ chamador trata QUALQUER exit != 0 (inclusive script ausente) como negacao.
 ## 5. `markers.sh`
 
 ```
-markers.sh lint <file>        # exit 0 ok; 1 marcador mal formado (linha em stdout)
+markers.sh lint <file>        # exit 0 ok; 1 marcador mal formado (linha em stdout); arquivo inexistente ou ilegivel = exit 2
 markers.sh list <file>        # TSV <line>\t<kind>\t<date>\t<ref>
 markers.sh next-fr <spec.md>  # imprime FR-NNN seguinte (FR-001 se nenhum)
 markers.sh verify --root <dir> <file>  # exit 0 se toda evidencia confere; 1 lista <line>\t<ref>\t<motivo>

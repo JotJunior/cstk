@@ -23,7 +23,8 @@
 # (documentacao da propria sintaxe, ex.: contracts/markers.md). Somente leitura:
 # nenhum subcomando escreve arquivos (idempotencia — contracts/markers.md §4).
 #
-# Exit: 0 ok | 1 falha de validacao | 2 uso incorreto ou arquivo inexistente
+# Exit: 0 ok | 1 falha de validacao | 2 uso incorreto, arquivo inexistente ou
+#       ilegivel (fail-closed: arquivo ilegivel nunca passa em lint/verify/list/next-fr)
 # POSIX sh + awk (sem intervalos de regex), sem jq, sem git.
 
 set -eu
@@ -78,6 +79,7 @@ _mk_scan() {
 
 _mk_need_file() {
   [ -f "$1" ] || { printf '%s: arquivo inexistente: %s\n' "$_MK_NAME" "$1" >&2; exit 2; }
+  [ -r "$1" ] || { printf '%s: arquivo ilegivel: %s\n' "$_MK_NAME" "$1" >&2; exit 2; }
 }
 
 [ $# -ge 1 ] || { _mk_usage; exit 2; }
