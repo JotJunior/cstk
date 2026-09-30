@@ -58,23 +58,44 @@ Hoje a leitura da memoria de conhecimento so ocorre no inicio de `specify` e
   divergentes aparecem como tais, sem recomendacao. A recomendacao de FR-009 so
   existe quando nao ha divergencia entre os precedentes.
 
+### Session 2026-09-30 (gate owasp-security do plan — block-005)
+
+Alteracao de requisito vinda do gate de seguranca do `plan` (achado S-1 HIGH:
+precedente forjado — por exemplo, state versionado de repo de terceiro
+ingerido pela memoria de conhecimento — decidia sem humano quando somado ao
++1 de "constitution nao violada", que a heuristica vigente concede a quase
+toda opcao). Decidido pelo operador (Decisao dec-027):
+
+- Q: O precedente pode compor score 2 junto apenas com "constitution nao
+  violada"? → A: Nao. **Exigir suporte positivo**: o precedente so soma (+1)
+  quando `briefing` OU `spec_corrente`/`stack_sugerida` tambem apoiam
+  positivamente a mesma opcao. Precedente + constitution nao violada, sozinhos,
+  NUNCA decidem. Precedente de qualquer projeto continua elegivel (FR-013
+  inalterado). Reflete em FR-003, FR-004, US1, US2 e SC-002.
+- Q: Empate de data de resposta entre precedentes divergentes? → A: Nenhum
+  pontua (confirmado pelo operador; deixa de ser premissa do orquestrador —
+  FR-006).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Precedente reforca a pontuacao de uma opcao (Priority: P1)
 
 Durante o clarify autonomo, quando existe resposta humana anterior a uma
 pergunta semelhante, o answerer usa essa resposta como quarta fonte de
-evidencia: a opcao coerente com o precedente ganha +1 na pontuacao, o que
-permite decidir sem incomodar o operador quando ja ha outra fonte
-concordante.
+evidencia: a opcao coerente com o precedente ganha +1 na pontuacao — desde
+que `briefing` ou `spec_corrente`/`stack_sugerida` tambem apoiem positivamente
+essa opcao (suporte positivo; "constitution nao violada" nao basta). O
+precedente reforca ou desempata uma fonte real do projeto corrente; nunca
+substitui essa fonte.
 
 **Why this priority**: e o nucleo do valor — evita re-perguntar ao operador o
 que ele ja respondeu, sem enfraquecer nenhuma garantia existente.
 
 **Independent Test**: fornecer ao answerer uma pergunta cuja opcao A tem
-suporte em exatamente uma das tres fontes atuais e um precedente respondido
-que aponta para A; a saida deve decidir A com score 2, citando o id do
-bloqueio de origem.
+suporte positivo na spec corrente e um precedente respondido que aponta para
+A; a saida deve incluir o +1 do precedente no score de A e citar o id do
+bloqueio de origem. Em contraprova, uma opcao apoiada so por "constitution nao
+violada" + precedente nao recebe o +1 do precedente.
 
 **Acceptance Scenarios**:
 
@@ -86,6 +107,12 @@ bloqueio de origem.
    answerer pontua, **Then** o resultado e identico ao comportamento anterior a
    esta feature (A com score 1, sem decisao automatica salvo a regra existente
    de eliminacao por constitution).
+3. **Given** uma opcao A sem suporte positivo em `briefing` nem em
+   `spec_corrente`/`stack_sugerida`, apenas consistente com a constitution
+   (nao a viola), e um precedente concordante com A (de qualquer projeto),
+   **When** o answerer pontua, **Then** o precedente NAO soma, A mantem o
+   score que teria sem precedente e a pergunta nao e decidida por causa do
+   precedente (se pausar, o precedente aparece como recomendacao — FR-009).
 
 ---
 
@@ -221,12 +248,20 @@ que a Decisao registrada lista os ids consultados.
 - **FR-003**: O answerer MUST tratar o precedente como quarta fonte de
   evidencia: uma opcao suportada por precedente concordante (ou, havendo
   divergencia entre precedentes, pelo mais recente — FR-006) recebe +1 na
-  pontuacao. O score registrado e reportado permanece limitado a 3 (escala
-  0..3 vigente); a fonte adicional pode compensar a ausencia de outra, mas
-  nao eleva o teto.
+  pontuacao SOMENTE SE `briefing` OU `spec_corrente`/`stack_sugerida` tambem
+  apoiam positivamente essa mesma opcao (suporte positivo — dec-027,
+  gate owasp-security S-1). "Consistente com a constitution / nao a viola"
+  NAO e suporte positivo para este fim. Sem esse suporte positivo o
+  precedente vale 0 para a opcao (continua elegivel para recomendacao no
+  bloqueio — FR-009). O score registrado e reportado permanece limitado a 3
+  (escala 0..3 vigente); a fonte adicional reforca ou desempata, mas nao
+  eleva o teto.
 - **FR-004**: Uma opcao cujo unico suporte e o precedente (nenhuma das tres
   fontes atuais concorda) MUST NOT ser decidida automaticamente; permanece
   sujeita a regra existente de score 1 e, na pratica, resulta em pausa humana.
+  Da mesma forma, precedente + "constitution nao violada", sem suporte
+  positivo de `briefing` ou `spec_corrente`/`stack_sugerida`, MUST NOT
+  decidir: o precedente nao soma nesse caso (FR-003).
 - **FR-005**: O precedente MUST NOT fornecer nem substituir dado factual de
   sistema externo (assinatura de request/response, URL/endpoint/querystring,
   valores concretos, ids, datas). Para esses dados a fonte real continua
@@ -238,7 +273,8 @@ que a Decisao registrada lista os ids consultados.
   o sistema MUST sinalizar a divergencia e, se a pergunta pausar, MUST listar
   TODOS os precedentes divergentes (id, projeto/feature e resposta) na
   pergunta ao operador, sem recomendar nenhum (ver FR-009). Sem "mais recente"
-  inequivoco (mesma data de resposta), nenhum precedente pontua.
+  inequivoco (mesma data de resposta), nenhum precedente pontua (decisao do
+  operador, dec-027).
 - **FR-007**: Toda resposta que use precedente MUST citar, de forma
   rastreavel, o id de cada bloqueio de origem (com projeto e feature de
   origem) na lista de referencias e na justificativa da Decisao registrada.
@@ -319,9 +355,11 @@ que a Decisao registrada lista os ids consultados.
   `mobile-app-multi-cliente`, e 242/251, feature `dynamic-forms` — cada par
   dentro da mesma feature), 100% delas recuperam o bloqueio par como
   precedente acima do limiar de similaridade de FR-015.
-- **SC-002**: Em 100% das decisoes automaticas auditadas, ha pelo menos uma
-  das tres fontes originais concordando com a opcao escolhida (zero decisoes
-  sustentadas apenas por precedente).
+- **SC-002**: Em 100% das decisoes automaticas auditadas cujo score inclui o
+  +1 de precedente, `briefing` ou `spec_corrente`/`stack_sugerida` apoia
+  positivamente a opcao escolhida (zero decisoes sustentadas apenas por
+  precedente, e zero sustentadas por precedente + "constitution nao
+  violada").
 - **SC-003**: 100% das respostas do answerer que usam precedente listam o id
   do bloqueio de origem, e 100% dessas Decisoes registradas repetem os ids na
   justificativa.
