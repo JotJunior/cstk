@@ -395,20 +395,20 @@ Ref: plan.md §Source Code; spec.md Assumptions "Local de entrega"
 
 Ref: quickstart.md Scenarios 1, 2, 5, 6, 7; SC-001..SC-004, SC-006, SC-007
 
-- [ ] 6.1.1 Scenario 1: `/reconcile-docs alpha` sobre copia da fixture; conferir
+- [x] 6.1.1 Scenario 1: `/reconcile-docs alpha` sobre copia da fixture; conferir
       `[reconciled:updated|removed|added ...]`, MUST intacto como
       `possible-regression`, evidencia `arquivo:linha` em cada linha do
       relatorio e `reconciliation.md` com 1 entrada
-- [ ] 6.1.2 Scenario 2 (idempotencia): segunda execucao sem novas mudancas;
+- [x] 6.1.2 Scenario 2 (idempotencia): segunda execucao sem novas mudancas;
       `git status --porcelain` identico e sem entrada nova no log
-- [ ] 6.1.3 Scenario 5: homonima ativa+arquivada; so a ativa e tocada e a
+- [x] 6.1.3 Scenario 5: homonima ativa+arquivada; so a ativa e tocada e a
       arquivada e informada
-- [ ] 6.1.4 Scenario 6: `--all` com feature sem documentos e `spec.md`
+- [x] 6.1.4 Scenario 6: `--all` com feature sem documentos e `spec.md`
       ilegivel; relatorio consolidado com uma linha por feature e as demais
       processadas
-- [ ] 6.1.5 Scenario 7: `--dry-run` de uma feature e de `--all`; acoes
+- [x] 6.1.5 Scenario 7: `--dry-run` de uma feature e de `--all`; acoes
       `proposed-*`, `git status --porcelain` vazio e nenhum `reconciliation.md`
-- [ ] 6.1.6 Verificacao comum "so documentacao": apenas arquivos da allowlist
+- [x] 6.1.6 Verificacao comum "so documentacao": apenas arquivos da allowlist
       sob `docs/specs/<feature>/` ou `_archived/<dir>/`, zero em
       `docs/specs/current/`
 
@@ -416,40 +416,40 @@ Ref: quickstart.md Scenarios 1, 2, 5, 6, 7; SC-001..SC-004, SC-006, SC-007
 
 Ref: quickstart.md Scenarios 3, 4, 8, 9, 10; FR-002, FR-014, FR-016
 
-- [ ] 6.2.1 Scenario 3: arquivada por nome sem data (`beta`) e legada (`gamma`)
-- [ ] 6.2.2 Scenario 4: nome inexistente (candidata `alpha`) e ambiguo
+- [x] 6.2.1 Scenario 3: arquivada por nome sem data (`beta`) e legada (`gamma`)
+- [x] 6.2.2 Scenario 4: nome inexistente (candidata `alpha`) e ambiguo
       (`delta`) encerram sem alterar nada
-- [ ] 6.2.3 Scenario 8: guarda de escrita e corpus canonico (repetir via a
+- [x] 6.2.3 Scenario 8: guarda de escrita e corpus canonico (repetir via a
       skill, alem do teste do script)
-- [ ] 6.2.4 Scenario 9: copia sem `git init`; aviso `no-git` e mesma
+- [x] 6.2.4 Scenario 9: copia sem `git init`; aviso `no-git` e mesma
       reconciliacao
-- [ ] 6.2.5 Scenario 10: `epsilon` so com `plan.md`; nenhum `spec.md` criado e
+- [x] 6.2.5 Scenario 10: `epsilon` so com `plan.md`; nenhum `spec.md` criado e
       divergencia que exigiria novo FR reportada como `unverifiable`
-- [ ] 6.2.6 Cenarios de 1.1 (projeto sem constitution) e de 1.3 (segredo
+- [x] 6.2.6 Cenarios de 1.1 (projeto sem constitution) e de 1.3 (segredo
       ficticio citado so por `arquivo:linha`) adicionados em 1.1.4/1.3.4
 
 ### 6.3 Trigger eval e suite completa `[A]`
 
 Ref: quickstart.md Scenario 11; feedback de suite lenta e locale
 
-- [ ] 6.3.1 Scenario 11: consultas "documentacao segue o codigo" disparam
+- [x] 6.3.1 Scenario 11: consultas "documentacao segue o codigo" disparam
       `reconcile-docs` e as de `converge` continuam esperando `converge`
 - [x] 6.3.2 Rodar a suite completa com `LC_ALL=C` em background preso ao
       processo pai, com log em arquivo, e ler o resultado do log
 - [x] 6.3.3 Corrigir falhas nao flaky; falhas flaky conhecidas passam isoladas
       e nao gateiam
-- [ ] 6.3.4 Rodar `validate-documentation` e `validate-docs-rendered` sobre os
+- [x] 6.3.4 Rodar `validate-documentation` e `validate-docs-rendered` sobre os
       documentos novos da skill
 
 ### 6.4 Dogfooding sobre o proprio repositorio (`--all --dry-run`) `[M]`
 
 Ref: SC-001, SC-007
 
-- [ ] 6.4.1 Rodar `/reconcile-docs --all --dry-run` neste repositorio e
+- [x] 6.4.1 Rodar `/reconcile-docs --all --dry-run` neste repositorio e
       confirmar `git status --porcelain` sem alteracao de arquivos
-- [ ] 6.4.2 Conferir que o relatorio consolidado contabiliza todas as features
+- [x] 6.4.2 Conferir que o relatorio consolidado contabiliza todas as features
       (ativas e arquivadas) sem tocar `docs/specs/current/`
-- [ ] 6.4.3 Registrar achados relevantes como Sugestao/Decisao; nao aplicar
+- [x] 6.4.3 Registrar achados relevantes como Sugestao/Decisao; nao aplicar
       gravacao real no portfolio sem decisao 1.6
 
 ### 6.5 Medicao de SC-005 (aguarda decisao 1.4) `[M]`

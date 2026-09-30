@@ -10,7 +10,7 @@ Uma linha por feature processada (obrigatorio em `--all`; em feature unica, uma 
 
 | Feature | Local | Status | Motivo | stale | removed | undocumented | possible-regression | unverifiable |
 |---------|-------|--------|--------|-------|---------|--------------|---------------------|--------------|
-| `<nome>` | `<active|archived>` | `<reconciled|no-divergence|skipped|error>` | `<obrigatorio em skipped/error>` | `<n>` | `<n>` | `<n>` | `<n>` | `<n>` |
+| `<nome>` | `<active ou archived>` | `<reconciled, no-divergence, skipped ou error>` | `<obrigatorio em skipped/error>` | `<n>` | `<n>` | `<n>` | `<n>` | `<n>` |
 
 ## Divergencias — `<feature>`
 

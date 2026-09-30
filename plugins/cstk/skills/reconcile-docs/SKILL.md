@@ -20,7 +20,7 @@ codigo**: a unica escrita possivel e em documentos da feature, sempre validada p
 
 ## Invocacao
 
-```
+```text
 /reconcile-docs <feature> [--dry-run]
 /reconcile-docs --all [--dry-run]
 ```
