@@ -1,1 +1,3 @@
 # orchestrator	baseline-line	justification
+feature	| `execute-task → review-task` | convergence | `converge` | divergencia spec-vs-codigo nos paths declarados (US5, FR-015/FR-019) | findings `CRITICAL` → BloqueioHumano (decisao do orquestrador; converge nao trava sozinha); demais → Decisao informativa (a propria skill se auto-registra — ver "### Etapa `converge`: fechamento condicional de onda" abaixo) |	referencia interna reescrita: "Etapa converge" deixou de estar abaixo no mesmo arquivo e passou para a referencia feature/converge (FR-004 ii)
+feature	de onda" abaixo.	referencia interna reescrita: "Etapa converge" deixou de estar abaixo no mesmo arquivo e passou para a referencia feature/converge (FR-004 ii)

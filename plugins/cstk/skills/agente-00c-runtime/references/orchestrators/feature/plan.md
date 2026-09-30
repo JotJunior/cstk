@@ -140,7 +140,7 @@ agora filtra `kind=gate`, e comandos avulsos pertencem a
 | `plan` | security | `owasp-security` | superficie de ataque OWASP/ASVS na arquitetura proposta | findings `critical`/`high` → BloqueioHumano OBRIGATORIO (constitution exige seguranca como principio MUST) |
 | `create-tasks` | template-fidelity | `validate-tasks-template.sh` (Bash, **deterministico**) | tasks.md conforma ao template canonico: prefixo FASE, checkboxes `- [ ]`, tag de criticidade, legendas, Matriz de Dependencias, Resumo, Escopo Coberto/Excluido | findings `critical` (sem FASE / sem checkbox / sem criticidade) → Decisao + tentativa de Edit (re-normalizar ao template); `warning` → Decisao informativa |
 | `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) → Decisao + tentativa de Edit; demais → Decisao informativa |
-| `execute-task → review-task` | convergence | `converge` | divergencia spec-vs-codigo nos paths declarados (US5, FR-015/FR-019) | findings `CRITICAL` → BloqueioHumano (decisao do orquestrador; converge nao trava sozinha); demais → Decisao informativa (a propria skill se auto-registra — ver "### Etapa `converge`: fechamento condicional de onda" abaixo) |
+| `execute-task → review-task` | convergence | `converge` | divergencia spec-vs-codigo nos paths declarados (US5, FR-015/FR-019) | findings `CRITICAL` → BloqueioHumano (decisao do orquestrador; converge nao trava sozinha); demais → Decisao informativa (a propria skill se auto-registra — ver "### Etapa `converge`: fechamento condicional de onda" na referencia `feature/converge`) |
 
 **Pre-gate deterministico do `create-tasks` (template-fidelity):** roda ANTES
 do gate `docs-render` (skeleton antes de render). Motivacao: o `docs-render`
@@ -214,7 +214,7 @@ principal cujo criterio de conclusao (`pipeline.sh detect-completion
 checagem estrutural manual sujeita a skip do orquestrador; nenhuma flag
 de skip existe para ela (FR-015 da feature-base `skill-converge`,
 redacao MUST literal). Ver "### Etapa `converge`: fechamento condicional
-de onda" abaixo.
+de onda" na referencia `feature/converge`.
 
 **Posicao no Loop principal**: gates rodam **apos o passo 7 (avancar
 fase)** e **antes do passo 8 (gerar backup)** — depois da skill

@@ -226,6 +226,13 @@ _is_internal_test() {
       # inventarios.
       [ -d "$REPO_ROOT/tests/fixtures/orchestrator-slim" ] && return 0
       return 1 ;;
+    test_orchestrator-refs-distribution.sh|test_orchestrator-refs-failsafe.sh)
+      # Cobrem orchestrator-refs.sh por outros angulos (distribuicao nos dois
+      # canais; stubs de falha segura nos prompts-base) — o dono 1:1 do
+      # script e test_orchestrator-refs.sh. orchestrator-slim FASE 7.
+      # Existence-guarded ao script coberto.
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/orchestrator-refs.sh" ] && return 0
+      return 1 ;;
     test_go-language-hooks.sh)
       # Cobre plugins/cstk-language-go/hooks/*.sh + language-related/go/
       # settings.json — fora da convencao cli/lib | skills/*/scripts.
