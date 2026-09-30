@@ -190,35 +190,35 @@ Ref: spec.md FR-003, FR-010, FR-018, SC-001; contracts/pointer-format.md regras 
 
 Ref: spec.md FR-001, FR-004, FR-010; data-model.md §Inventario F
 
-- [ ] 6.1.1 Criar `references/orchestrators/feature/bootstrap.md` com "Pre-flight da execucao" incluindo 3.bis (opt-ins MCP), e `feature/toolkit-issue.md` com "Gh issue exclusivo"
-- [ ] 6.1.2 Substituir por stubs (variante de falha de `bootstrap` da tarefa 1.3; `toolkit-issue` lida apenas com severidade `impeditiva`)
-- [ ] 6.1.3 Rodar paridade e testes migrados (optin-elicitation, optin-degradation, delivery-tier negativo); verdes
+- [x] 6.1.1 Criar `references/orchestrators/feature/bootstrap.md` com "Pre-flight da execucao" incluindo 3.bis (opt-ins MCP), e `feature/toolkit-issue.md` com "Gh issue exclusivo"
+- [x] 6.1.2 Substituir por stubs (variante de falha de `bootstrap` da tarefa 1.3; `toolkit-issue` lida apenas com severidade `impeditiva`)
+- [x] 6.1.3 Rodar paridade e testes migrados (optin-elicitation, optin-degradation, delivery-tier negativo); verdes
 
 ### 6.2 F: referencias `specify`, `plan`, `checklist` e `create-tasks` (fragmentos) `[A]`
 
 Ref: spec.md FR-001, FR-004; data-model.md §Inventario F; research.md Decision 2
 
-- [ ] 6.2.1 Criar `feature/specify.md`, `plan.md`, `checklist.md` e `create-tasks.md` com os fragmentos `readback-loop` (PRE-DECISAO), `quality-gates` (exceto converge), `briefing-high-items-gate` e `stage-commit-hook` (10.qui, sem o bloco Finalize terminal — tarefa 1.2)
-- [ ] 6.2.2 Substituir por stubs e manter o bloco `commit-mode.sh finalize` (F:627-637 do baseline) no prompt-base
-- [ ] 6.2.3 Conferir sincronia dos fragmentos entre os arquivos de F
-- [ ] 6.2.4 Rodar paridade e testes migrados (turn-completion, evidence-grounding); verdes
+- [x] 6.2.1 Criar `feature/specify.md`, `plan.md`, `checklist.md` e `create-tasks.md` com os fragmentos `readback-loop` (PRE-DECISAO), `quality-gates` (exceto converge), `briefing-high-items-gate` e `stage-commit-hook` (10.qui, sem o bloco Finalize terminal — tarefa 1.2)
+- [x] 6.2.2 Substituir por stubs e manter o bloco `commit-mode.sh finalize` (F:627-637 do baseline) no prompt-base
+- [x] 6.2.3 Conferir sincronia dos fragmentos entre os arquivos de F
+- [x] 6.2.4 Rodar paridade e testes migrados (turn-completion, evidence-grounding); verdes
 
 ### 6.3 F: referencias `clarify`, `execute-task` e `converge` `[A]`
 
 Ref: spec.md FR-001, FR-004, FR-005; data-model.md §Inventario F
 
-- [ ] 6.3.1 Criar `feature/clarify.md` (Mediacao clarify, Sequencia pre-spawn model-routing, Subagent depth: cap defensivo) e `feature/execute-task.md` (7.bis commit por task e camada B `.tasks[]`)
-- [ ] 6.3.2 Criar `feature/converge.md` (Quality Gates: etapa converge) e manter no prompt-base o cabecalho de "Subagent depth invariant" (vale para qualquer spawn)
-- [ ] 6.3.3 Substituir por stubs; conferir o limite de 2000 linhas e `scenario_doc_feature_orchestrator_sequencia_pre_spawn` verde contra `feature/clarify.md`
-- [ ] 6.3.4 Rodar paridade e testes migrados (spawn-model-apply, converge-orchestrator-gate); verdes
+- [x] 6.3.1 Criar `feature/clarify.md` (Mediacao clarify, Sequencia pre-spawn model-routing, Subagent depth: cap defensivo) e `feature/execute-task.md` (7.bis commit por task e camada B `.tasks[]`)
+- [x] 6.3.2 Criar `feature/converge.md` (Quality Gates: etapa converge) e manter no prompt-base o cabecalho de "Subagent depth invariant" (vale para qualquer spawn)
+- [x] 6.3.3 Substituir por stubs; conferir o limite de 2000 linhas e `scenario_doc_feature_orchestrator_sequencia_pre_spawn` verde contra `feature/clarify.md`
+- [x] 6.3.4 Rodar paridade e testes migrados (spawn-model-apply, converge-orchestrator-gate); verdes
 
 ### 6.4 F: secao "Referencias de fase" e verificacao da meta `[A]`
 
 Ref: spec.md FR-003, FR-010, FR-018, SC-001
 
-- [ ] 6.4.1 Adicionar a secao "Referencias de fase" em F logo apos "Contrato de conclusao de turno", com a regra FR-010 e a variante `bootstrap` da tarefa 1.3
-- [ ] 6.4.2 Medir `wc -c` do prompt-base de F e conferir `<= 62821` bytes (FR-018); se nao atingir sem violar paridade, registrar na tarefa 8.1
-- [ ] 6.4.3 Rodar o teste de paridade completo para F e commitar (commit atomico da onda)
+- [x] 6.4.1 Adicionar a secao "Referencias de fase" em F logo apos "Contrato de conclusao de turno", com a regra FR-010 e a variante `bootstrap` da tarefa 1.3
+- [x] 6.4.2 Medir `wc -c` do prompt-base de F e conferir `<= 62821` bytes (FR-018); se nao atingir sem violar paridade, registrar na tarefa 8.1
+- [x] 6.4.3 Rodar o teste de paridade completo para F e commitar (commit atomico da onda)
 
 ---
 
