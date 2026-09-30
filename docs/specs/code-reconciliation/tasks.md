@@ -458,15 +458,16 @@ Ref: checklists/requirements.md CHK022; spec.md SC-005; depende de 1.4
 
 Metodo (dec-035): amostragem manual pelo dono do produto sobre `reconciliation.md` apos um
 periodo de uso; protocolo registrado em `quickstart.md` ("Medicao de SC-005"). ADIADAS
-(nao executaveis por agente): em 2026-09-30 nao ha reconciliacao real gravada (dogfooding
-6.4 foi so `--dry-run`); nao se inventa resultado (Constitution VI). Seguem para o dono do
-produto apos periodo de uso, fora do gate desta feature.
+(nao executaveis por agente, decisao do operador dec-046): em 2026-09-30 nao ha reconciliacao real gravada 
+(dogfooding 6.4 foi so `--dry-run`); nao se inventa resultado (Constitution VI). Seguem para o dono do
+produto apos periodo de uso, fora do gate desta feature. Adiadas por block-003 → dec-046 para serem executadas
+apos uso real em producao (fora desta feature).
 
 - [ ] 6.5.1 Executar o metodo de medicao definido pelo dono do produto em 1.4
-      (nao executar antes da resposta)
+      (nao executar antes da resposta) — ADIADA (dec-046)
 - [ ] 6.5.2 Registrar o resultado (>= 90% sem edicao manual, sobre o
-      denominador definido em 1.2) no relatorio da feature
-- [ ] 6.5.3 Se abaixo de 90%, abrir tarefa de ajuste em `references/`/SKILL.md
+      denominador definido em 1.2) no relatorio da feature — ADIADA (dec-046)
+- [ ] 6.5.3 Se abaixo de 90%, abrir tarefa de ajuste em `references/`/SKILL.md — ADIADA (dec-046)
 
 ---
 
@@ -480,13 +481,25 @@ superficie publica nova -> MINOR, sem rename/remocao)
 - [x] 7.1.1 Acrescentar entrada em `CHANGELOG.md` descrevendo a skill
       `reconcile-docs` (sem alteracao de description de skill existente, salvo
       nota se 5.1.4 tocar a `converge`)
-- [ ] 7.1.2 Aplicar o bump MINOR nos manifests em lockstep conforme o processo
+- [x] 7.1.2 Aplicar o bump MINOR nos manifests em lockstep conforme o processo
       de release do repositorio (identificar os arquivos no momento da
       execucao)
-- [ ] 7.1.3 Conferir que os testes de versao/contagem seguem verdes apos o
+      - Bump 10.12.0 → 10.13.0 em: `.claude-plugin/marketplace.json`, 
+        `plugins/cstk/.claude-plugin/plugin.json`, `plugins/cstk-jira/.claude-plugin/plugin.json`,
+        `plugins/cstk-language-go/.claude-plugin/plugin.json`, `panel/package.json`,
+        `panel/apps/server/package.json`, `panel/apps/web/package.json`,
+        `panel/packages/shared-types/package.json`, `panel/package-lock.json`
+      - Renomeado `CHANGELOG.md`: `## [Unreleased]` → `## [10.13.0] - 2026-09-30`
+
+- [x] 7.1.3 Conferir que os testes de versao/contagem seguem verdes apos o
       bump
-- [ ] 7.1.4 Confirmar que o release em si (tag/PR/merge) fica para a skill
+      - `tests/test_doc-counts.sh`: PASS 3/3
+      - `tests/cstk/test_build-release.sh`: PASS 11/11
+
+- [x] 7.1.4 Confirmar que o release em si (tag/PR/merge) fica para a skill
       local `release-wave`, fora deste backlog
+      - Confirmado: bump MINOR versao 10.12.0 → 10.13.0 concluido (Decisao dec-046 
+        operador autorizou descontinuar 6.5.1-6.5.3); proxima etapa e tag/PR/merge via `/release-wave`
 
 ---
 
