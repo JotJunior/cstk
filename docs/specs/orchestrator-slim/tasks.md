@@ -143,44 +143,44 @@ Uma fase por vez, rodando `test_orchestrator-slim-parity.sh` e os testes migrado
 
 Ref: spec.md FR-001, FR-003, FR-004; data-model.md §Inventario O; contracts/pointer-format.md
 
-- [ ] 5.1.1 Criar `references/orchestrators/root/bootstrap.md` com "Init de aspectos-chave" e "Loop: 1.bis opt-ins MCP" (ordem original, cabecalho e marcador final `ORCH-REF-END`); stubs nos locais originais, com a variante de falha da tarefa 1.3
-- [ ] 5.1.2 Criar `root/briefing.md` (5.a e fragmento `delivery-tier-propagation` de 5.d.quater), `root/constitution.md` (5.b) e `root/roadmap.md` (5.b.bis e 9.quater), preservando o bloco `commit-mode.sh finalize` do encerramento roadmap
-- [ ] 5.1.3 Substituir cada secao por stub uniforme; registrar em `rewritten-lines.tsv` toda referencia interna ("ver secao X") reescrita
-- [ ] 5.1.4 Rodar o teste de paridade e os testes migrados afetados (roadmap-mode, optin-elicitation); todos verdes, com limite de 2000 linhas por arquivo
+- [x] 5.1.1 Criar `references/orchestrators/root/bootstrap.md` com "Init de aspectos-chave" e "Loop: 1.bis opt-ins MCP" (ordem original, cabecalho e marcador final `ORCH-REF-END`); stubs nos locais originais, com a variante de falha da tarefa 1.3
+- [x] 5.1.2 Criar `root/briefing.md` (5.a e fragmento `delivery-tier-propagation` de 5.d.quater), `root/constitution.md` (5.b) e `root/roadmap.md` (5.b.bis e 9.quater), preservando o bloco `commit-mode.sh finalize` do encerramento roadmap
+- [x] 5.1.3 Substituir cada secao por stub uniforme; registrar em `rewritten-lines.tsv` toda referencia interna ("ver secao X") reescrita
+- [x] 5.1.4 Rodar o teste de paridade e os testes migrados afetados (roadmap-mode, optin-elicitation); todos verdes, com limite de 2000 linhas por arquivo
 
 ### 5.2 O: referencias `specify`, `plan`, `checklist` e `create-tasks` (fragmentos) `[A]`
 
 Ref: spec.md FR-001, FR-004, FR-007; data-model.md §Inventario O; research.md Decision 2
 
-- [ ] 5.2.1 Criar `root/specify.md`, `root/plan.md`, `root/checklist.md` e `root/create-tasks.md` (5.c) com os fragmentos multi-fase: `delivery-tier-propagation` (5.d.quater), `readback-loop` (5.d.bis), `quality-gates` (5.f), `stage-commit-hook` (9.ter, sem o bloco Finalize terminal — tarefa 1.2)
-- [ ] 5.2.2 Substituir cada secao por stub (um marcador `ORCH-REF` por fase citada) e manter o bloco `commit-mode.sh finalize` no prompt-base conforme decisao 1.2
-- [ ] 5.2.3 Conferir que as copias de cada fragmento sao byte-identicas entre os arquivos do MESMO orquestrador (teste de sincronia) e que nenhum fragmento e compartilhado entre O e F
-- [ ] 5.2.4 Rodar paridade e testes migrados (turn-completion, evidence-grounding, data-veracity-verifier); verdes
+- [x] 5.2.1 Criar `root/specify.md`, `root/plan.md`, `root/checklist.md` e `root/create-tasks.md` (5.c) com os fragmentos multi-fase: `delivery-tier-propagation` (5.d.quater), `readback-loop` (5.d.bis), `quality-gates` (5.f), `stage-commit-hook` (9.ter, sem o bloco Finalize terminal — tarefa 1.2)
+- [x] 5.2.2 Substituir cada secao por stub (um marcador `ORCH-REF` por fase citada) e manter o bloco `commit-mode.sh finalize` no prompt-base conforme decisao 1.2
+- [x] 5.2.3 Conferir que as copias de cada fragmento sao byte-identicas entre os arquivos do MESMO orquestrador (teste de sincronia) e que nenhum fragmento e compartilhado entre O e F
+- [x] 5.2.4 Rodar paridade e testes migrados (turn-completion, evidence-grounding, data-veracity-verifier); verdes
 
 ### 5.3 O: referencias `clarify` e `execute-task` `[A]`
 
 Ref: spec.md FR-001, FR-004, FR-005; data-model.md §Inventario O
 
-- [ ] 5.3.1 Criar `root/clarify.md` com 5.e (dois atores) e 5.e.bis (pre-spawn model-routing, maior secao, 21029 bytes) e `stage-commit-hook` quando aplicavel
-- [ ] 5.3.2 Criar `root/execute-task.md` com 5.d.ter camada B `.tasks[]` + commit por task; manter no prompt-base `.events[]`, custo em tokens e retro-compat (rodam em toda onda)
-- [ ] 5.3.3 Substituir por stubs e conferir o limite de 2000 linhas por arquivo
-- [ ] 5.3.4 Rodar paridade e testes migrados (spawn-model-apply, `test_model-routing.sh`); verdes
+- [x] 5.3.1 Criar `root/clarify.md` com 5.e (dois atores) e 5.e.bis (pre-spawn model-routing, maior secao, 21029 bytes) e `stage-commit-hook` quando aplicavel
+- [x] 5.3.2 Criar `root/execute-task.md` com 5.d.ter camada B `.tasks[]` + commit por task; manter no prompt-base `.events[]`, custo em tokens e retro-compat (rodam em toda onda)
+- [x] 5.3.3 Substituir por stubs e conferir o limite de 2000 linhas por arquivo
+- [x] 5.3.4 Rodar paridade e testes migrados (spawn-model-apply, `test_model-routing.sh`); verdes
 
 ### 5.4 O: referencias `converge` e `review-features` `[A]`
 
 Ref: spec.md FR-001, FR-004; data-model.md §Inventario O; test_converge-orchestrator-gate.sh
 
-- [ ] 5.4.1 Criar `root/converge.md` (5.f.bis) e `root/review-features.md` (5.f.ter delta-gate); manter o bloco `commit-mode.sh finalize` da onda terminal no prompt-base (decisao 1.2)
-- [ ] 5.4.2 Substituir por stubs e confirmar que o padrao negativo `Gate incondicional .converge` continua ausente do corpus inteiro
-- [ ] 5.4.3 Rodar paridade e `test_converge-orchestrator-gate.sh`; verdes
+- [x] 5.4.1 Criar `root/converge.md` (5.f.bis) e `root/review-features.md` (5.f.ter delta-gate); manter o bloco `commit-mode.sh finalize` da onda terminal no prompt-base (decisao 1.2)
+- [x] 5.4.2 Substituir por stubs e confirmar que o padrao negativo `Gate incondicional .converge` continua ausente do corpus inteiro
+- [x] 5.4.3 Rodar paridade e `test_converge-orchestrator-gate.sh`; verdes
 
 ### 5.5 O: secao "Referencias de fase" e verificacao da meta `[A]`
 
 Ref: spec.md FR-003, FR-010, FR-018, SC-001; contracts/pointer-format.md regras 3 e 4
 
-- [ ] 5.5.1 Adicionar a secao curta "Referencias de fase" logo apos "Contrato de conclusao de turno" com a regra FR-010 (nao prosseguir de memoria; Decisao + bloqueio humano; incluindo a variante `bootstrap` da tarefa 1.3) e a regra de leitura unica por onda e de releitura em retomada
-- [ ] 5.5.2 Medir `wc -c` do prompt-base de O e conferir `<= 87608` bytes (FR-018); se nao atingir sem violar paridade, devolver a decisao ao registro da tarefa 8.1 (nunca remover conteudo contratual)
-- [ ] 5.5.3 Rodar o teste de paridade completo para O e commitar (commit atomico da onda)
+- [x] 5.5.1 Adicionar a secao curta "Referencias de fase" logo apos "Contrato de conclusao de turno" com a regra FR-010 (nao prosseguir de memoria; Decisao + bloqueio humano; incluindo a variante `bootstrap` da tarefa 1.3) e a regra de leitura unica por onda e de releitura em retomada
+- [x] 5.5.2 Medir `wc -c` do prompt-base de O e conferir `<= 87608` bytes (FR-018); se nao atingir sem violar paridade, devolver a decisao ao registro da tarefa 8.1 (nunca remover conteudo contratual)
+- [x] 5.5.3 Rodar o teste de paridade completo para O e commitar (commit atomico da onda)
 
 ---
 

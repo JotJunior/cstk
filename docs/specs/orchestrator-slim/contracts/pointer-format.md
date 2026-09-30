@@ -12,9 +12,10 @@ original, por um stub:
 > **Movida para referencia de fase.** Fase/condicao: etapa `clarify`.
 > ANTES de executar qualquer passo desta secao, resolva e leia a referencia:
 > `orchestrator-refs.sh path --orchestrator root --phase clarify` + tool Read
-> no caminho retornado. Se o comando falhar ou a leitura falhar, NAO execute
-> a fase de memoria: registre Decisao (`--classe operacional`) e bloqueio
-> humano e encerre a onda (FR-010).
+> no caminho retornado. Se o comando falhar ou a leitura falhar (arquivo
+> ausente ou sem o marcador final `ORCH-REF-END`), NAO execute a fase de
+> memoria: registre Decisao (`--classe operacional`) e bloqueio humano e
+> encerre a onda (FR-010).
 ```
 
 Regras:
