@@ -5,7 +5,13 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [Unreleased]
+## [10.11.0] - 2026-09-30
+
+Os dois orquestradores autonomos eram carregados inteiros a cada onda
+(146 KB e 105 KB), embora cada onda use so uma fase. O conteudo especifico
+de fase saiu do prompt-base para referencias lidas sob demanda, com
+paridade de comportamento provada por teste; o prompt-base de cada um
+encolheu cerca de 46% em bytes.
 
 ### Changed
 
@@ -40,6 +46,20 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
   temporario, plugin isolado), `test_orchestrator-refs-failsafe.sh` e
   `test_measure-orchestrator-prompts.sh`; 11 testes que liam os prompts passam a
   ler o corpus (prompt-base + referencias) sem afrouxar padroes.
+
+### Fixed
+
+- **Referencias internas quebradas.** `clarify/SKILL.md` apontava para a
+  secao inexistente "§5.e.a" do orquestrador raiz (agora aponta para a
+  checagem de disponibilidade da tool Agent na referencia `root/clarify`);
+  `agente-00c.md` e `agente-00c-resume.md` citavam o passo 10.bis como a
+  ingestao do orquestrador raiz, que e o 9.bis; as referencias de feature
+  `specify`/`plan`/`create-tasks` diziam "Etapa converge abaixo", secao que
+  passou para a referencia `feature/converge`.
+- **Descricoes de skill com `<` `>`.** A tela de plugins do claude.ai
+  rejeita tags XML na `description` do `SKILL.md` (6 avisos): `execute-task`
+  (`"execute task <id>"` -> `"execute task {id}"`), `jira-convert` e
+  `jira-sync` (`<->` trocado por texto).
 
 ## [10.10.1] - 2026-09-29
 
@@ -8529,6 +8549,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.11.0]: https://github.com/JotJunior/cstk/releases/tag/v10.11.0
 [10.10.1]: https://github.com/JotJunior/cstk/releases/tag/v10.10.1
 [10.10.0]: https://github.com/JotJunior/cstk/releases/tag/v10.10.0
 [10.9.0]: https://github.com/JotJunior/cstk/releases/tag/v10.9.0
