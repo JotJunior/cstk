@@ -212,6 +212,27 @@ _is_internal_test() {
       # tratamento de test_validate-plugin-manifests.sh). FASE 5.1-5.3 de
       # panel-monorepo (FR-015/FR-016).
       return 0 ;;
+    test_measure-orchestrator-prompts.sh)
+      # Cobre scripts/measure-orchestrator-prompts.sh (top-level scripts/,
+      # fora da convencao cli/lib | skills/*/scripts — mesmo tratamento de
+      # test_validate-plugin-manifests.sh). orchestrator-slim FASE 2.
+      # Existence-guarded ao script coberto.
+      [ -f "$REPO_ROOT/scripts/measure-orchestrator-prompts.sh" ] && return 0
+      return 1 ;;
+    test_orchestrator-slim-parity.sh)
+      # Prova de paridade dos prompts dos orquestradores contra o baseline
+      # (inventarios em tests/fixtures/orchestrator-slim/) — textual, sem
+      # script "dono" 1:1. orchestrator-slim FASE 2. Existence-guarded aos
+      # inventarios.
+      [ -d "$REPO_ROOT/tests/fixtures/orchestrator-slim" ] && return 0
+      return 1 ;;
+    test_orchestrator-refs-distribution.sh|test_orchestrator-refs-failsafe.sh)
+      # Cobrem orchestrator-refs.sh por outros angulos (distribuicao nos dois
+      # canais; stubs de falha segura nos prompts-base) — o dono 1:1 do
+      # script e test_orchestrator-refs.sh. orchestrator-slim FASE 7.
+      # Existence-guarded ao script coberto.
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/orchestrator-refs.sh" ] && return 0
+      return 1 ;;
     test_go-language-hooks.sh)
       # Cobre plugins/cstk-language-go/hooks/*.sh + language-related/go/
       # settings.json — fora da convencao cli/lib | skills/*/scripts.

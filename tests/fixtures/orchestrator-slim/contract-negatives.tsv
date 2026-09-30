@@ -1,0 +1,9 @@
+# orchestrator	grep-flags	pattern	source-test:line
+root	-E	\$\([^)]*\bcase\b	tests/test_orchestrator-spawn-model-apply.sh:120
+feature	-E	\$\([^)]*\bcase\b	tests/test_orchestrator-spawn-model-apply.sh:120
+root	-E	Gate incondicional .converge	tests/test_converge-orchestrator-gate.sh:67
+feature	-E	Gate incondicional .converge	tests/test_converge-orchestrator-gate.sh:71
+feature	-F	delivery_tier	tests/test_command-spawn-optin-elicitation.sh:238
+root	-F	ja decidiu o ramo LEGADO por token vazio	tests/test_command-spawn-optin-elicitation.sh:412
+feature	-F	ja decidiu o ramo LEGADO por token vazio	tests/test_command-spawn-optin-elicitation.sh:412
+feature	-Ei	delivery_tier|delivery-tier	tests/test_command-spawn-delivery-tier.sh:178

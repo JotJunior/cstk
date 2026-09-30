@@ -33,9 +33,10 @@ Esta skill suporta dois modos:
    Dentro do modo dois-atores, se a tool Agent estiver indisponivel
    no harness (sintoma: spawn falha com erro de tool, nao com erro
    de prompt), o orquestrador faz downgrade EXPLICITO via Decisao
-   auditada — nao silently fallback. Ver
-   `agente-00c-orchestrator.md` §5.e.a (checagem de disponibilidade
-   da tool Agent).
+   auditada — nao silently fallback. Ver "Checagem de disponibilidade
+   da tool Agent" na referencia de fase `root/clarify`
+   (`agente-00c-runtime/references/orchestrators/root/clarify.md`,
+   carregada pela etapa `clarify` de `agente-00c-orchestrator.md`).
 
 ## Pre-requisitos
 

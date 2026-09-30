@@ -21,13 +21,22 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
+
+# Corpus = prompt-base + referencias de fase (orchestrator-slim). Presenca e
+# negativos valem para o corpus; a ORDEM (ponteiro/bloco de opt-ins antes de
+# `state-ondas.sh start`) e medida no prompt-base, onde o ponteiro `bootstrap`
+# fica antes da linha de abertura de onda.
+orch_corpus_init
 
 CMD_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
 CMD_AGENTE_RES="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
 CMD_FEATURE="$REPO_ROOT/plugins/cstk/commands/feature-00c.md"
 CMD_FEATURE_RES="$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md"
-AGENT_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
-AGENT_FEATURE="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+AGENT_AGENTE=$(orch_corpus_file root) || AGENT_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+BASE_AGENTE=$(orch_base_path root)
+AGENT_FEATURE=$(orch_corpus_file feature) || AGENT_FEATURE="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+BASE_FEATURE=$(orch_base_path feature)
 COLLECT_OPTINS_TS="$REPO_ROOT/plugins/cstk/mcp/state-server/src/tools/collect_optins.ts"
 
 _first_line_of() {
@@ -72,8 +81,17 @@ scenario_ordem_feature_init_mcpstart_spawn() {
 }
 
 scenario_ordem_agente_collect_optins_antes_de_state_ondas_start() {
-  _l_primeiro_ato=$(_first_line_of "$AGENT_AGENTE" '\*\*primeiro ato\*\*')
-  _l_onda=$(_first_line_of "$AGENT_AGENTE" '^2\. \*\*Onda nova\*\*: .state-ondas\.sh start')
+  # Ancora: ponteiro `bootstrap` no prompt-base (apos a movimentacao) ou, antes
+  # dela, o proprio `**primeiro ato**`. Com o ponteiro, `**primeiro ato**` MUST
+  # viver em bootstrap.md.
+  _l_primeiro_ato=$(_first_line_of "$BASE_AGENTE" '<!-- ORCH-REF: root/bootstrap -->')
+  if [ -n "$_l_primeiro_ato" ]; then
+    orch_ref root bootstrap 2>/dev/null | grep -Eq '\*\*primeiro ato\*\*' \
+      || { _fail "ancora" "**primeiro ato** ausente em root/bootstrap.md"; return 1; }
+  else
+    _l_primeiro_ato=$(_first_line_of "$BASE_AGENTE" '\*\*primeiro ato\*\*')
+  fi
+  _l_onda=$(_first_line_of "$BASE_AGENTE" '^2\. \*\*Onda nova\*\*: .state-ondas\.sh start')
   [ -n "$_l_primeiro_ato" ] && [ -n "$_l_onda" ] \
     || { _error "ancora ausente" "primeiro_ato=$_l_primeiro_ato onda=$_l_onda"; return 2; }
   [ "$_l_primeiro_ato" -lt "$_l_onda" ] \
@@ -85,8 +103,16 @@ scenario_ordem_feature_collect_optins_antes_de_state_ondas_start() {
   # "primeiro ato" quebra de linha no markdown fonte (**primeiro\n   ato**
   # em agente-00c-feature-orchestrator.md) — usa o inicio do bloco 3.bis
   # como ancora robusta a rewrap.
-  _l_primeiro_ato=$(_first_line_of "$AGENT_FEATURE" '3\.bis \*\*Coleta de opt-ins via MCP')
-  _l_onda=$(_first_line_of "$AGENT_FEATURE" '^4\. \*\*Iniciar onda\*\* via .state-ondas\.sh start')
+  # Ancora: ponteiro `bootstrap` no prompt-base (apos a movimentacao) ou, antes
+  # dela, o bloco 3.bis. Com o ponteiro, o bloco 3.bis MUST viver em bootstrap.md.
+  _l_primeiro_ato=$(_first_line_of "$BASE_FEATURE" '<!-- ORCH-REF: feature/bootstrap -->')
+  if [ -n "$_l_primeiro_ato" ]; then
+    orch_ref feature bootstrap 2>/dev/null | grep -Eq '3\.bis \*\*Coleta de opt-ins via MCP' \
+      || { _fail "ancora" "bloco 3.bis ausente em feature/bootstrap.md"; return 1; }
+  else
+    _l_primeiro_ato=$(_first_line_of "$BASE_FEATURE" '3\.bis \*\*Coleta de opt-ins via MCP')
+  fi
+  _l_onda=$(_first_line_of "$BASE_FEATURE" '^4\. \*\*Iniciar onda\*\* via .state-ondas\.sh start')
   [ -n "$_l_primeiro_ato" ] && [ -n "$_l_onda" ] \
     || { _error "ancora ausente" "3bis=$_l_primeiro_ato onda=$_l_onda"; return 2; }
   [ "$_l_primeiro_ato" -lt "$_l_onda" ] \

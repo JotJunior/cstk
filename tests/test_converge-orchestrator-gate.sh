@@ -31,9 +31,14 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
 
-ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+# Corpus = prompt-base + referencias de fase do orquestrador (orchestrator-slim).
+# Padroes negativos (framing "Gate incondicional") valem para o corpus INTEIRO.
+orch_corpus_init
+
+ORCH_AGENTE=$(orch_corpus_file root) || ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT=$(orch_corpus_file feature) || ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 # ==== Linha na tabela de Quality Gates complementares (4.1.1/4.2.1) ====
 
