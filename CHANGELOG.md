@@ -5,6 +5,42 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Changed
+
+- **Orquestradores autonomos enxutos: prompt-base + referencia de fase sob
+  demanda.** `agente-00c-orchestrator` (146014 -> 78553 bytes) e
+  `agente-00c-feature-orchestrator` (104702 -> 55658 bytes) passam a carregar so
+  o que vale para toda onda; o conteudo especifico de cada fase foi movido, sem
+  alteracao semantica, para
+  `skills/agente-00c-runtime/references/orchestrators/{root,feature}/<fase>.md`
+  (12 referencias para o orquestrador raiz, 9 para o de feature) e e lido uma
+  unica vez por onda, ao entrar na fase. No lugar de cada secao movida ha um
+  stub com o mesmo heading e o marcador `ORCH-REF`. A pipeline nao muda:
+  `test_orchestrator-slim-parity.sh` garante preservacao de linhas, blocos de
+  comando, literais contratuais e sincronia dos fragmentos multi-fase.
+  Falha segura: se a referencia nao resolver, a leitura falhar ou o arquivo nao
+  terminar em `ORCH-REF-END`, o orquestrador registra Decisao + bloqueio humano
+  em vez de prosseguir de memoria. A reducao e medida em bytes carregados
+  (`docs/specs/orchestrator-slim/measurements/`); nao ha contador de tokens
+  offline, entao nenhuma reducao de tokens observada e afirmada.
+
+### Added
+
+- **`orchestrator-refs.sh path|list`** (skill `agente-00c-runtime`): resolve o
+  caminho de uma referencia de fase nos dois canais de distribuicao
+  (`cstk install`/tarball e plugin nativo), com confinamento (fase
+  `[a-z0-9-]+`, sem symlink, diretorio fisico sob `references/orchestrators/`).
+- **`scripts/measure-orchestrator-prompts.sh`** (desenvolvimento, fora do
+  catalogo): mede bytes do prompt-base e de base + 1 referencia por fase num
+  commit, com secao opcional de consumo observado da knowledge.db.
+- Testes: `test_orchestrator-slim-parity.sh`, `test_orchestrator-refs.sh`,
+  `test_orchestrator-refs-distribution.sh` (tarball, `cstk install` em `HOME`
+  temporario, plugin isolado), `test_orchestrator-refs-failsafe.sh` e
+  `test_measure-orchestrator-prompts.sh`; 11 testes que liam os prompts passam a
+  ler o corpus (prompt-base + referencias) sem afrouxar padroes.
+
 ## [10.10.1] - 2026-09-29
 
 Revisao do catalogo contra os recursos atuais do Claude Code: tres hooks

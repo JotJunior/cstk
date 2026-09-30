@@ -261,9 +261,9 @@ Ref: spec.md FR-011, FR-012, FR-017, FR-018, SC-001, SC-005, SC-006; quickstart.
 
 Ref: spec.md FR-015, SC-003; plan.md §Ordem passo 8; feedback de contagens (`test_doc-counts.sh`, `test_build-release.sh`)
 
-- [ ] 9.1.1 Acrescentar a entrada de CHANGELOG da feature (orquestradores enxutos, referencias em `references/orchestrators/`, script `orchestrator-refs.sh`, medicao) sem afirmar reducao de tokens observada
-- [ ] 9.1.2 Detectar e atualizar contagens documentadas afetadas (README/docs de artefatos, `tests/cstk/test_build-release.sh`, `tests/cstk/test_quickstart-e2e.sh`) e regenerar fixtures com `tests/cstk/fixtures/regen.sh` se o conteudo do skill de runtime mudou
-- [ ] 9.1.3 Revisar identificadores novos em ingles (nomes de arquivo, fragmentos, chaves) e prosa em pt-BR (FR-014)
+- [x] 9.1.1 Acrescentar a entrada de CHANGELOG da feature (orquestradores enxutos, referencias em `references/orchestrators/`, script `orchestrator-refs.sh`, medicao) sem afirmar reducao de tokens observada
+- [x] 9.1.2 Detectar e atualizar contagens documentadas afetadas (README/docs de artefatos, `tests/cstk/test_build-release.sh`, `tests/cstk/test_quickstart-e2e.sh`) e regenerar fixtures com `tests/cstk/fixtures/regen.sh` se o conteudo do skill de runtime mudou
+- [x] 9.1.3 Revisar identificadores novos em ingles (nomes de arquivo, fragmentos, chaves) e prosa em pt-BR (FR-014)
 
 ### 9.2 Suite completa e fechamento `[A]`
 
