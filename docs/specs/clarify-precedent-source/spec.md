@@ -21,11 +21,12 @@ aproximada, mas ids, perguntas e respostas sao dado real):
 
 - 354 bloqueios humanos em 19 projetos; 353 respondidos.
 - Por etapa de origem: clarify 158, execute-task 129, plan 48.
-- Perguntas praticamente identicas foram re-perguntadas ao operador: blocos
-  108 e 112 (projeto `wp-intel`, feature `mobile-app-multi-cliente`, etapa
-  clarify — mesma pergunta sobre persistencia do historico de conversas, mesma
-  resposta) e 242 e 251 (feature `dynamic-forms`, etapa execute-task — mesma
-  pergunta sobre 3 tasks restantes, mesma resposta).
+- Perguntas praticamente identicas foram re-perguntadas ao operador, cada par
+  DENTRO da mesma feature (nao entre features): blocos 108 e 112 (projeto
+  `wp-intel`, feature `mobile-app-multi-cliente`, etapa clarify — mesma
+  pergunta sobre persistencia do historico de conversas, mesma resposta) e 242
+  e 251 (feature `dynamic-forms`, etapa execute-task — mesma pergunta sobre 3
+  tasks restantes, mesma resposta).
 - Assuntos recorrentes com respostas consistentes entre projetos (por exemplo:
   escopo novo vira feature dedicada; retencao/LGPD anonimiza PII preservando o
   registro financeiro; credencial ausente vira pendente-por-ambiente; seguir
@@ -35,6 +36,27 @@ aproximada, mas ids, perguntas e respostas sao dado real):
 
 Hoje a leitura da memoria de conhecimento so ocorre no inicio de `specify` e
 `plan`; nunca no clarify.
+
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: Escopo de origem dos precedentes (FR-013) — qualquer projeto da maquina ou
+  so o projeto corrente? → A: Qualquer projeto da maquina, sempre rotulado com
+  projeto/feature de origem.
+- Q: Idade/atualidade do precedente (FR-014)? → A: Sem idade maxima. Na
+  divergencia entre precedentes semelhantes, o mais recente prevalece, MAS SO
+  PARA FINS DE SCORE (+1); a recencia nao filtra nem descarta precedentes.
+- Q: Criterio de "semelhante" (FR-015)? → A: Limiar objetivo minimo de
+  similaridade (valor calibrado no plan contra os pares 108/112 e 242/251) mais
+  julgamento do answerer com justificativa.
+- Q: Conflito FR-006 x FR-009 quando os precedentes divergem e a pergunta
+  pausa? → A: Ao pausar para o operador NAO recomendar; listar todos os
+  precedentes divergentes com id, projeto/feature e resposta.
+- Desambiguacao do operador ("recencia so no score"): para pontuar (+1) vale o
+  precedente mais recente; na pergunta ao operador todos os precedentes
+  divergentes aparecem como tais, sem recomendacao. A recomendacao de FR-009 so
+  existe quando nao ha divergencia entre os precedentes.
 
 ## User Scenarios & Testing
 
@@ -93,9 +115,10 @@ valor concreto — o valor nao pode ser adotado.
    ponto para esse dado e a pergunta segue o caminho de fonte real ou pausa
    humana.
 3. **Given** precedentes semelhantes com respostas divergentes entre si,
-   **When** o answerer pontua, **Then** o precedente nao soma ponto a nenhuma
-   opcao e, se a pergunta pausar, todos os precedentes divergentes aparecem
-   sinalizados como divergentes.
+   **When** o answerer pontua, **Then** apenas o precedente mais recente conta
+   (+1) para a sua opcao, a divergencia e sinalizada e, se a pergunta pausar,
+   todos os precedentes divergentes aparecem listados como divergentes (id,
+   projeto/feature e resposta), sem recomendacao.
 
 ---
 
@@ -104,7 +127,9 @@ valor concreto — o valor nao pode ser adotado.
 Quando o score nao fecha e o orquestrador registra o bloqueio humano, a
 pergunta ao operador inclui o precedente mais proximo como opcao recomendada,
 com o id do bloqueio original, para que o operador confirme ou discorde com
-um unico gesto.
+um unico gesto. Se os precedentes semelhantes divergem entre si, NAO ha
+recomendacao: todos aparecem listados como divergentes, com id,
+projeto/feature e resposta, e o operador decide.
 
 **Why this priority**: reduz o custo de cada bloqueio que ainda precisa ir ao
 humano; depende da recuperacao da Story 1 mas e entregavel separadamente.
@@ -116,12 +141,17 @@ de origem, e que a resposta nao e aplicada sem o operador.
 **Acceptance Scenarios**:
 
 1. **Given** uma pergunta que pausou (score insuficiente) e ao menos um
-   precedente semelhante, **When** o orquestrador registra o bloqueio humano,
-   **Then** a pergunta ao operador apresenta o precedente mais proximo como
-   opcao recomendada, citando o id do bloqueio original e o projeto/feature.
+   precedente semelhante, sem divergencia entre os precedentes, **When** o
+   orquestrador registra o bloqueio humano, **Then** a pergunta ao operador
+   apresenta o precedente mais proximo como opcao recomendada, citando o id do
+   bloqueio original e o projeto/feature.
 2. **Given** a mesma situacao, **When** o operador responde algo diferente do
    recomendado, **Then** a resposta do operador prevalece integralmente e a
    divergencia fica registrada.
+3. **Given** uma pergunta que pausou e precedentes semelhantes com respostas
+   divergentes entre si, **When** o orquestrador registra o bloqueio humano,
+   **Then** a pergunta ao operador lista todos os precedentes divergentes (id,
+   projeto/feature e resposta) sem marcar nenhum como recomendado.
 
 ---
 
@@ -163,13 +193,17 @@ que a Decisao registrada lista os ids consultados.
   e precedente.
 - Precedente vindo da propria execucao/feature corrente (como os pares
   re-perguntados 108/112): conta como precedente valido.
-- Precedente de projeto diferente do corrente: sujeito ao escopo definido em
-  FR-013.
+- Precedente de projeto diferente do corrente: elegivel (FR-013), sempre
+  rotulado com projeto/feature de origem.
 - Precedente antigo, possivelmente superado por decisao posterior mais
-  recente: sujeito ao criterio de idade de FR-014; quando houver precedente
-  mais novo e mais antigo divergentes, vale a regra de divergencia.
+  recente: nao ha idade maxima (FR-014); quando o mais novo e o mais antigo
+  divergem, o mais recente e o unico que pontua (+1), e ambos aparecem como
+  divergentes se a pergunta pausar. Se os divergentes tiverem a mesma data de
+  resposta (sem "mais recente" inequivoco), nenhum pontua.
 - Muitos precedentes semelhantes: apenas um numero limitado e apresentado ao
-  answerer, com teto de tamanho do bloco de contexto.
+  answerer, com teto de tamanho do bloco de contexto (FR-011); o limite
+  nunca pode excluir da listagem ao operador um precedente divergente ja
+  identificado.
 - Pergunta sem texto util para busca (vazia/muito curta): consulta e pulada
   sem erro.
 
@@ -185,7 +219,8 @@ que a Decisao registrada lista os ids consultados.
   status respondido e resposta nao vazia; bloqueios pendentes nao sao
   precedente.
 - **FR-003**: O answerer MUST tratar o precedente como quarta fonte de
-  evidencia: uma opcao suportada por precedente concordante recebe +1 na
+  evidencia: uma opcao suportada por precedente concordante (ou, havendo
+  divergencia entre precedentes, pelo mais recente — FR-006) recebe +1 na
   pontuacao. O score registrado e reportado permanece limitado a 3 (escala
   0..3 vigente); a fonte adicional pode compensar a ausencia de outra, mas
   nao eleva o teto.
@@ -198,9 +233,12 @@ que a Decisao registrada lista os ids consultados.
   obrigatoria (Principio VI); o precedente pode no maximo reforcar a
   politica/convencao, nunca o valor.
 - **FR-006**: Quando os precedentes semelhantes divergem entre si quanto a
-  opcao, o sistema MUST NOT somar ponto a nenhuma opcao por precedente e MUST
-  sinalizar a divergencia, listando os precedentes divergentes, se a pergunta
-  pausar.
+  opcao, apenas o precedente MAIS RECENTE (pela data da resposta) MUST contar
+  o +1 de FR-003, para a sua opcao — a recencia so afeta o score (FR-014);
+  o sistema MUST sinalizar a divergencia e, se a pergunta pausar, MUST listar
+  TODOS os precedentes divergentes (id, projeto/feature e resposta) na
+  pergunta ao operador, sem recomendar nenhum (ver FR-009). Sem "mais recente"
+  inequivoco (mesma data de resposta), nenhum precedente pontua.
 - **FR-007**: Toda resposta que use precedente MUST citar, de forma
   rastreavel, o id de cada bloqueio de origem (com projeto e feature de
   origem) na lista de referencias e na justificativa da Decisao registrada.
@@ -209,10 +247,15 @@ que a Decisao registrada lista os ids consultados.
   sao ignoradas, o trecho e citado como evidencia suspeita e a pergunta pausa
   para o operador; o conteudo entregue ao answerer MUST ja estar filtrado de
   segredos.
-- **FR-009**: Quando a pergunta pausar e o bloqueio humano for registrado, o
-  sistema MUST incluir na pergunta ao operador o precedente mais proximo como
-  opcao recomendada, com id do bloqueio de origem; a recomendacao MUST NOT ser
+- **FR-009**: Quando a pergunta pausar e o bloqueio humano for registrado, e
+  os precedentes semelhantes NAO divergem entre si, o sistema MUST incluir na
+  pergunta ao operador o precedente mais proximo como opcao recomendada, com
+  id do bloqueio de origem, projeto/feature; a recomendacao MUST NOT ser
   aplicada sem a resposta do operador e a resposta do operador prevalece.
+  Quando os precedentes divergem entre si (FR-006), o sistema MUST NOT
+  recomendar: lista todos os precedentes divergentes (id, projeto/feature e
+  resposta) e o operador decide. A recencia usada para pontuar NAO se traduz
+  em recomendacao.
 - **FR-010**: Na ausencia de memoria de conhecimento, de dependencia
   necessaria, de resultados ou em qualquer erro de leitura, o sistema MUST
   degradar para o comportamento anterior a esta feature, sem erro visivel,
@@ -224,21 +267,21 @@ que a Decisao registrada lista os ids consultados.
 - **FR-012**: Cada consulta ao historico para o clarify MUST ser registrada
   como evento auditavel na execucao (incluindo consultas sem resultado, com a
   contagem de achados), sem gravar o corpo bruto recuperado.
-- **FR-013**: O escopo de projetos elegiveis como origem de precedente MUST
-  seguir a decisao pendente [NEEDS CLARIFICATION: precedentes podem vir de
-  qualquer projeto da maquina (evidencia mostra convencoes consistentes entre
-  projetos, mas mistura contexto de clientes/produtos distintos) ou somente do
-  projeto corrente (mais seguro, porem descarta parte do valor medido)?]. O
-  rotulo de origem (projeto/feature) MUST sempre acompanhar o precedente.
-- **FR-014**: A regra de idade/atualidade do precedente MUST seguir a decisao
-  pendente [NEEDS CLARIFICATION: existe idade maxima ou preferencia por
-  recencia quando um precedente antigo pode ter sido superado por decisao
-  posterior?].
-- **FR-015**: O criterio de "semelhante" MUST seguir a decisao pendente
-  [NEEDS CLARIFICATION: relevancia e decidida apenas pelo answerer
-  (julgamento sobre os candidatos recuperados, com justificativa) ou ha
-  tambem um limiar minimo objetivo de similaridade antes de o candidato ser
-  apresentado ao answerer?]. Em qualquer caso, a decisao de aplicabilidade
+- **FR-013**: Precedentes MUST ser elegiveis a partir de QUALQUER projeto da
+  maquina presente na memoria de conhecimento (nao apenas o projeto corrente).
+  O rotulo de origem (projeto/feature) MUST sempre acompanhar o precedente,
+  em toda apresentacao ao answerer e ao operador, para que o julgamento de
+  aplicabilidade (FR-015) considere o contexto de origem.
+- **FR-014**: NAO ha idade maxima para um precedente; nenhum precedente e
+  descartado por idade. Quando precedentes semelhantes divergem entre si, o
+  mais recente (pela data da resposta) prevalece SOMENTE para fins de score
+  (o +1 de FR-003, conforme FR-006); a recencia MUST NOT filtrar precedentes
+  da apresentacao ao operador nem gerar recomendacao (FR-009).
+- **FR-015**: O criterio de "semelhante" MUST combinar (a) um limiar objetivo
+  minimo de similaridade — abaixo dele o candidato nao e apresentado ao
+  answerer — cujo valor e calibrado no plano contra os pares re-perguntados
+  108/112 e 242/251 (SC-001), e (b) o julgamento do answerer sobre a
+  aplicabilidade dos candidatos acima do limiar. A decisao de aplicabilidade
   MUST ser justificada na resposta.
 - **FR-016**: Precedentes de qualquer etapa de origem (clarify, plan,
   execute-task) MUST ser elegiveis, exibindo a etapa de origem junto ao id;
@@ -272,8 +315,10 @@ que a Decisao registrada lista os ids consultados.
 ### Measurable Outcomes
 
 - **SC-001**: Nos dados historicos de bloqueios respondidos, ao reapresentar
-  as perguntas dos 2 pares re-perguntados identificados (108/112 e 242/251),
-  100% delas recuperam o bloqueio par como precedente.
+  as perguntas dos 2 pares re-perguntados identificados (108/112, feature
+  `mobile-app-multi-cliente`, e 242/251, feature `dynamic-forms` — cada par
+  dentro da mesma feature), 100% delas recuperam o bloqueio par como
+  precedente acima do limiar de similaridade de FR-015.
 - **SC-002**: Em 100% das decisoes automaticas auditadas, ha pelo menos uma
   das tres fontes originais concordando com a opcao escolhida (zero decisoes
   sustentadas apenas por precedente).
@@ -283,9 +328,11 @@ que a Decisao registrada lista os ids consultados.
 - **SC-004**: Com a memoria de conhecimento indisponivel, a saida do clarify
   e byte-identica a saida pre-feature em 100% dos cenarios de teste
   comparados, sem nenhuma onda bloqueada por essa causa.
-- **SC-005**: Em 100% das pausas humanas com precedente disponivel, a
+- **SC-005**: Em 100% das pausas humanas com precedentes concordantes, a
   pergunta registrada ao operador contem o precedente mais proximo como
-  opcao recomendada e nenhuma recomendacao e aplicada sem resposta do
+  opcao recomendada; em 100% das pausas com precedentes divergentes, a
+  pergunta lista todos os divergentes (id, projeto/feature e resposta) sem
+  nenhuma recomendacao; e nenhuma recomendacao e aplicada sem resposta do
   operador.
 - **SC-006**: Em cenarios de teste com diretiva embutida no precedente ou
   dado factual no precedente, 0% resultam em decisao automatica baseada
