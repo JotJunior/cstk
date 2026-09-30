@@ -21,9 +21,14 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
 
-ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+# Corpus = prompt-base + referencias de fase do orquestrador (orchestrator-slim).
+# Literais contratuais podem viver no prompt-base OU numa referencia movida.
+orch_corpus_init
+
+ORCH_AGENTE=$(orch_corpus_file root) || ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT=$(orch_corpus_file feature) || ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 RES_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
 RES_FEAT="$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md"
 

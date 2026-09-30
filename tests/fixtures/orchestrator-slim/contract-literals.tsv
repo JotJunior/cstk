@@ -1,0 +1,123 @@
+# orchestrator	grep-flags	pattern	source-test:line
+root	-E	Contrato de conclusao de turno	tests/test_orchestrator-turn-completion.sh:31
+feature	-E	Contrato de conclusao de turno	tests/test_orchestrator-turn-completion.sh:36
+root	-E	MEIO da onda	tests/test_orchestrator-turn-completion.sh:42
+feature	-E	MEIO da onda	tests/test_orchestrator-turn-completion.sh:46
+root	-Ei	Auto-checagem	tests/test_orchestrator-turn-completion.sh:52
+feature	-Ei	Auto-checagem	tests/test_orchestrator-turn-completion.sh:56
+root	-Ei	NAO encerr|NAO encerra a onda	tests/test_orchestrator-turn-completion.sh:64
+feature	-Ei	NAO encerr|NAO encerra a onda	tests/test_orchestrator-turn-completion.sh:65
+root	-E	model[:=] ?\$MODEL_APLICAR|model=\$MODEL_APLICAR	tests/test_orchestrator-spawn-model-apply.sh:40
+feature	-E	model[:=] ?\$MODEL_APLICAR|model=\$MODEL_APLICAR	tests/test_orchestrator-spawn-model-apply.sh:45
+root	-E	SCORE_DEC.*-ge 2|-ge 2.*SCORE_DEC	tests/test_orchestrator-spawn-model-apply.sh:52
+root	-E	ESCOLHA_DEC.*=.*"haiku"	tests/test_orchestrator-spawn-model-apply.sh:53
+feature	-E	SCORE_DEC.*-ge 2|-ge 2.*SCORE_DEC	tests/test_orchestrator-spawn-model-apply.sh:57
+feature	-E	ESCOLHA_DEC.*=.*"haiku"	tests/test_orchestrator-spawn-model-apply.sh:58
+root	-Ei	[Ss][Ee][Mm] o param .?model|OMITIR o param .?model|OMITIDO	tests/test_orchestrator-spawn-model-apply.sh:66
+feature	-Ei	[Ss][Ee][Mm] o param .?model|OMITIR o param .?model|OMITIDO	tests/test_orchestrator-spawn-model-apply.sh:70
+root	-E	select\(\.id ==	tests/test_orchestrator-spawn-model-apply.sh:78
+root	-E	ESCOLHA_DEC=	tests/test_orchestrator-spawn-model-apply.sh:79
+root	-E	justification_score	tests/test_orchestrator-spawn-model-apply.sh:81
+feature	-E	select\(\.id ==	tests/test_orchestrator-spawn-model-apply.sh:85
+feature	-E	ESCOLHA_DEC=	tests/test_orchestrator-spawn-model-apply.sh:86
+feature	-E	justification_score	tests/test_orchestrator-spawn-model-apply.sh:87
+root	-Ei	Preservacao FR-004|FR-004	tests/test_orchestrator-spawn-model-apply.sh:95
+root	-Ei	orfa|órfã|orphan	tests/test_orchestrator-spawn-model-apply.sh:96
+feature	-Ei	Preservacao FR-004|FR-004	tests/test_orchestrator-spawn-model-apply.sh:100
+feature	-Ei	orfa|órfã|orphan	tests/test_orchestrator-spawn-model-apply.sh:101
+root	-Ei	Invariante I1|1-para-1|NAO cria nova Decisao|nao cria nova decisao	tests/test_orchestrator-spawn-model-apply.sh:108
+feature	-Ei	Invariante I1|1-para-1|NAO cria nova Decisao|nao cria nova decisao	tests/test_orchestrator-spawn-model-apply.sh:112
+root	-F	ameaca-nao-verificada	tests/test_orchestrator-evidence-grounding.sh:33
+feature	-F	ameaca-nao-verificada	tests/test_orchestrator-evidence-grounding.sh:33
+root	-Ei	substring LITERAL	tests/test_orchestrator-evidence-grounding.sh:46
+feature	-Ei	substring LITERAL	tests/test_orchestrator-evidence-grounding.sh:47
+root	-Ei	confabul|fabricad	tests/test_orchestrator-evidence-grounding.sh:48
+feature	-Ei	confabul|fabricad	tests/test_orchestrator-evidence-grounding.sh:49
+root	-E	\| *convergence *\| *`converge`	tests/test_converge-orchestrator-gate.sh:42
+feature	-E	\| *convergence *\| *`converge`	tests/test_converge-orchestrator-gate.sh:47
+root	-E	Etapa .convergence.? \(execute-task	tests/test_converge-orchestrator-gate.sh:56
+feature	-E	Etapa .converge.: fechamento condicional de onda	tests/test_converge-orchestrator-gate.sh:60
+root	-E	execute-task.{0,5}(->|→).{0,5}review-task	tests/test_converge-orchestrator-gate.sh:75
+feature	-E	execute-task.{0,5}(->|→).{0,5}review-task	tests/test_converge-orchestrator-gate.sh:79
+root	-F	FR-006	tests/test_converge-orchestrator-gate.sh:85
+root	-F	mesmo nivel de rastreabilidade	tests/test_converge-orchestrator-gate.sh:86
+feature	-F	FR-006	tests/test_converge-orchestrator-gate.sh:90
+feature	-F	nivel de rastreabilidade/auditoria	tests/test_converge-orchestrator-gate.sh:91
+root	-F	FR-015, redacao MUST literal	tests/test_converge-orchestrator-gate.sh:98
+feature	-F	redacao MUST literal	tests/test_converge-orchestrator-gate.sh:102
+root	-F	ETAPA 8	tests/test_converge-orchestrator-gate.sh:108
+root	-F	duplicada	tests/test_converge-orchestrator-gate.sh:109
+feature	-F	ETAPA 8	tests/test_converge-orchestrator-gate.sh:113
+feature	-F	duplicada	tests/test_converge-orchestrator-gate.sh:114
+root	-F	escalar-para-humano	tests/test_converge-orchestrator-gate.sh:120
+feature	-F	escalar-para-humano	tests/test_converge-orchestrator-gate.sh:124
+root	-F	data-veracity-verifier	tests/test_data-veracity-verifier.sh:97
+feature	-F	data-veracity-verifier	tests/test_data-veracity-verifier.sh:98
+root	-E	Encerramento terminal do modo roadmap	tests/test_roadmap-mode.sh:162
+root	-E	concluido_roadmap	tests/test_roadmap-mode.sh:166
+root	-Ei	5 campos terminais	tests/test_roadmap-mode.sh:170
+feature	-F	para `feature-00c` isso e SOMENTE `atomic_commit`	tests/test_command-spawn-optin-elicitation.sh:237
+root	-F	Linha presente E tool NAO visivel no toolset	tests/test_command-spawn-optin-elicitation.sh:415
+feature	-F	Linha presente E tool NAO visivel no toolset	tests/test_command-spawn-optin-elicitation.sh:415
+root	-F	devolva o turno ao pai	tests/test_command-spawn-optin-elicitation.sh:416
+feature	-F	devolva o turno ao pai	tests/test_command-spawn-optin-elicitation.sh:416
+root	-F	escrever em `.optin_responses[]` — INV-4	tests/test_command-spawn-optin-elicitation.sh:418
+feature	-F	escrever em `.optin_responses[]` — INV-4	tests/test_command-spawn-optin-elicitation.sh:418
+root	-F	SOMENTE no sub-caso	tests/test_command-spawn-optin-degradation.sh:88
+feature	-F	SOMENTE no sub-caso	tests/test_command-spawn-optin-degradation.sh:88
+root	-F	exatamente uma linha	tests/test_command-spawn-optin-degradation.sh:89
+feature	-F	exatamente uma linha	tests/test_command-spawn-optin-degradation.sh:89
+root	-F	SILENCIOSO	tests/test_command-spawn-optin-degradation.sh:90
+feature	-F	SILENCIOSO	tests/test_command-spawn-optin-degradation.sh:90
+root	-F	NAO chame `state-ondas.sh start`	tests/test_command-spawn-optin-degradation.sh:113
+feature	-F	NAO chame `state-ondas.sh start`	tests/test_command-spawn-optin-degradation.sh:113
+root	-F	devolva o turno ao command pai	tests/test_command-spawn-optin-degradation.sh:114
+feature	-F	devolva o turno ao command pai	tests/test_command-spawn-optin-degradation.sh:114
+root	-F	result.mechanism	tests/test_command-spawn-optin-degradation.sh:122
+feature	-F	result.mechanism	tests/test_command-spawn-optin-degradation.sh:122
+root	-F	mechanism: "structured"	tests/test_command-spawn-optin-degradation.sh:123
+feature	-F	mechanism: "structured"	tests/test_command-spawn-optin-degradation.sh:123
+root	-F	R-3	tests/test_command-spawn-optin-degradation.sh:156
+feature	-F	R-3	tests/test_command-spawn-optin-degradation.sh:156
+root	-F	retorna `reused`	tests/test_command-spawn-optin-degradation.sh:163
+feature	-F	retorna `reused`	tests/test_command-spawn-optin-degradation.sh:163
+root	-F	cap M6	tests/test_command-spawn-optin-degradation.sh:164
+feature	-F	cap M6	tests/test_command-spawn-optin-degradation.sh:164
+root	-F	NUNCA e perguntado duas vezes	tests/test_command-spawn-optin-degradation.sh:174
+feature	-F	NUNCA e perguntado duas vezes	tests/test_command-spawn-optin-degradation.sh:174
+root	-E	Encerramento terminal do modo roadmap	tests/test_roadmap-mode.sh:177
+root	-F	commit-mode.sh finalize	tests/test_roadmap-mode.sh:180
+root	-F	concluido_roadmap	tests/test_roadmap-mode.sh:181
+root	-E	guarda enforced	tests/test_roadmap-mode.sh:192
+root	-E	\*\*primeiro ato\*\*	tests/test_command-spawn-optin-elicitation.sh:74
+root	-E	^2\. \*\*Onda nova\*\*: .state-ondas\.sh start	tests/test_command-spawn-optin-elicitation.sh:75
+feature	-E	3\.bis \*\*Coleta de opt-ins via MCP	tests/test_command-spawn-optin-elicitation.sh:88
+feature	-E	^4\. \*\*Iniciar onda\*\* via .state-ondas\.sh start	tests/test_command-spawn-optin-elicitation.sh:89
+feature	-F	model-routing.sh invoke	tests/test_model-routing.sh:1252
+feature	-F	spawn-tracker.sh enter	tests/test_model-routing.sh:1259
+feature	-F	feature-00c-clarify-asker	tests/test_model-routing.sh:1279
+feature	-F	feature-00c-clarify-answerer	tests/test_model-routing.sh:1283
+root	-F	Quando preferir MCP	tests/test_orchestrator-allowlist-guard.sh:635
+root	-F	da PROPRIA execucao	tests/test_orchestrator-allowlist-guard.sh:636
+root	-F	Deteccao de indisponibilidade	tests/test_orchestrator-allowlist-guard.sh:637
+root	-F	0 retries	tests/test_orchestrator-allowlist-guard.sh:638
+root	-F	va direto pelo caminho Bash	tests/test_orchestrator-allowlist-guard.sh:639
+root	-F	NUNCA pausa a onda	tests/test_orchestrator-allowlist-guard.sh:640
+root	-F	Mapa operacao MCP	tests/test_orchestrator-allowlist-guard.sh:641
+root	-F	elicitation/create	tests/test_orchestrator-allowlist-guard.sh:642
+root	-F	quando ha operador humano presente	tests/test_orchestrator-allowlist-guard.sh:643
+root	-F	permanece Deferred	tests/test_orchestrator-allowlist-guard.sh:644
+root	-F	Nao-exfiltracao do	tests/test_orchestrator-allowlist-guard.sh:645
+root	-F	NUNCA e escrito em artefato, log, mensagem	tests/test_orchestrator-allowlist-guard.sh:668
+feature	-F	Quando preferir MCP	tests/test_orchestrator-allowlist-guard.sh:635
+feature	-F	da PROPRIA execucao	tests/test_orchestrator-allowlist-guard.sh:636
+feature	-F	Deteccao de indisponibilidade	tests/test_orchestrator-allowlist-guard.sh:637
+feature	-F	0 retries	tests/test_orchestrator-allowlist-guard.sh:638
+feature	-F	va direto pelo caminho Bash	tests/test_orchestrator-allowlist-guard.sh:639
+feature	-F	NUNCA pausa a onda	tests/test_orchestrator-allowlist-guard.sh:640
+feature	-F	Mapa operacao MCP	tests/test_orchestrator-allowlist-guard.sh:641
+feature	-F	elicitation/create	tests/test_orchestrator-allowlist-guard.sh:642
+feature	-F	quando ha operador humano presente	tests/test_orchestrator-allowlist-guard.sh:643
+feature	-F	permanece Deferred	tests/test_orchestrator-allowlist-guard.sh:644
+feature	-F	Nao-exfiltracao do	tests/test_orchestrator-allowlist-guard.sh:645
+feature	-F	NUNCA e escrito em artefato, log, mensagem	tests/test_orchestrator-allowlist-guard.sh:668
