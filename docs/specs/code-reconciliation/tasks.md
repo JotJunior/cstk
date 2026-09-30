@@ -35,15 +35,15 @@ tarefas listadas em sua `Ref`/nota de dependencia.
 
 Ref: checklists/requirements.md CHK007; spec.md FR-007
 
-- [ ] 1.1.1 Definir o comportamento quando `docs/constitution.md` nao existe ou
+- [x] 1.1.1 Definir o comportamento quando `docs/constitution.md` nao existe ou
       nao e legivel (FR-007 depende dela para classificar "possivel
       regressao"), registrando a escolha como Decisao auditavel
-- [ ] 1.1.2 Acrescentar o caso a `spec.md` (Edge Cases e, se necessario,
+- [x] 1.1.2 Acrescentar o caso a `spec.md` (Edge Cases e, se necessario,
       Clarifications/FR) sem renumerar FR/SC existentes
-- [ ] 1.1.3 Refletir a regra em `plan.md` (Riscos/Structure) e em
+- [x] 1.1.3 Refletir a regra em `plan.md` (Riscos/Structure) e em
       `contracts/cli-invocation.md` (aviso no relatorio, ex.: constitution
       indisponivel) mantendo os contratos coerentes
-- [ ] 1.1.4 Acrescentar cenario de aceite em `quickstart.md` (feature com MUST
+- [x] 1.1.4 Acrescentar cenario de aceite em `quickstart.md` (feature com MUST
       contradito, projeto sem constitution) e reavaliar CHK007 em
       `checklists/requirements.md`
 
@@ -51,32 +51,32 @@ Ref: checklists/requirements.md CHK007; spec.md FR-007
 
 Ref: checklists/requirements.md CHK013; spec.md SC-005
 
-- [ ] 1.2.1 Definir operacionalmente "divergencia por acerto pontual" (o que a
+- [x] 1.2.1 Definir operacionalmente "divergencia por acerto pontual" (o que a
       torna elegivel ao denominador e o que a exclui, ex.: `possible-regression`
       e `unverifiable`), sem inventar limiares nao presentes nos artefatos
-- [ ] 1.2.2 Registrar a definicao em `spec.md` (SC-005/Assumptions) e alinhar
+- [x] 1.2.2 Registrar a definicao em `spec.md` (SC-005/Assumptions) e alinhar
       `data-model.md` (tipos de Divergence) para que elegivel/nao elegivel
       seja derivavel dos tipos existentes
-- [ ] 1.2.3 Reavaliar CHK013 em `checklists/requirements.md` apos a edicao
+- [x] 1.2.3 Reavaliar CHK013 em `checklists/requirements.md` apos a edicao
 
 ### 1.3 Especificar nao-copia de segredos na evidencia `[C]`
 
 Ref: checklists/security.md CHK011; spec.md FR-008, FR-010, SC-004
 
-- [ ] 1.3.1 Escrever o requisito: ao citar trecho de codigo como evidencia, a
+- [x] 1.3.1 Escrever o requisito: ao citar trecho de codigo como evidencia, a
       skill MUST NOT reproduzir valores sensiveis (chaves, tokens,
       credenciais) em documentos, marcadores ou relatorio; referenciar apenas
       `arquivo:linha`
-- [ ] 1.3.2 Acrescentar o requisito em `spec.md` (novo FR sequencial ou
+- [x] 1.3.2 Acrescentar o requisito em `spec.md` (novo FR sequencial ou
       extensao de FR-008, sem renumerar existentes) e a linha de risco
       correspondente em `plan.md` (Riscos e mitigacoes)
-- [ ] 1.3.3 Definir se a redacao e apenas regra da skill (`references/` +
+- [x] 1.3.3 Definir se a redacao e apenas regra da skill (`references/` +
       Gotcha) ou tambem checagem deterministica em script, e registrar a
       escolha em Decisao e em `contracts/`
-- [ ] 1.3.4 Acrescentar cenario em `quickstart.md` (segredo ficticio no codigo
+- [x] 1.3.4 Acrescentar cenario em `quickstart.md` (segredo ficticio no codigo
       da fixture citado como evidencia: relatorio e marcador trazem so
       `arquivo:linha`)
-- [ ] 1.3.5 Reavaliar CHK011 em `checklists/security.md`
+- [x] 1.3.5 Reavaliar CHK011 em `checklists/security.md`
 
 ### 1.4 [AGUARDA DECISAO DO DONO DO PRODUTO] Metodo de medicao de SC-005 `[M]`
 
@@ -129,21 +129,21 @@ Bloqueia apenas a tarefa 4.2 e a subtarefa 4.5.1.
 
 Ref: quickstart.md cenarios 1-10; plan.md §Testing
 
-- [ ] 2.1.1 Criar `tests/fixtures/reconcile-docs/` com `docs/specs/`,
+- [x] 2.1.1 Criar `tests/fixtures/reconcile-docs/` com `docs/specs/`,
       `docs/specs/_archived/`, `docs/specs/current/` e codigo shell de
       brinquedo alcancavel a partir de caminhos citados nas specs
-- [ ] 2.1.2 Feature ativa `alpha` com as 4 divergencias plantadas (FR SHOULD
+- [x] 2.1.2 Feature ativa `alpha` com as 4 divergencias plantadas (FR SHOULD
       cujo comportamento mudou, FR citando arquivo removido, flag nova sem FR,
       FR MUST contradito pelo codigo)
-- [ ] 2.1.3 Features arquivadas `2026-01-15-beta` (com data), `gamma` (legado
+- [x] 2.1.3 Features arquivadas `2026-01-15-beta` (com data), `gamma` (legado
       sem prefixo) e `2025-12-01-alpha` (homonima da ativa)
-- [ ] 2.1.4 Duas arquivadas homonimas sem ativa (`2026-01-01-delta`,
+- [x] 2.1.4 Duas arquivadas homonimas sem ativa (`2026-01-01-delta`,
       `2026-02-01-delta`) e feature `epsilon` so com `plan.md`
-- [ ] 2.1.5 Incluir constitution da fixture e um segredo ficticio no codigo de
+- [x] 2.1.5 Incluir constitution da fixture e um segredo ficticio no codigo de
       brinquedo (uso em teste da regra de 1.3; depende de 1.3)
-- [ ] 2.1.6 Escrever helper de teste que copia a fixture para diretorio
+- [x] 2.1.6 Escrever helper de teste que copia a fixture para diretorio
       temporario com opcao de `git init` (e sem git), usando `mktemp` portavel
-- [ ] 2.1.7 Verificar que a fixture nao introduz colisao de nome com
+- [x] 2.1.7 Verificar que a fixture nao introduz colisao de nome com
       `tests/test_*.sh` existentes (`tests/run.sh --check-coverage`)
 
 ### 2.2 Script `locate-feature.sh` + teste `[A]`
@@ -151,41 +151,41 @@ Ref: quickstart.md cenarios 1-10; plan.md §Testing
 Ref: contracts/cli-invocation.md §2; research Decision 3; FR-002, FR-014,
 FR-015
 
-- [ ] 2.2.1 Implementar `locate-feature.sh --root --name` em `#!/bin/sh` +
+- [x] 2.2.1 Implementar `locate-feature.sh --root --name` em `#!/bin/sh` +
       `set -eu`, com saida TSV `<location>\t<name>\t<dir>` e exit codes
       0/1/2/3/4 do contrato
-- [ ] 2.2.2 Casar nome exato em ativas e em arquivadas ignorando prefixo
+- [x] 2.2.2 Casar nome exato em ativas e em arquivadas ignorando prefixo
       `AAAA-MM-DD-`; aceitar arquivada legada sem prefixo
-- [ ] 2.2.3 Validar `--name` contra `^([0-9]{4}-[0-9]{2}-[0-9]{2}-)?[a-z0-9][a-z0-9-]*$`
+- [x] 2.2.3 Validar `--name` contra `^([0-9]{4}-[0-9]{2}-[0-9]{2}-)?[a-z0-9][a-z0-9-]*$`
       (exit 2 para `..`, `/`, espacos, metacaracteres) e nunca listar
       `docs/specs/current/` nem `_archived/` como feature
-- [ ] 2.2.4 Implementar `--all` (ativas, depois arquivadas; homonima arquivada
+- [x] 2.2.4 Implementar `--all` (ativas, depois arquivadas; homonima arquivada
       como `archived-shadowed`) e candidatos por substring (exit 3/4)
-- [ ] 2.2.5 Escrever `tests/test_locate-feature.sh`: ativa, arquivada por nome
+- [x] 2.2.5 Escrever `tests/test_locate-feature.sh`: ativa, arquivada por nome
       sem data, legada, inexistente com candidatos, ambiguo, homonima,
       `--all`, nome invalido, `docs/specs/` ausente
-- [ ] 2.2.6 Confirmar execucao em BWK awk/mawk/gawk quando o script usar awk e
-      ausencia de bashismos (`checkbashisms`/`sh -n`)
+- [x] 2.2.6 Confirmar execucao em BWK awk/mawk/gawk quando o script usar awk e
+      ausencia de bashismos (`checkbashisms`/`sh -n`) <!-- validado: BWK awk 20200816 (unico disponivel no host) + dash -n; gawk/mawk/checkbashisms ausentes, awk usa so -F/-v/index/sub POSIX -->
 
 ### 2.3 Script `doc-guard.sh` + teste (guarda fail-closed de escrita) `[C]`
 
 Ref: contracts/cli-invocation.md §4; research Decision 5; FR-006, FR-017,
 SC-001; checklists/security.md CHK001-CHK004
 
-- [ ] 2.3.1 Implementar `doc-guard.sh check --root --feature-dir <path>` com
+- [x] 2.3.1 Implementar `doc-guard.sh check --root --feature-dir <path>` com
       allowlist (`spec.md`, `plan.md`, `data-model.md`, `quickstart.md`,
       `reconciliation.md`, `contracts/*.md` um nivel) e exit 0/1/2
-- [ ] 2.3.2 Resolver `--feature-dir` com `pwd -P`; negar `docs/specs/current/`
+- [x] 2.3.2 Resolver `--feature-dir` com `pwd -P`; negar `docs/specs/current/`
       (`living-corpus`), fora da feature (`outside-feature`) e fora da
       allowlist (`not-in-allowlist`) com motivo em stderr
-- [ ] 2.3.3 Negar destino que ja exista como simlink (`symlink-escape`),
+- [x] 2.3.3 Negar destino que ja exista como simlink (`symlink-escape`),
       independente do alvo
-- [ ] 2.3.4 Garantir fail-closed: qualquer erro interno do script termina com
+- [x] 2.3.4 Garantir fail-closed: qualquer erro interno do script termina com
       exit != 0 e o SKILL.md tratara qualquer exit != 0 como negacao
-- [ ] 2.3.5 Escrever `tests/test_doc-guard.sh` cobrindo quickstart Scenario 8
+- [x] 2.3.5 Escrever `tests/test_doc-guard.sh` cobrindo quickstart Scenario 8
       (`current/x.md`, `tasks.md`, `research.md`, `cli/lib/foo.sh`, simlink,
       `spec.md` e `contracts/api.md` permitidos)
-- [ ] 2.3.6 Teste adicional: `--feature-dir` sob `docs/specs/current/` sempre
+- [x] 2.3.6 Teste adicional: `--feature-dir` sob `docs/specs/current/` sempre
       exit 1 e argumentos ausentes exit 2
 
 ---
@@ -197,47 +197,47 @@ SC-001; checklists/security.md CHK001-CHK004
 Ref: contracts/cli-invocation.md §3; data-model.md §Anchor; research
 Decision 7; FR-004
 
-- [ ] 3.1.1 Implementar extracao de tokens entre crases dos documentos da
+- [x] 3.1.1 Implementar extracao de tokens entre crases dos documentos da
       allowlist presentes, com saida TSV `<kind>\t<token>\t<doc>:<line>\t<presence>`
       e dedupe por (`kind`, `token`, `doc:line`) preservando ordem
-- [ ] 3.1.2 Classificar `kind` (`path` | `flag` | `command` | `req-id`) e
+- [x] 3.1.2 Classificar `kind` (`path` | `flag` | `command` | `req-id`) e
       calcular `presence` (`present`/`absent`/`n/a`) so para `path`, relativo
       a raiz
-- [ ] 3.1.3 Tratar exit 0 (0+ linhas), 1 (feature-dir inexistente), 2 (uso)
-- [ ] 3.1.4 Escrever `tests/test_extract-anchors.sh` sobre a fixture (ancora
+- [x] 3.1.3 Tratar exit 0 (0+ linhas), 1 (feature-dir inexistente), 2 (uso)
+- [x] 3.1.4 Escrever `tests/test_extract-anchors.sh` sobre a fixture (ancora
       `absent` do arquivo removido de `alpha`, flags, comandos, req-ids)
-- [ ] 3.1.5 Medir tempo < 2 s sobre este repositorio (7 ativas + 57
-      arquivadas) e registrar no relatorio de teste
+- [x] 3.1.5 Medir tempo < 2 s sobre este repositorio (7 ativas + 57
+      arquivadas) e registrar no relatorio de teste <!-- medido: 63 features em 2s total (scenario_desempenho_menor_que_2s_por_feature_no_repositorio) -->
 
 ### 3.2 Script `markers.sh` + teste `[A]`
 
 Ref: contracts/markers.md; contracts/cli-invocation.md §5; FR-009, FR-012
 
-- [ ] 3.2.1 Implementar `markers.sh lint <file>` com a regex ERE do contrato
+- [x] 3.2.1 Implementar `markers.sh lint <file>` com a regex ERE do contrato
       (`[reconciled:(removed|updated|added) AAAA-MM-DD evidence=...]`), exit 0/1
       listando a linha mal formada
-- [ ] 3.2.2 Implementar `markers.sh list <file>` (TSV
+- [x] 3.2.2 Implementar `markers.sh list <file>` (TSV
       `<line>\t<kind>\t<date>\t<ref>`)
-- [ ] 3.2.3 Implementar `markers.sh next-fr <spec.md>` (maior FR + 1 com 3
+- [x] 3.2.3 Implementar `markers.sh next-fr <spec.md>` (maior FR + 1 com 3
       digitos; `FR-001` se nenhum)
-- [ ] 3.2.4 Implementar `markers.sh verify --root <dir> <file>`: `<path>:<line>`
+- [x] 3.2.4 Implementar `markers.sh verify --root <dir> <file>`: `<path>:<line>`
       exige arquivo com >= `<line>` linhas; `absent:<path>` exige caminho
       inexistente; motivos `missing-file`, `line-out-of-range`, `not-absent`
-- [ ] 3.2.5 Escrever `tests/test_markers.sh` com marcadores validos e
+- [x] 3.2.5 Escrever `tests/test_markers.sh` com marcadores validos e
       malformados, `next-fr`, `verify` positivo e cada motivo de falha
-- [ ] 3.2.6 Teste de idempotencia: marcador existente nao muda de data nem de
+- [x] 3.2.6 Teste de idempotencia: marcador existente nao muda de data nem de
       linha ao reexecutar o lint/list (contracts/markers.md §4)
 
 ### 3.3 Script `reconciliation-log.sh` + teste `[A]`
 
 Ref: contracts/cli-invocation.md §6; research Decision 8; FR-018, FR-012
 
-- [ ] 3.3.1 Implementar `reconciliation-log.sh append --feature-dir --date
+- [x] 3.3.1 Implementar `reconciliation-log.sh append --feature-dir --date
       --summary-file`: cria `reconciliation.md` com cabecalho se ausente e
       anexa `## <date>` + conteudo (append-only, nunca edita entradas)
-- [ ] 3.3.2 Sair com exit 3 sem escrever nada quando `--summary-file` e vazio
-- [ ] 3.3.3 Sair com exit 1 quando o destino nao passar em `doc-guard.sh check`
-- [ ] 3.3.4 Escrever `tests/test_reconciliation-log.sh` (criacao, append,
+- [x] 3.3.2 Sair com exit 3 sem escrever nada quando `--summary-file` e vazio
+- [x] 3.3.3 Sair com exit 1 quando o destino nao passar em `doc-guard.sh check`
+- [x] 3.3.4 Escrever `tests/test_reconciliation-log.sh` (criacao, append,
       resumo vazio, destino negado, entradas existentes intactas)
 
 ### 3.4 Script `git-probe.sh` + teste (carve-out 1.1.0) `[A]`
@@ -245,27 +245,27 @@ Ref: contracts/cli-invocation.md §6; research Decision 8; FR-018, FR-012
 Ref: contracts/cli-invocation.md §7; research Decision 6; FR-016;
 checklists/security.md CHK008
 
-- [ ] 3.4.1 Implementar `changed-since --root --feature-dir` (caminhos
+- [x] 3.4.1 Implementar `changed-since --root --feature-dir` (caminhos
       alterados apos o ultimo commit que tocou os documentos da feature) e
       `status --root` (`git status --porcelain` normalizado e ordenado)
-- [ ] 3.4.2 Invocar `git` apenas via `git -c core.fsmonitor=false` e somente
+- [x] 3.4.2 Invocar `git` apenas via `git -c core.fsmonitor=false` e somente
       subcomandos de leitura (`status --porcelain`, `log --name-only`,
       `rev-parse`); confinar todo uso de `git` a este arquivo
-- [ ] 3.4.3 Emitir linha final `STATUS\tok`; sem `git` ou fora de repositorio,
+- [x] 3.4.3 Emitir linha final `STATUS\tok`; sem `git` ou fora de repositorio,
       emitir so `STATUS\tno-git` com exit 0 (fallback FR-016)
-- [ ] 3.4.4 Escrever `tests/test_git-probe.sh` com repo temporario, sem repo e
+- [x] 3.4.4 Escrever `tests/test_git-probe.sh` com repo temporario, sem repo e
       com `PATH` sem `git`, verificando `STATUS\tno-git`
-- [ ] 3.4.5 Verificar por `grep` que nenhum outro script da skill invoca `git`
+- [x] 3.4.5 Verificar por `grep` que nenhum outro script da skill invoca `git`
 
 ### 3.5 Integracao dos 6 testes ao harness `[M]`
 
 Ref: plan.md §Project Structure; tests/README.md
 
-- [ ] 3.5.1 Rodar `tests/run.sh --check-coverage` e confirmar mapeamento
+- [x] 3.5.1 Rodar `tests/run.sh --check-coverage` e confirmar mapeamento
       teste-script 1:1 (basename) para os 6 scripts
-- [ ] 3.5.2 Rodar os 6 testes com `LC_ALL=C` e conferir portabilidade
+- [x] 3.5.2 Rodar os 6 testes com `LC_ALL=C` e conferir portabilidade
       (macOS + Linux, sem `sed -i`, `stat -c`, `readlink -f`, `timeout`)
-- [ ] 3.5.3 Corrigir colisoes ou falhas de cobertura encontradas
+- [x] 3.5.3 Corrigir colisoes ou falhas de cobertura encontradas
 
 ---
 
@@ -276,15 +276,15 @@ Ref: plan.md §Project Structure; tests/README.md
 Ref: data-model.md §Divergence; FR-004, FR-007, FR-008, FR-009; depende de
 1.1, 1.2 e 1.3
 
-- [ ] 4.1.1 Documentar os 5 tipos de divergencia e a tabela type -> action
+- [x] 4.1.1 Documentar os 5 tipos de divergencia e a tabela type -> action
       (modo gravacao e `--dry-run`) do data-model
-- [ ] 4.1.2 Documentar a regra MUST/MUST NOT da feature e principios da
+- [x] 4.1.2 Documentar a regra MUST/MUST NOT da feature e principios da
       constitution -> `possible-regression`; SHOULD/descritivo -> reescrito
-- [ ] 4.1.3 Incorporar o comportamento definido em 1.1 (constitution ausente
+- [x] 4.1.3 Incorporar o comportamento definido em 1.1 (constitution ausente
       ou ilegivel)
-- [ ] 4.1.4 Incorporar a definicao de "acerto pontual" (1.2) e a regra de
+- [x] 4.1.4 Incorporar a definicao de "acerto pontual" (1.2) e a regra de
       nao-copia de segredos (1.3) com exemplos so por `arquivo:linha`
-- [ ] 4.1.5 Documentar escopo de busca (ancoras) e o destino `unverifiable`
+- [x] 4.1.5 Documentar escopo de busca (ancoras) e o destino `unverifiable`
       para dado factual sem fonte (Constitution VI)
 
 ### 4.2 `references/write-policy.md` `[A]`
@@ -306,12 +306,12 @@ depende de 1.5 e 1.6 (aguardam dono do produto) e de 2.3
 
 Ref: data-model.md §ReconciliationReport, §ReconciliationLog; FR-010, FR-018
 
-- [ ] 4.3.1 Criar `templates/report.md` (por feature: divergencias com tipo,
+- [x] 4.3.1 Criar `templates/report.md` (por feature: divergencias com tipo,
       documento, trecho, evidencia e acao; consolidado do `--all` com uma linha
       por feature e status `reconciled|no-divergence|skipped|error`)
-- [ ] 4.3.2 Criar `templates/log-entry.md` (data + resumo das alteracoes, sem
+- [x] 4.3.2 Criar `templates/log-entry.md` (data + resumo das alteracoes, sem
       duplicar o relatorio completo)
-- [ ] 4.3.3 Verificar que os templates nao contem dado factual inventado e que
+- [x] 4.3.3 Verificar que os templates nao contem dado factual inventado e que
       o relatorio permite citar so `arquivo:linha` (regra 1.3)
 
 ### 4.4 `SKILL.md` (fluxo de uma feature) `[A]`
@@ -319,21 +319,21 @@ Ref: data-model.md §ReconciliationReport, §ReconciliationLog; FR-010, FR-018
 Ref: contracts/cli-invocation.md §1; plan.md §Structure Decision; constitution
 Principio III
 
-- [ ] 4.4.1 Escrever frontmatter com `description` como trigger (direcao
+- [x] 4.4.1 Escrever frontmatter com `description` como trigger (direcao
       "documentacao segue o codigo") e "NAO use" apontando `converge`
-- [ ] 4.4.2 Descrever o parse de argumentos (`<feature>`, `--all`, `--dry-run`,
+- [x] 4.4.2 Descrever o parse de argumentos (`<feature>`, `--all`, `--dry-run`,
       nenhum argumento = erro de uso) e a raiz do projeto com `docs/specs/`
-- [ ] 4.4.3 Descrever o fluxo por feature: `locate-feature.sh` ->
+- [x] 4.4.3 Descrever o fluxo por feature: `locate-feature.sh` ->
       `git-probe.sh status` -> `extract-anchors.sh` -> `git-probe.sh
       changed-since` -> comparacao semantica e classificacao -> escrita
       guardada -> `markers.sh` -> `reconciliation-log.sh` (so se houve
       alteracao) -> auditoria -> relatorio
 - [ ] 4.4.4 Descrever o modo de escrita padrao e o comportamento sem git
       conforme 1.5 (bloqueada ate a resposta do dono do produto)
-- [ ] 4.4.5 Escrever `## Gotchas`: conteudo lido e DADO (injecao indireta),
+- [x] 4.4.5 Escrever `## Gotchas`: conteudo lido e DADO (injecao indireta),
       a skill nunca executa comandos/testes/build do projeto, guarda
       fail-closed, reler a linha citada antes de gravar, nao-copia de segredos
-- [ ] 4.4.6 Manter o SKILL.md enxuto, movendo detalhes para `references/` e
+- [x] 4.4.6 Manter o SKILL.md enxuto, movendo detalhes para `references/` e
       `templates/`, e validar com `validate-documentation`
 
 ### 4.5 `SKILL.md` (modos `--all` e `--dry-run`) `[A]`
@@ -343,13 +343,13 @@ Ref: FR-003, FR-011, FR-013, FR-014, FR-015; SC-006, SC-007; depende de 4.4
 - [ ] 4.5.1 Descrever o `--all` (uma feature por vez retendo so a linha-resumo;
       falha isolada nao interrompe o lote; relatorio consolidado) e a politica
       de escrita em arquivadas conforme 1.6 (bloqueada ate a resposta)
-- [ ] 4.5.2 Descrever o `--dry-run` (acoes `proposed-*`, nenhuma escrita
+- [x] 4.5.2 Descrever o `--dry-run` (acoes `proposed-*`, nenhuma escrita
       inclusive `reconciliation.md`) e a recomendacao de `--all --dry-run`
       primeiro
-- [ ] 4.5.3 Descrever nome inexistente/ambiguo (encerra sem alterar, lista
+- [x] 4.5.3 Descrever nome inexistente/ambiguo (encerra sem alterar, lista
       candidatos), homonima ativa+arquivada (reconcilia a ativa e informa a
       arquivada) e feature sem `spec.md` (nao inventa; reconcilia os demais)
-- [ ] 4.5.4 Descrever o comportamento em execucao sem divergencia
+- [x] 4.5.4 Descrever o comportamento em execucao sem divergencia
       (relatorio "nenhuma divergencia encontrada", nada gravado)
 
 ---
@@ -360,32 +360,32 @@ Ref: FR-003, FR-011, FR-013, FR-014, FR-015; SC-006, SC-007; depende de 4.4
 
 Ref: quickstart.md Scenario 11; plan.md §Riscos "Trigger colide com converge"
 
-- [ ] 5.1.1 Criar `plugins/cstk/skills/reconcile-docs/evals/triggers.jsonl`
+- [x] 5.1.1 Criar `plugins/cstk/skills/reconcile-docs/evals/triggers.jsonl`
       com consultas positivas de direcao "documentacao segue o codigo"
-- [ ] 5.1.2 Acrescentar negativos em `tests/trigger-eval/negatives.jsonl` que
+- [x] 5.1.2 Acrescentar negativos em `tests/trigger-eval/negatives.jsonl` que
       cubram consultas de `converge` (codigo segue a spec)
-- [ ] 5.1.3 Rodar `tests/trigger-eval/gen-eval-cases.sh` e conferir os
+- [x] 5.1.3 Rodar `tests/trigger-eval/gen-eval-cases.sh` e conferir os
       `plugins/cstk/evals/reconcile-docs/NNN/case.yaml` e o `evals/none/`
       regenerado
-- [ ] 5.1.4 Se houver colisao com `converge`, ajustar a `description` da
+- [x] 5.1.4 Se houver colisao com `converge`, ajustar a `description` da
       `reconcile-docs` primeiro; so tocar a da `converge` com nota no CHANGELOG
 
 ### 5.2 Registro no catalogo do toolkit `[A]`
 
 Ref: plan.md §Source Code; spec.md Assumptions "Local de entrega"
 
-- [ ] 5.2.1 Acrescentar `complementary:reconcile-docs` em
+- [x] 5.2.1 Acrescentar `complementary:reconcile-docs` em
       `scripts/profiles.txt.in` e atualizar o help do perfil em
       `cli/lib/install.sh`
-- [ ] 5.2.2 Atualizar a lista do perfil `complementary` em
+- [x] 5.2.2 Atualizar a lista do perfil `complementary` em
       `docs-site/manual/profiles.md`
-- [ ] 5.2.3 Atualizar `README.md` e `README.pt-BR.md` (contagens 22 -> 23,
+- [x] 5.2.3 Atualizar `README.md` e `README.pt-BR.md` (contagens 22 -> 23,
       11 -> 12, 29 -> 30, e linha na tabela de skills)
-- [ ] 5.2.4 Atualizar os testes que fixam contagens de perfil/skills
+- [x] 5.2.4 Atualizar os testes que fixam contagens de perfil/skills
       (`tests/test_doc-counts.sh` e os testes de build-release/quickstart-e2e
       que dependem de `profiles.txt.in`) e regenerar fixtures cacheadas com
       `regen.sh` quando aplicavel
-- [ ] 5.2.5 Rodar `tests/test_doc-counts.sh` e confirmar verde
+- [x] 5.2.5 Rodar `tests/test_doc-counts.sh` e confirmar verde
 
 ---
 
@@ -434,9 +434,9 @@ Ref: quickstart.md Scenario 11; feedback de suite lenta e locale
 
 - [ ] 6.3.1 Scenario 11: consultas "documentacao segue o codigo" disparam
       `reconcile-docs` e as de `converge` continuam esperando `converge`
-- [ ] 6.3.2 Rodar a suite completa com `LC_ALL=C` em background preso ao
+- [x] 6.3.2 Rodar a suite completa com `LC_ALL=C` em background preso ao
       processo pai, com log em arquivo, e ler o resultado do log
-- [ ] 6.3.3 Corrigir falhas nao flaky; falhas flaky conhecidas passam isoladas
+- [x] 6.3.3 Corrigir falhas nao flaky; falhas flaky conhecidas passam isoladas
       e nao gateiam
 - [ ] 6.3.4 Rodar `validate-documentation` e `validate-docs-rendered` sobre os
       documentos novos da skill
@@ -471,7 +471,7 @@ Ref: checklists/requirements.md CHK022; spec.md SC-005; depende de 1.4
 Ref: constitution Principio I; plan.md §Constitution Check (skill nova =
 superficie publica nova -> MINOR, sem rename/remocao)
 
-- [ ] 7.1.1 Acrescentar entrada em `CHANGELOG.md` descrevendo a skill
+- [x] 7.1.1 Acrescentar entrada em `CHANGELOG.md` descrevendo a skill
       `reconcile-docs` (sem alteracao de description de skill existente, salvo
       nota se 5.1.4 tocar a `converge`)
 - [ ] 7.1.2 Aplicar o bump MINOR nos manifests em lockstep conforme o processo

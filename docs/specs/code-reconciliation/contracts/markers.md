@@ -21,6 +21,9 @@ Regex de reconhecimento (ERE POSIX, usada por `markers.sh`):
 \[reconciled:(removed|updated|added) [0-9]{4}-[0-9]{2}-[0-9]{2} evidence=(absent:)?[^] :]+(:[0-9]+)?\]
 ```
 
+O marcador nunca carrega conteudo do codigo, so a referencia `<ref>` (FR-019: nao-copia de
+segredos).
+
 Um marcador por linha/celula. Posicao: FIM da linha (ou da celula de tabela) do trecho
 afetado, separado por um espaco.
 

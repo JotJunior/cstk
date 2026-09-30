@@ -102,3 +102,23 @@ nenhum sob `docs/specs/current/` (SC-001).
 2. **Expected**: casos `plugins/cstk/evals/reconcile-docs/NNN/case.yaml` gerados;
    consultas "documentacao segue o codigo" disparam `reconcile-docs`; consultas
    existentes de `converge` continuam esperando `converge`.
+
+## Scenario 12: Projeto sem constitution (FR-007, CHK007) — error case
+
+1. Copia da fixture SEM `docs/constitution.md` (ou com o arquivo ilegivel, permissao 000);
+   `alpha` mantem o FR MUST contradito pelo codigo.
+2. Rodar `/reconcile-docs alpha`.
+3. **Expected**: a execucao nao falha; o FR MUST da propria feature continua reportado como
+   `possible-regression` (sem escrita); nenhum principio de constitution e presumido;
+   relatorio traz o aviso `constitution-unavailable`; demais divergencias reconciliadas
+   como no Scenario 1.
+
+## Scenario 13: Segredo no codigo citado como evidencia (FR-019, CHK011)
+
+1. Fixture tem, no codigo de brinquedo, um segredo FICTICIO (ex.: atribuicao de uma chave
+   de API de mentira) na linha que serve de evidencia para uma divergencia de `alpha`.
+2. Rodar `/reconcile-docs alpha`.
+3. **Expected**: o documento alterado, o marcador `[reconciled:... evidence=<path>:<line>]`
+   e o relatorio trazem so `arquivo:linha`; o valor do segredo nao aparece em nenhum deles
+   (`grep` do valor ficticio nos documentos da feature e na saida do relatorio = 0
+   ocorrencias).

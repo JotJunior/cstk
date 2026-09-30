@@ -27,6 +27,9 @@ sobre documentacao — jamais altera codigo.
 - Q: Que contradicoes codigo x documentacao viram "possivel regressao" (FR-007)? → A: Apenas contradicao de requisitos MUST/MUST NOT da feature e de principios da constitution; SHOULD e texto descritivo sao reescritos para refletir o codigo.
 - Q: Como marcar trechos obsoletos/removidos e acrescimos documentados (FR-005/FR-009)? → A: Marcadores inline padronizados, com data e referencia a evidencia, mantendo o identificador FR-NNN; acrescimos usam novo FR-NNN sequencial; os tokens exatos dos marcadores sao fixados no plan.
 - Q: Qual a politica de escrita em features arquivadas e no corpus canonico `docs/specs/current/` (FR-017)? → A: Editar diretamente a documentacao de features arquivadas (mesma politica da ativa) e NUNCA editar o corpus `docs/specs/current/`, preservando o fluxo delta-merge (decisao humana, block-001).
+- Q: Como a skill se comporta quando `docs/constitution.md` do projeto e inexistente ou ilegivel (FR-007)? → A: Segue sem falhar, usando como criterio de "possivel regressao" apenas os requisitos MUST/MUST NOT da propria feature, e emite o aviso `constitution-unavailable` no relatorio; nenhum principio e presumido (Constitution VI). Decisao operacional dec-027 (execute-task 1.1).
+- Q: O que e "divergencia por acerto pontual" (denominador de SC-005)? → A: Divergencia dos tipos `stale`, `removed` ou `undocumented` (data-model) que a skill consegue resolver com evidencia observavel; `possible-regression` e `unverifiable` ficam fora do denominador por exigirem decisao humana ou fonte inexistente. Nenhum limiar numerico (linhas, tamanho) e usado. Decisao operacional dec-028 (execute-task 1.2).
+- Q: A skill pode reproduzir valores sensiveis do codigo ao citar evidencia? → A: Nao; evidencia e sempre por referencia `arquivo:linha` (ou `absent:<caminho>`), nunca reproduzindo chaves, tokens ou credenciais em documentos, marcadores ou relatorio (FR-019). O cumprimento e regra da skill (`references/` + Gotcha), sem detector deterministico novo. Decisao operacional dec-029 (execute-task 1.3).
 
 ## User Scenarios & Testing
 
@@ -162,6 +165,13 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   alteracoes na segunda execucao (idempotencia).
 - **Documento com edicoes manuais recentes**: trechos ja coerentes com o codigo nao sao
   reescritos apenas por estilo; so muda o que diverge do codigo.
+- **Constitution ausente ou ilegivel**: `docs/constitution.md` nao existe ou nao pode ser
+  lido. A skill nao falha nem presume principios: classifica "possivel regressao" apenas por
+  requisitos MUST/MUST NOT da propria feature e informa o aviso `constitution-unavailable`
+  no relatorio (FR-007).
+- **Segredo no codigo citado como evidencia**: o trecho de codigo que serve de evidencia
+  contem valor sensivel (chave, token, credencial). A skill cita somente `arquivo:linha` e
+  nao reproduz o valor em documento, marcador ou relatorio (FR-019).
 - **Dado factual sem fonte**: se a skill nao encontra no codigo a fonte de um valor,
   nome de campo, caminho ou endpoint que precisaria escrever, ela nao o escreve; marca o
   ponto como "nao verificavel" no relatorio.
@@ -240,6 +250,11 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   feature (`reconciliation.md`), em formato append-only, e MUST ser atualizado somente
   quando a execucao alterar algum documento; execucao sem divergencia MUST NOT gravar nada
   (preserva FR-012/SC-003).
+- **FR-019**: Ao citar codigo como evidencia (FR-008, FR-010), o sistema MUST NOT
+  reproduzir valores sensiveis (chaves, tokens, senhas, credenciais) em documentos da
+  feature, marcadores inline ou relatorio; a evidencia MUST ser referenciada apenas por
+  `arquivo:linha` (ou `absent:<caminho>`), sem copiar o conteudo da linha quando ele
+  contiver valor sensivel.
 
 ### Key Entities
 
@@ -269,7 +284,10 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   (arquivo e trecho) que a justifica.
 - **SC-005**: Uma pessoa mantenedora reconcilia uma feature em uma unica invocacao, sem
   precisar editar nenhum documento manualmente para concluir a reconciliacao, em pelo menos
-  90% dos casos de divergencia por acerto pontual.
+  90% dos casos de divergencia por acerto pontual. "Acerto pontual" = divergencia dos tipos
+  `stale`, `removed` ou `undocumented` (data-model) resolvivel com evidencia observavel;
+  `possible-regression` e `unverifiable` nao entram no denominador, pois exigem decisao
+  humana ou fonte inexistente por desenho (FR-007, FR-008).
 - **SC-006**: Uma execucao `--all` sobre o portfolio processa 100% das features localizadas
   mesmo quando algumas falham, e o relatorio consolidado contabiliza todas.
 - **SC-007**: Com `--dry-run`, zero arquivos do projeto sao modificados e o relatorio
@@ -297,6 +315,8 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   (legados) tambem sao aceitos.
 - **Modo standalone**: a skill funciona sem execucao autonoma (`/agente-00c`,
   `/feature-00c`) ativa e nao grava estado de orquestrador, como a skill `converge`.
+- **Constitution do projeto opcional**: `docs/constitution.md` do projeto-alvo e insumo de
+  FR-007, nao pre-requisito; sem ela a skill segue com aviso (ver Edge Cases).
 - **Compreensao do codigo e semantica, nao mecanica**: a comparacao entre documentacao e
   codigo depende de leitura e julgamento; por isso o relatorio sempre expoe a evidencia
   para que a pessoa possa auditar.

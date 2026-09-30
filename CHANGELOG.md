@@ -5,6 +5,32 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+Nova skill complementar `reconcile-docs`: o sentido inverso da `converge`.
+Quando o codigo recebeu acertos pontuais e a documentacao da feature ficou
+para tras, a skill traz a documentacao de volta para o que o codigo faz hoje.
+
+### Added
+
+- **`reconcile-docs`** (perfil `complementary`; `/reconcile-docs <feature>`
+  ou `--all`, com `--dry-run`). Compara `spec.md`, `plan.md`,
+  `data-model.md`, `contracts/*.md` e `quickstart.md` de uma feature (ativa
+  ou arquivada) com o codigo atual e reescreve so os trechos divergentes,
+  com marcadores inline `[reconciled:<kind> <data> evidence=<ref>]` e
+  evidencia sempre por `arquivo:linha` (nunca o conteudo da linha).
+  Contradicao de MUST/MUST NOT da feature ou da constitution vira
+  "possivel regressao" no relatorio, sem reescrever o requisito. Nunca
+  altera codigo, nunca escreve em `docs/specs/current/`, `research.md`,
+  `checklists/` nem `tasks.md`: toda escrita passa por `doc-guard.sh`
+  (fail-closed). Seis scripts POSIX em `scripts/` (`locate-feature.sh`,
+  `extract-anchors.sh`, `doc-guard.sh`, `markers.sh`,
+  `reconciliation-log.sh`, `git-probe.sh` — o unico que usa `git`, opcional,
+  com fallback `no-git`) e registro append-only `reconciliation.md` por
+  feature, gravado so quando ha alteracao. Contagens do README e dos
+  perfis atualizadas (23 skills globais, 12 em `complementary`, 30 em
+  `all`). Nenhuma `description` de skill existente foi alterada.
+
 ## [10.12.0] - 2026-09-30
 
 O `clarify` autonomo volta a perguntar ao operador coisas que o operador ja

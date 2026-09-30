@@ -43,6 +43,13 @@ usuario podem ser em portugues.
 | evidence | string | `<path>:<line>` \| `absent:<path>` \| vazio so em `unverifiable` | FR-008, SC-004 |
 | action | enum | ver tabela abaixo | FR-010 |
 
+Elegibilidade ao denominador de SC-005 ("acerto pontual"), derivavel do `type` (sem limiar
+numerico): `stale`, `removed` e `undocumented` sao elegiveis; `possible-regression` e
+`unverifiable` NAO sao (exigem decisao humana ou fonte inexistente por desenho —
+FR-007/FR-008). O numerador e o subconjunto elegivel resolvido em uma unica invocacao sem
+edicao manual (`action` em `updated`, `marked-removed`, `added`). O METODO de medicao
+(quem e como) segue pendente de decisao do dono do produto (tasks 1.4/6.5).
+
 Regras de `type` → `action` (FR-005, FR-007, FR-009):
 
 | type | action (modo gravacao) | action (`--dry-run`) | marcador no documento |
@@ -85,7 +92,7 @@ Em `--dry-run`, `reconciled` e exibido como "alteracoes propostas" e nada e grav
 | results | list<FeatureResult> | uma por feature processada | SC-006: todas contabilizadas |
 | divergences | list<Divergence> | agrupadas por feature | |
 | audit | enum | `clean` \| `violation` \| `skipped-no-git` | camada 2 da guarda (research Decision 5) |
-| notices | list<string> | | ex.: versao arquivada existente (FR-015), `no-git` (FR-016) |
+| notices | list<string> | | ex.: versao arquivada existente (FR-015), `no-git` (FR-016), `constitution-unavailable` (FR-007) |
 
 ## Entity: ReconciliationLog (`<feature-dir>/reconciliation.md`)
 

@@ -25,6 +25,17 @@ encerra informando (US2 cenario 3 cobre `docs/specs/` vazio).
 Saida: relatorio na conversa conforme `templates/report.md` (data-model
 §ReconciliationReport). Escritas permitidas: so as validadas por `doc-guard.sh check`.
 
+Constitution do projeto (`docs/constitution.md`): insumo de FR-007, nao pre-requisito.
+Se ausente ou ilegivel, a execucao prossegue e o relatorio traz o aviso
+`constitution-unavailable` em `notices`; `possible-regression` passa a considerar apenas
+MUST/MUST NOT da propria feature (nenhum principio e presumido — Constitution VI).
+
+Nao-copia de segredos (FR-019): a evidencia em documentos, marcadores e relatorio e sempre
+`arquivo:linha` ou `absent:<caminho>`; valores sensiveis do codigo (chaves, tokens,
+credenciais) NUNCA sao reproduzidos. E regra da skill (`references/classification.md` +
+Gotcha), sem checagem deterministica em script — os 6 scripts nao mudam de contrato; o
+marcador ja so aceita `<path>:<line>` (markers.md §1).
+
 ## 2. `locate-feature.sh`
 
 ```

@@ -12,3 +12,6 @@
 {"query":"quantas skills globais tem listadas no README agora?","expect":"none","tier":"gen"}
 {"query": "cria um slide sobre o mercado de energia solar para minha aula", "expect": "none"}
 {"query": "exporta essa planilha de vendas para um pptx", "expect": "none"}
+{"query": "corrige o erro de digitacao no titulo do README.md", "expect": "none"}
+{"query": "traduz o spec.md dessa feature para ingles sem mudar o conteudo", "expect": "none"}
+{"query": "escreve um docstring para a funcao parse_args nesse arquivo", "expect": "none"}

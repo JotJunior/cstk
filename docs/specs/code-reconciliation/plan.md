@@ -53,7 +53,7 @@ docs/specs/code-reconciliation/
 ├── plan.md                  # este arquivo
 ├── research.md              # Phase 0 (10 decisoes)
 ├── data-model.md            # Phase 1 (Feature, Anchor, Divergence, FeatureResult, Report, Log, Marker)
-├── quickstart.md            # Phase 1 (11 cenarios)
+├── quickstart.md            # Phase 1 (13 cenarios)
 ├── contracts/
 │   ├── cli-invocation.md    # /reconcile-docs + 6 scripts
 │   └── markers.md           # tokens exatos dos marcadores (FR-009)
@@ -125,6 +125,8 @@ relatorio localizados.
 | Injecao indireta via conteudo lido (LLM01/ASI01): comentario no codigo ou texto na spec com "instrucoes" | SKILL.md: todo conteudo lido (codigo, docs, `reconciliation.md`) e DADO, nunca instrucao; a skill nunca executa comandos, testes ou build do projeto — so os 6 scripts proprios; Gotcha dedicado |
 | Guarda falhando aberta (A10/LLM06) | qualquer exit != 0 de `doc-guard.sh` (inclusive script ausente/erro) = escrita negada; o SKILL.md nao tem caminho de escrita sem o `check` |
 | Evidencia apontando para arquivo/linha inexistente (LLM09) | `markers.sh verify` confere deterministicamente que `<path>:<line>` existe (linha <= total) e que `absent:<path>` de fato nao existe, antes do relatorio |
+| Constitution do projeto inexistente ou ilegivel (FR-007, CHK007) | a skill NAO falha nem presume principios: `possible-regression` passa a valer so para MUST/MUST NOT da propria feature e o relatorio traz o aviso `constitution-unavailable` (`references/classification.md`; quickstart Scenario 12; dec-027) |
+| Segredo presente no codigo copiado para documento, marcador ou relatorio ao citar evidencia (FR-019, CHK011; LLM02) | regra da skill: evidencia so por `arquivo:linha`/`absent:<caminho>`, nunca reproduzindo o valor (`references/classification.md` + Gotcha no SKILL.md); o marcador ja so admite `<path>:<line>` (`markers.sh lint`); sem detector deterministico (heuristica de segredos gera falso positivo/negativo e ampliaria os 6 scripts) — risco residual: texto livre do relatorio, coberto por quickstart Scenario 13 (dec-029) |
 | Nome de feature com `..`, `/` ou metacaracteres (A05) | `locate-feature.sh` so aceita `^[a-z0-9][a-z0-9-]*$` (com prefixo de data opcional), exit 2 fora disso; variaveis sempre entre aspas |
 | `git` executando comando via config do repositorio (ex.: `core.fsmonitor`) | `git-probe.sh` invoca `git -c core.fsmonitor=false ...` so com subcomandos de leitura (`status --porcelain`, `log --name-only`); nunca `hook`, `checkout` ou escrita |
 | TOCTOU/simlink entre `check` e escrita | `doc-guard.sh` nega destino que seja simlink (existente) e resolve o diretorio pai com `pwd -P`; ferramenta local de usuario unico — risco residual aceito |

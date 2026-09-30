@@ -14,7 +14,7 @@ Gate deterministico `requirement-coverage.sh spec.md`: `RESULT|requirements=18|c
 - [x] CHK004 - O comportamento sem argumentos, e com `--all` junto de `<feature>`, esta definido? [Completude, Plan contracts/cli-invocation.md §1 (mutuamente exclusivo; nenhum argumento = erro de uso)] {auto}
 - [x] CHK005 - O destino do relatorio (onde e exibido) esta definido? [Completude, Plan contracts/cli-invocation.md "relatorio na conversa"; Spec FR-018 "sem duplicar o relatorio completo"] {auto}
 - [x] CHK006 - O comportamento de `--dry-run` quanto a `reconciliation.md` (nao gravar) esta definido? [Completude, Spec §FR-011 "nenhum arquivo"; Plan contracts/cli-invocation.md `--dry-run`] {auto}
-- [ ] CHK007 - O comportamento quando a `constitution` do projeto e inexistente ou ilegivel esta definido, dado que FR-007 depende dela para classificar "possivel regressao"? [Gap, Spec §FR-007; ausente em Edge Cases, plan e contratos (grep "constitution ausente" sem resultado)] {auto}
+- [x] CHK007 - O comportamento quando a `constitution` do projeto e inexistente ou ilegivel esta definido, dado que FR-007 depende dela para classificar "possivel regressao"? [Fechado por execute-task 1.1 (dec-027): Spec §Edge Cases "Constitution ausente ou ilegivel" + Clarifications; Plan §Riscos; contracts/cli-invocation.md §1; quickstart Scenario 12] {auto}
 
 ## Clareza
 
@@ -23,7 +23,7 @@ Gate deterministico `requirement-coverage.sh spec.md`: `RESULT|requirements=18|c
 - [x] CHK010 - O criterio de "possivel regressao" esta restrito e nao subjetivo? [Clareza, Spec §FR-007 "MUST/MUST NOT da feature ou principio da constitution"; Clarifications Q3] {auto}
 - [x] CHK011 - Os marcadores inline (tokens, data, evidencia) estao especificados de forma parseavel? [Clareza, Spec §FR-009 delega ao plan; Plan §Summary `[reconciled:<kind> <date> evidence=<ref>]`; contracts/markers.md] {auto}
 - [x] CHK012 - "Evidencia" tem formato verificavel (arquivo e trecho)? [Clareza, Spec §FR-008, SC-004; Plan §Riscos "`arquivo:linha` ou `absent:<path>`"] {auto}
-- [ ] CHK013 - "Acerto pontual" (denominador de SC-005) esta definido de modo a separar casos elegiveis dos nao elegiveis? [Ambiguity, Spec §SC-005] {auto}
+- [x] CHK013 - "Acerto pontual" (denominador de SC-005) esta definido de modo a separar casos elegiveis dos nao elegiveis? [Fechado por execute-task 1.2 (dec-028): Spec §SC-005 + Clarifications; data-model.md §Divergence (elegibilidade derivada de `type`)] {auto}
 
 ## Consistencia
 
@@ -58,4 +58,4 @@ Gate deterministico `requirement-coverage.sh spec.md`: `RESULT|requirements=18|c
 ## Notes
 
 - Items `{auto}` foram resolvidos contra spec/plan/contratos com a citacao; `[ ]` + marcador = gap aberto.
-- Gaps abertos: CHK007 (constitution ausente) e CHK013 (definicao de "acerto pontual") -> `create-tasks` (definir/especificar); CHK022 e CHK031 -> decisao do dono do produto.
+- Gaps `{auto}` CHK007 e CHK013 fechados em execute-task 1.1/1.2; CHK022 e CHK031 seguem abertos -> decisao do dono do produto.

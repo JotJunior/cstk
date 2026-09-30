@@ -22,11 +22,11 @@
 
 - [x] CHK009 - A escrita de dado factual sem fonte e proibida com destino definido ("nao verificavel")? [Completude, Spec §FR-008, Edge Cases "Dado factual sem fonte"] {auto}
 - [x] CHK010 - A evidencia citada e conferida deterministicamente (arquivo/linha existem; `absent:` de fato ausente)? [Mensurabilidade, Plan §Riscos "Evidencia apontando para arquivo/linha inexistente" `markers.sh verify`] {auto}
-- [ ] CHK011 - Ha requisito que impeca copiar segredos (chaves, tokens, credenciais) presentes no codigo para a documentacao, marcadores ou relatorio ao citar "trecho de codigo" como evidencia? [Gap, Spec §FR-008/FR-010/SC-004 exigem citar trecho; grep "secret|segredo|credencial|api key|senha" em spec/plan/research/data-model/contracts = 0 ocorrencias] {auto}
+- [x] CHK011 - Ha requisito que impeca copiar segredos (chaves, tokens, credenciais) presentes no codigo para a documentacao, marcadores ou relatorio ao citar "trecho de codigo" como evidencia? [Fechado por execute-task 1.3 (dec-029): Spec §FR-019 + Edge Cases; Plan §Riscos; contracts/cli-invocation.md §1 e markers.md §1; quickstart Scenario 13] {auto}
 - [x] CHK012 - A skill nao possui comunicacao de rede/coleta remota? [Completude, Plan §Constitution Check IV "nenhuma rede; git so local"] {auto}
 - [ ] CHK013 - A decisao de gravar direto (sem confirmacao) para escopo `--all` em portfolio com features arquivadas atende o apetite de risco do dono do produto, dado que a unica rede de seguranca e o VCS? [Risco, Spec §Assumptions "Modo padrao grava direto"; US4 P3] {humano}
 
 ## Notes
 
-- Gap aberto `{auto}`: CHK011 (segredos em evidencia/marcadores/relatorio) -> `create-tasks` (especificar redacao/omissao de valores sensiveis na evidencia; referenciar `arquivo:linha` sem reproduzir o valor).
+- Gap `{auto}` CHK011 (segredos em evidencia/marcadores/relatorio) fechado em execute-task 1.3 via FR-019 (referenciar `arquivo:linha` sem reproduzir o valor).
 - CHK013 fica `[ ]` aguardando o dono do produto.
