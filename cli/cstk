@@ -150,7 +150,8 @@ COMANDOS:
   doctor        Verifica integridade da instalacao e manifests
   session       Sessoes paralelas via git worktree (start/list/end/pr)
   recall        Busca cross-feature na memoria de conhecimento (SQLite+FTS5);
-                tambem --ingest (pos-onda) e --reindex (reconstrucao)
+                tambem --ingest (pos-onda), --reindex (reconstrucao) e
+                --precedents (precedente do operador para o clarify)
   show-tip      Exibe uma dica sobre uma skill do toolkit (aleatoria ou por SKILL/--phase)
   serve         Inicia o painel web cstk; baixa e instala na primeira execucao
   state         Operacoes sobre o estado transacional 00c (state migrate)

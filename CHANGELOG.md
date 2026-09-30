@@ -5,6 +5,56 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.12.0] - 2026-09-30
+
+O `clarify` autonomo volta a perguntar ao operador coisas que o operador ja
+respondeu em outras execucoes. Agora o bloqueio humano respondido (recuperado
+da knowledge.db) entra como 4a fonte de evidencia dos `clarify-answerer`, sem
+nunca decidir sozinho.
+
+### Added
+
+- **`cstk recall --precedents "<pergunta>"`** (modo novo, somente leitura):
+  devolve os bloqueios humanos respondidos mais semelhantes a uma pergunta de
+  clarify, rotulados com projeto/feature/etapa/data e com o aviso UNTRUSTED.
+  Prefiltro FTS5 OR (pool de 20) + similaridade Jaccard de tokens com limiar
+  default `0.55`, calibrado na base real (research Decision 2: maior
+  falso-positivo observado 0.524; pares-alvo 0.727 e 1.000). Flags:
+  `--limit` (3), `--max-bytes` (2400), `--min-similarity`, `--db`. Duplicatas
+  de ingestao colapsam por `(question, answer, answered_at)`. Toda degradacao
+  (sem `sqlite3`, indice ausente, pergunta com menos de 3 tokens, nenhum
+  candidato) e no-op: stdout vazio, exit 0.
+- **4a fonte nos dois `clarify-answerer`** (`agente-00c` e `feature-00c`):
+  o campo opcional `precedents` soma +1 a opcao concordante **somente com
+  suporte positivo** de `briefing` ou da terceira fonte (`spec_corrente` /
+  `stack_sugerida`) — "a constitution nao viola" nao basta (decisao do
+  operador, dec-027). Divergencia: pontua so o mais recente; empate de data,
+  nenhum. Dado factual e diretiva embutida nunca pontuam. Precedente nunca e
+  persistido alem de `block_ref` + opcao (Regra S-2). `tools: Read, Bash`
+  inalteradas.
+- **Referencias de clarify** (`references/orchestrators/{feature,root}/clarify.md`):
+  consulta por pergunta antes do spawn do answerer, evento `precedent_consulted`
+  em `.events[]` (so contagem), campo `precedents` omitido quando todas as
+  perguntas tem K=0 (prompt byte-identico) e secao "Precedentes" no bloqueio
+  humano (recomendado ou todos os divergentes, origem, `[outro projeto]` e
+  "recomendacao derivada de historico, nao verificada").
+- Testes: cenarios `precedents_*` em `tests/cstk/test_recall.sh`,
+  `tests/test_clarify-precedent-prose.sh` (prosa e paridade) e eval
+  nao-gateante `tests/eval/eval_precedent-calibration.sh`.
+
+### Notes
+
+- **Duas metades da instalacao**: o modo `--precedents` e runtime do binario
+  (`cstk self-update --from <tarball>`); answerers e referencias de clarify sao
+  catalogo (`cstk update` ou `cstk install --from <tarball>`). Atualizar so o
+  catalogo deixa o orquestrador chamando um binario antigo: a consulta vira
+  K=0 e o clarify segue como antes (degradacao segura, feature inerte).
+- Ganho declarado sem inflar: com suporte positivo obrigatorio o precedente
+  reforca ou desempata opcoes ja apoiadas no projeto corrente e pre-preenche a
+  recomendacao do bloqueio; nao converte sozinho uma pausa em decisao.
+- Limiar calibrado num corpus dominado por um projeto (premissa P-3):
+  recalibrar com `tests/eval/eval_precedent-calibration.sh`.
+
 ## [10.11.0] - 2026-09-30
 
 Os dois orquestradores autonomos eram carregados inteiros a cada onda
@@ -8549,6 +8599,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.12.0]: https://github.com/JotJunior/cstk/releases/tag/v10.12.0
 [10.11.0]: https://github.com/JotJunior/cstk/releases/tag/v10.11.0
 [10.10.1]: https://github.com/JotJunior/cstk/releases/tag/v10.10.1
 [10.10.0]: https://github.com/JotJunior/cstk/releases/tag/v10.10.0

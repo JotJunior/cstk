@@ -5553,4 +5553,272 @@ JSON
   return 0
 }
 
+# =========================================================================
+# Modo --precedents (clarify-precedent-source, FASE 2) — Cenarios 1-6 do
+# quickstart da feature. Fixture SINTETICA: textos inventados para o teste,
+# nenhum dado copiado da base real de outros projetos.
+# =========================================================================
+
+# Perguntas sinteticas. Conjuntos de tokens (>= 3 bytes, minusculas):
+#   PQ_A = {qual estrategia cache adotar para listagem relatorios mensais painel} (9)
+#   PQ_B = PQ_A com "semanais" no lugar de "mensais"  -> Jaccard(A,B) = 8/10 = 0.800
+#   ruido = {habilitar exportacao formato csv para auditoria externa} -> 1/15 = 0.067
+PQ_A="Qual estrategia de cache adotar para a listagem de relatorios mensais do painel"
+PQ_B="Qual estrategia de cache adotar para a listagem de relatorios semanais do painel"
+PQ_NOISE="Habilitar exportacao em formato csv para auditoria externa"
+
+# _prec_db DB -> cria o schema real (recall_apply_schema) num DB novo.
+_prec_db() {
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$1" >/dev/null 2>&1
+}
+
+# _prec_block DB PROJECT FEATURE SID STATUS QUESTION ANSWER DECISION_ID ANSWERED_AT
+# Insere um bloqueio em `blocks` + a linha FTS correspondente (type='block'),
+# como a ingestao faz. Textos sem aspas simples (fixture controlada).
+_prec_block() {
+  _pb_db="$1"; _pb_proj="$2"; _pb_feat="$3"; _pb_sid="$4"; _pb_st="$5"
+  _pb_q="$6"; _pb_a="$7"; _pb_did="$8"; _pb_at="$9"
+  if [ -n "$_pb_did" ]; then _pb_didsql="'$_pb_did'"; else _pb_didsql="NULL"; fi
+  sqlite3 "$_pb_db" "INSERT INTO blocks(project,feature,wave,execution_id,source_ts,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,ingested_at)
+VALUES('$_pb_proj','$_pb_feat','onda-001','exec-1','$_pb_at','$_pb_sid','$_pb_st','$_pb_q','','$_pb_a',$_pb_didsql,'$_pb_at','$_pb_at','2026-01-01T00:00:00Z');
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+VALUES('$_pb_q $_pb_a','block','$_pb_proj','$_pb_feat','onda-001','$_pb_sid','$_pb_at');" >/dev/null 2>&1
+}
+
+# _prec_dec DB PROJECT FEATURE SID STAGE -> decisao (fornece a etapa de origem).
+_prec_dec() {
+  sqlite3 "$1" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,stage,ingested_at)
+VALUES('$2','$3','onda-001','exec-1','2026-01-01T00:00:00Z','$4','$5','2026-01-01T00:00:00Z');" >/dev/null 2>&1
+}
+
+# _prec_rep STR N -> repete STR N vezes (bytes exatos, sem newline).
+_prec_rep() {
+  awk -v s="$1" -v n="$2" 'BEGIN { for (i = 0; i < n; i++) printf "%s", s }'
+}
+
+# _prec_entries -> conta entradas "- ref=" no stdout capturado.
+_prec_entries() {
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^- ref='
+}
+
+scenario_precedents_pair_above_threshold() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr1.db"; _prec_db "$_db"
+  _prec_block "$_db" projP featB block-001 respondido "$PQ_B" "Usar cache em memoria com expiracao curta" "" "2026-08-23T02:11:11Z"
+  _prec_block "$_db" projP featN block-002 respondido "$PQ_NOISE" "Sim, habilitar" "" "2026-08-24T00:00:00Z"
+  capture _rc --precedents "$PQ_A" --db "$_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "pr1 exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "ref=projP/featB/block-001" || return 1
+  assert_stdout_contains "similarity=0.800" || return 1
+  assert_stdout_contains "UNTRUSTED" || return 1
+  assert_stdout_not_contains "block-002" || return 1
+  # Limiar: --min-similarity acima de 0.8 descarta o par (K=0 => vazio).
+  capture _rc --precedents "$PQ_A" --min-similarity 0.85 --db "$_db"
+  [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "pr1 min-similarity" "esperava vazio/exit 0, obtido exit $_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  # Pergunta identica => similarity 1.000 e formato do cabecalho da entrada.
+  capture _rc --precedents "$PQ_B" --db "$_db"
+  assert_stdout_contains "similarity=1.000" || return 1
+  assert_stdout_contains "answered_at=2026-08-23T02:11:11Z" || return 1
+  assert_stdout_contains "  question: $PQ_B" || return 1
+  assert_stdout_contains "  answer: Usar cache em memoria com expiracao curta" || return 1
+}
+
+scenario_precedents_dedup() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr2.db"; _prec_db "$_db"
+  # Mesmo bloqueio ingerido sob dois projetos (question/answer/answered_at identicos).
+  _prec_block "$_db" projOne featB block-001 respondido "$PQ_B" "Resposta duplicada" "" "2026-06-05T20:54:57Z"
+  _prec_block "$_db" projTwo featB2 block-001 respondido "$PQ_B" "Resposta duplicada" "" "2026-06-05T20:54:57Z"
+  capture _rc --precedents "$PQ_A" --db "$_db"
+  [ "$(_prec_entries)" = "1" ] || { _fail "pr2 dedup" "esperava 1 entrada, obtido $(_prec_entries): $_CAPTURED_STDOUT"; return 1; }
+  # Mesma pergunta/resposta mas answered_at diferente NAO e duplicata.
+  _prec_block "$_db" projThree featB3 block-009 respondido "$PQ_B" "Resposta duplicada" "" "2026-07-01T00:00:00Z"
+  capture _rc --precedents "$PQ_A" --db "$_db"
+  [ "$(_prec_entries)" = "2" ] || { _fail "pr2 nao-duplicata" "esperava 2 entradas, obtido $(_prec_entries)"; return 1; }
+  # Ordenacao: empate de similaridade desempata por answered_at desc.
+  _first=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^- ref=' | sed -n 1p)
+  case "$_first" in
+    *"projThree/featB3/block-009"*) : ;;
+    *) _fail "pr2 ordem" "esperava o answered_at mais recente primeiro: $_first"; return 1 ;;
+  esac
+}
+
+scenario_precedents_eligibility_stage() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr3.db"; _prec_db "$_db"
+  _q1=$(printf '%s' "$PQ_B" | sed 's/semanais/trimestrais/')
+  _q2=$(printf '%s' "$PQ_B" | sed 's/semanais/anuais/')
+  _q3=$(printf '%s' "$PQ_B" | sed 's/semanais/diarios/')
+  _q4=$(printf '%s' "$PQ_B" | sed 's/semanais/horarios/')
+  _prec_block "$_db" projE featE block-pend aguardando "$PQ_B" "MARCADOR-PENDENTE" "" "2026-08-01T00:00:00Z"
+  _prec_block "$_db" projE featE block-vazio respondido "$_q1" "" "" "2026-08-02T00:00:00Z"
+  _prec_block "$_db" projE featE block-plan respondido "$_q2" "Resposta valida com etapa" "dec-010" "2026-08-03T00:00:00Z"
+  _prec_block "$_db" projE featE block-orfao respondido "$_q3" "Resposta valida sem decisao" "dec-999" "2026-08-04T00:00:00Z"
+  _prec_block "$_db" projE featE block-semdec respondido "$_q4" "Resposta valida sem decision_id" "" "2026-08-05T00:00:00Z"
+  _prec_dec "$_db" projE featE dec-010 plan
+  capture _rc --precedents "$PQ_A" --db "$_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "pr3 exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_not_contains "MARCADOR-PENDENTE" || return 1
+  assert_stdout_not_contains "block-pend" || return 1
+  assert_stdout_not_contains "block-vazio" || return 1
+  _l_plan=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^- ref=.*block-plan')
+  case "$_l_plan" in *"stage=plan "*) : ;; *) _fail "pr3 stage" "block-plan sem stage=plan: $_l_plan"; return 1 ;; esac
+  _l_orf=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^- ref=.*block-orfao')
+  case "$_l_orf" in *"stage=- "*) : ;; *) _fail "pr3 stage orfao" "esperava stage=-: $_l_orf"; return 1 ;; esac
+  _l_sem=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^- ref=.*block-semdec')
+  case "$_l_sem" in *"stage=- "*) : ;; *) _fail "pr3 stage sem decision_id" "esperava stage=-: $_l_sem"; return 1 ;; esac
+}
+
+scenario_precedents_caps() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr4.db"; _prec_db "$_db"
+  # Campos longos: pergunta = PQ_B + repeticao de token do proprio conjunto
+  # (nao altera o Jaccard); resposta = "x" + "e-agudo" x 499 (truncar em 300
+  # bytes cai no meio de um caractere de 2 bytes).
+  _pad=$(_prec_rep " cache" 160)
+  _ans="x$(_prec_rep "é" 499)"
+  _i=1
+  for _w in semanais quinzenais bimestrais trimestrais anuais diarios; do
+    _qq=$(printf '%s' "$PQ_B" | sed "s/semanais/$_w/")
+    _prec_block "$_db" projC "feat$_i" "block-00$_i" respondido "$_qq$_pad" "$_ans" "" "2026-08-0${_i}T00:00:00Z"
+    _i=$((_i + 1))
+  done
+  capture _rc --precedents "$PQ_A" --db "$_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "pr4 exit" "$_CAPTURED_EXIT"; return 1; }
+  _n=$(_prec_entries)
+  { [ "$_n" -ge 1 ] && [ "$_n" -le 3 ]; } || { _fail "pr4 limit default" "entradas=$_n"; return 1; }
+  _bytes=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -c | tr -d ' ')
+  [ "$_bytes" -le 2400 ] || { _fail "pr4 max-bytes default" "$_bytes bytes"; return 1; }
+  # I-5: nenhum campo com mais de 300 bytes, nenhuma sequencia UTF-8 quebrada.
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep '^  answer: ' | while IFS= read -r _ln; do
+    _len=$(printf '%s' "${_ln#  answer: }" | wc -c | tr -d ' ')
+    [ "$_len" -le 300 ] || exit 1
+  done || { _fail "pr4 truncamento answer" "campo > 300 bytes"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep '^  question: ' | while IFS= read -r _ln; do
+    _len=$(printf '%s' "${_ln#  question: }" | wc -c | tr -d ' ')
+    [ "$_len" -le 300 ] || exit 1
+  done || { _fail "pr4 truncamento question" "campo > 300 bytes"; return 1; }
+  if command -v iconv >/dev/null 2>&1; then
+    printf '%s\n' "$_CAPTURED_STDOUT" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 \
+      || { _fail "pr4 utf8" "saida com sequencia UTF-8 invalida"; return 1; }
+  fi
+  # --limit 1 => exatamente 1 entrada.
+  capture _rc --precedents "$PQ_A" --limit 1 --db "$_db"
+  [ "$(_prec_entries)" = "1" ] || { _fail "pr4 --limit 1" "entradas=$(_prec_entries)"; return 1; }
+  # --max-bytes pequeno: nenhuma entrada cortada no meio (entrada inteira ou nada).
+  capture _rc --precedents "$PQ_A" --max-bytes 400 --db "$_db"
+  [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "pr4 max-bytes 400" "esperava vazio (nenhuma entrada cabe), obtido: $_CAPTURED_STDOUT"; return 1; }
+  # --max-bytes que so comporta UMA entrada: stdout <= teto e 1 entrada completa.
+  capture _rc --precedents "$PQ_A" --max-bytes 1400 --db "$_db"
+  _bytes=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -c | tr -d ' ')
+  { [ "$_bytes" -le 1400 ] && [ "$(_prec_entries)" = "1" ]; } \
+    || { _fail "pr4 max-bytes 1400" "bytes=$_bytes entradas=$(_prec_entries)"; return 1; }
+  # I-1: o teto descarta a MENOS similar. Adiciona um candidato exato (1.000).
+  _prec_block "$_db" projC featX block-exato respondido "$PQ_A$_pad" "$_ans" "" "2026-08-09T00:00:00Z"
+  capture _rc --precedents "$PQ_A" --max-bytes 1400 --db "$_db"
+  assert_stdout_contains "block-exato" || return 1
+  [ "$(_prec_entries)" = "1" ] || { _fail "pr4 I-1 menos similar" "entradas=$(_prec_entries)"; return 1; }
+}
+
+scenario_precedents_degradation() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr5.db"; _prec_db "$_db"
+  _prec_block "$_db" projP featB block-001 respondido "$PQ_B" "Resposta" "" "2026-08-23T02:11:11Z"
+  # (a) DB inexistente
+  capture _rc --precedents "$PQ_A" --db "$TMPDIR_TEST/nao-existe.db"
+  { [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ]; } || { _fail "pr5 db ausente" "exit=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  # (b) arquivo que nao e SQLite
+  printf 'isto nao e um banco sqlite, apenas texto\n' > "$TMPDIR_TEST/lixo.db"
+  capture _rc --precedents "$PQ_A" --db "$TMPDIR_TEST/lixo.db"
+  { [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ]; } || { _fail "pr5 db corrompido" "exit=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  # (c) sqlite3 fora do PATH (PATH interno desacoplado)
+  _bin="$TMPDIR_TEST/bin_pr5"; mkdir -p "$_bin"
+  for _t in tr wc printf sed grep awk basename dirname date find mkdir rm cat head sleep cp jq base64 sort od; do
+    _p=$(command -v "$_t" 2>/dev/null) && ln -sf "$_p" "$_bin/$_t"
+  done
+  capture sh -c 'PATH="'"$_bin"'"; export PATH; . "'"$CSTK_LIB"'/common.sh"; . "'"$CSTK_LIB"'/recall.sh"; recall_main --precedents "'"$PQ_A"'" --db "'"$_db"'"'
+  { [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ]; } || { _fail "pr5 sem sqlite3" "exit=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "sqlite3" || return 1
+  # (d) pergunta com < 3 tokens distintos
+  capture _rc --precedents "ok?" --db "$_db"
+  { [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ]; } || { _fail "pr5 pergunta curta" "exit=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "short-query" || return 1
+  # (e) nenhum candidato acima do limiar => vazio, exit 0
+  capture _rc --precedents "Como configurar monitoramento de latencia nos alertas" --db "$_db"
+  { [ "$_CAPTURED_EXIT" = "0" ] && [ -z "$_CAPTURED_STDOUT" ]; } || { _fail "pr5 K=0" "exit=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  # I-6: somente leitura — o DB nao muda.
+  _sum1=$(cksum < "$_db")
+  _rc --precedents "$PQ_A" --db "$_db" >/dev/null 2>&1
+  _sum2=$(cksum < "$_db")
+  [ "$_sum1" = "$_sum2" ] || { _fail "pr5 somente leitura" "knowledge.db foi alterado"; return 1; }
+}
+
+scenario_precedents_injection_inputs() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr7.db"; _prec_db "$_db"
+  _prec_block "$_db" projP featB block-001 respondido "$PQ_B" "Resposta" "" "2026-08-23T02:11:11Z"
+  # Pergunta adversarial (aspas, sintaxe FTS5, SQL): exit 0, sem erro de sintaxe, tabela intacta.
+  capture _rc --precedents "x'); DROP TABLE blocks;-- \"NEAR(a b) cache* estrategia adotar" --db "$_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "pr7 exit" "$_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _n=$(sqlite3 "$_db" "SELECT count(*) FROM blocks;" 2>/dev/null)
+  [ "$_n" = "1" ] || { _fail "pr7 tabela blocks" "contagem=$_n"; return 1; }
+}
+
+scenario_precedents_usage_errors() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/pr6.db"; _prec_db "$_db"
+  capture _rc --precedents --db "$_db"
+  { [ "$_CAPTURED_EXIT" = "2" ] && [ -z "$_CAPTURED_STDOUT" ]; } || { _fail "pr6 pergunta ausente" "exit=$_CAPTURED_EXIT"; return 1; }
+  capture _rc --precedents "$PQ_A" "termo extra" --db "$_db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 termo extra" "exit=$_CAPTURED_EXIT"; return 1; }
+  for _bad in 1.5 0 0.0 .0 -0.5 abc 2 "0.5x" ""; do
+    capture _rc --precedents "$PQ_A" --min-similarity "$_bad" --db "$_db"
+    [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 min-similarity '$_bad'" "exit=$_CAPTURED_EXIT"; return 1; }
+    [ -z "$_CAPTURED_STDOUT" ] || { _fail "pr6 min-similarity stdout" "'$_bad' stdout nao vazio"; return 1; }
+  done
+  for _ok in 0.55 .55 1 1.0 0.9; do
+    capture _rc --precedents "$PQ_A" --min-similarity "$_ok" --db "$_db"
+    [ "$_CAPTURED_EXIT" = "0" ] || { _fail "pr6 min-similarity valido '$_ok'" "exit=$_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  done
+  capture _rc --precedents "$PQ_A" --limit 0 --db "$_db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 limit 0" "exit=$_CAPTURED_EXIT"; return 1; }
+  capture _rc --precedents "$PQ_A" --max-bytes abc --db "$_db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 max-bytes" "exit=$_CAPTURED_EXIT"; return 1; }
+  capture _rc --precedents "$PQ_A" --type block --db "$_db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 --type" "exit=$_CAPTURED_EXIT"; return 1; }
+  capture _rc --precedents "$PQ_A" --project projP --db "$_db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 --project" "exit=$_CAPTURED_EXIT"; return 1; }
+  capture _rc --precedents "$PQ_A" --explain --db "$_db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "pr6 --explain" "exit=$_CAPTURED_EXIT"; return 1; }
+  # NUL: argv nao carrega NUL; valida o helper que o modo usa (value_has_nul).
+  capture sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; printf "a\000b" | has_nul'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "pr6 has_nul" "helper de NUL nao detecta"; return 1; }
+}
+
+# Help/usage (task 2.3): usage do recall e help do binario citam --precedents.
+scenario_precedents_help_mentions_mode() {
+  capture _rc --help
+  assert_stdout_contains "--precedents" || return 1
+  assert_stdout_contains "--min-similarity" || return 1
+  grep -q -- '--precedents' "$REPO_ROOT/cli/cstk" \
+    || { _fail "pr help cli/cstk" "help de cli/cstk nao menciona --precedents"; return 1; }
+}
+
+# Fixa o metodo de tokenizacao da calibracao (research Decision 2): qualquer
+# mudanca aqui invalida o limiar 0.55 e exige recalibrar.
+scenario_precedents_tokenization_pinned() {
+  capture sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prec_tokens "Qual É a Estratégia? cache/CACHE ab 12 x9 cache-fts"'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "tok exit" "$_CAPTURED_EXIT"; return 1; }
+  _want=$(printf 'qual\nestratégia\ncache\nfts')
+  [ "$_CAPTURED_STDOUT" = "$_want" ] \
+    || { _fail "tok conjunto" "esperado [$_want], obtido [$_CAPTURED_STDOUT]"; return 1; }
+  # Jaccard: {a b c} x {b c d} = 2/4 = 0.500 (>= 0.5 passa, < 0.6 nao)
+  capture sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prec_similarity "aaa bbb ccc" 0.5 "bbb ccc ddd"'
+  [ "$_CAPTURED_STDOUT" = "0.500" ] || { _fail "jaccard" "esperado 0.500, obtido [$_CAPTURED_STDOUT]"; return 1; }
+  capture sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prec_similarity "aaa bbb ccc" 0.6 "bbb ccc ddd"'
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "jaccard abaixo do limiar" "esperado vazio, obtido [$_CAPTURED_STDOUT]"; return 1; }
+}
+
 run_all_scenarios
