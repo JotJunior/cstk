@@ -59,7 +59,7 @@ Projecao (estimativa de planejamento, research Decision 6): O ~54%, F ~56%.
 
 ### Documentation (this feature)
 
-```
+```text
 docs/specs/orchestrator-slim/
 ├── spec.md
 ├── plan.md
@@ -77,7 +77,7 @@ docs/specs/orchestrator-slim/
 
 ### Source Code (repository root)
 
-```
+```text
 plugins/cstk/agents/
 ├── agente-00c-orchestrator.md            # EDITADO: stubs no lugar das secoes movidas
 └── agente-00c-feature-orchestrator.md    # EDITADO: idem
