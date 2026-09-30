@@ -18,10 +18,15 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
+
+# Corpus = prompt-base + referencias de fase do orquestrador (orchestrator-slim).
+# Literais contratuais podem viver no prompt-base OU numa referencia movida.
+orch_corpus_init
 
 AGENT="$REPO_ROOT/plugins/cstk/agents/data-veracity-verifier.md"
-ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+ORCH_AGENTE=$(orch_corpus_file root) || ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT=$(orch_corpus_file feature) || ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 # ==== Existencia + identidade ====
 

@@ -25,11 +25,15 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
+
+# Corpus = prompt-base + referencias de fase do orquestrador (orchestrator-slim).
+orch_corpus_init
 
 CMD_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
 CMD_FEATURE="$REPO_ROOT/plugins/cstk/commands/feature-00c.md"
-AGENT_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
-AGENT_FEATURE="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+AGENT_AGENTE=$(orch_corpus_file root) || AGENT_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+AGENT_FEATURE=$(orch_corpus_file feature) || AGENT_FEATURE="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 # ---------- 6.1.1: trilha (a) — ramo legado permanece intacto ----------
 

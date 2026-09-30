@@ -127,11 +127,11 @@ Ref: data-model.md §Testes (`test_doc-subcommands.sh`); spec.md FR-015
 
 Ref: spec.md FR-006, SC-002; data-model.md §Testes; research.md Decision 9
 
-- [ ] 4.1.1 Migrar para o corpus (prompt-base + referencias, sem afrouxar padrao): `test_orchestrator-turn-completion.sh`, `test_orchestrator-evidence-grounding.sh`, `test_data-veracity-verifier.sh`, `test_command-spawn-optin-degradation.sh`
-- [ ] 4.1.2 Migrar `test_orchestrator-spawn-model-apply.sh` e `test_converge-orchestrator-gate.sh` (positivos no corpus; negativos asseridos como ausentes do corpus INTEIRO do orquestrador) e `test_command-spawn-delivery-tier.sh` (negativo no corpus inteiro de F)
-- [ ] 4.1.3 Migrar `test_roadmap-mode.sh` (ordem `commit-mode.sh finalize` < `concluido_roadmap` dentro de `root/roadmap.md` a partir do heading) e `test_command-spawn-optin-elicitation.sh` (ponteiro `bootstrap` antes de `2. **Onda nova**` em O e `4. **Iniciar onda**` em F, mais `**primeiro ato**` em `bootstrap.md`)
-- [ ] 4.1.4 Migrar `scenario_doc_feature_orchestrator_sequencia_pre_spawn` de `tests/test_model-routing.sh` (contagem, ordem e literais em `feature/clarify.md`) e confirmar `test_orchestrator-allowlist-guard.sh` sem mudanca
-- [ ] 4.1.5 Rodar os 12 testes com corpus = prompt-base (ainda sem referencias) e confirmar verdes; cada migracao mantem a mesma quantidade de asserts do baseline
+- [x] 4.1.1 Migrar para o corpus (prompt-base + referencias, sem afrouxar padrao): `test_orchestrator-turn-completion.sh`, `test_orchestrator-evidence-grounding.sh`, `test_data-veracity-verifier.sh`, `test_command-spawn-optin-degradation.sh`
+- [x] 4.1.2 Migrar `test_orchestrator-spawn-model-apply.sh` e `test_converge-orchestrator-gate.sh` (positivos no corpus; negativos asseridos como ausentes do corpus INTEIRO do orquestrador) e `test_command-spawn-delivery-tier.sh` (negativo no corpus inteiro de F)
+- [x] 4.1.3 Migrar `test_roadmap-mode.sh` (ordem `commit-mode.sh finalize` < `concluido_roadmap` dentro de `root/roadmap.md` a partir do heading) e `test_command-spawn-optin-elicitation.sh` (ponteiro `bootstrap` antes de `2. **Onda nova**` em O e `4. **Iniciar onda**` em F, mais `**primeiro ato**` em `bootstrap.md`)
+- [x] 4.1.4 Migrar `scenario_doc_feature_orchestrator_sequencia_pre_spawn` de `tests/test_model-routing.sh` (contagem, ordem e literais em `feature/clarify.md`) e confirmar `test_orchestrator-allowlist-guard.sh` sem mudanca
+- [x] 4.1.5 Rodar os 12 testes com corpus = prompt-base (ainda sem referencias) e confirmar verdes; cada migracao mantem a mesma quantidade de asserts do baseline
 
 ---
 

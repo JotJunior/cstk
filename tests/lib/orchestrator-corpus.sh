@@ -185,3 +185,30 @@ orch_fragments_check() {
 orch_mcp_block() {
   sed -n '/MCP-VS-BASH:BEGIN/,/MCP-VS-BASH:END/p' "$1" | sed -e 's/[[:space:]]*$//'
 }
+
+# orch_corpus_init
+# Cria o diretorio temporario dos arquivos de corpus materializados e instala
+# trap de limpeza no shell corrente. Chamar UMA vez no topo do teste (fora de
+# subshell); scenarios rodam em subshells que herdam _ORCH_CF_DIR.
+orch_corpus_init() {
+  [ -n "${_ORCH_CF_DIR:-}" ] && [ -d "$_ORCH_CF_DIR" ] && return 0
+  _ORCH_CF_DIR=$(mktemp -d -t 'orch-cf.XXXXXX') || return 2
+  trap 'rm -rf "$_ORCH_CF_DIR"' EXIT
+}
+
+# orch_corpus_file <root|feature> -> caminho de um arquivo com o corpus do
+# orquestrador (prompt-base + referencias), utilizavel como alvo de grep/awk
+# no lugar do prompt-base. Materializa uma unica vez por orquestrador.
+orch_corpus_file() {
+  # orch_corpus_init MUST ter sido chamado no shell principal (nao em $(...)).
+  [ -n "${_ORCH_CF_DIR:-}" ] && [ -d "$_ORCH_CF_DIR" ] || {
+    printf 'orch_corpus_file: chame orch_corpus_init no topo do teste\n' >&2
+    return 2
+  }
+  _ocf_out="$_ORCH_CF_DIR/corpus-$1.md"
+  if [ ! -f "$_ocf_out" ]; then
+    orch_corpus "$1" > "$_ocf_out.tmp" || return 1
+    mv "$_ocf_out.tmp" "$_ocf_out"
+  fi
+  printf '%s' "$_ocf_out"
+}

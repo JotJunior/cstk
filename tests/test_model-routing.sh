@@ -48,6 +48,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/model-routing.sh"
 
@@ -1245,7 +1246,14 @@ scenario_artifact_cache_compat_pipeline_sha256_cache_estavel() {
 #      feature-00c-clarify-answerer (cobre asker + answerer)
 
 scenario_doc_feature_orchestrator_sequencia_pre_spawn() {
-  _doc="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+  # orchestrator-slim: a sequencia pre-spawn vive na referencia de fase
+  # `feature/clarify.md` (contagem, ordem e literais medidos ali); antes da
+  # movimentacao, o proprio prompt-base.
+  if [ -f "$(orch_refs_dir feature)/clarify.md" ]; then
+    _doc="$(orch_refs_dir feature)/clarify.md"
+  else
+    _doc=$(orch_base_path feature)
+  fi
   [ -f "$_doc" ] || { _fail "feature-orchestrator.md existe" "nao encontrado em $_doc"; return 1; }
 
   # Match >= 1 de model-routing.sh invoke

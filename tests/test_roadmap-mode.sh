@@ -14,11 +14,23 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
+
+# Corpus = prompt-base + referencias de fase (orchestrator-slim) para asserts
+# de presenca. Asserts POSICIONAIS (ordem finalize < concluido_roadmap, a
+# partir do heading) rodam no arquivo onde o bloco passou a viver: a referencia
+# `root/roadmap.md` quando existir; antes da movimentacao, o proprio prompt-base.
+orch_corpus_init
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/roadmap-mode.sh"
 SCRIPT_RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 SCRIPT_ONDAS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
-ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_AGENTE=$(orch_corpus_file root) || ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+if [ -f "$(orch_refs_dir root)/roadmap.md" ]; then
+  ORCH_ROADMAP_POS="$(orch_refs_dir root)/roadmap.md"
+else
+  ORCH_ROADMAP_POS=$(orch_base_path root)
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_roadmap-mode.sh: jq ausente — pulando suite (instale: brew install jq)\n'
@@ -174,11 +186,11 @@ scenario_orchestrator_menciona_5_campos_write_multi_campo() {
 # finalize" (passo 2) MUST aparecer em linha anterior a "concluido_roadmap"
 # (passo 4 — promocao terminal). Inversao = regressao de seguranca M1.
 scenario_orchestrator_finalize_antes_da_promocao_terminal() {
-  _heading_line=$(grep -n 'Encerramento terminal do modo roadmap' "$ORCH_AGENTE" | head -1 | cut -d: -f1)
+  _heading_line=$(grep -n 'Encerramento terminal do modo roadmap' "$ORCH_ROADMAP_POS" | head -1 | cut -d: -f1)
   [ -n "$_heading_line" ] || { _fail "heading nao encontrado" ""; return 1; }
 
-  _finalize_line=$(tail -n "+$_heading_line" "$ORCH_AGENTE" | grep -n 'commit-mode.sh finalize' | head -1 | cut -d: -f1)
-  _promocao_line=$(tail -n "+$_heading_line" "$ORCH_AGENTE" | grep -n 'concluido_roadmap' | head -1 | cut -d: -f1)
+  _finalize_line=$(tail -n "+$_heading_line" "$ORCH_ROADMAP_POS" | grep -n 'commit-mode.sh finalize' | head -1 | cut -d: -f1)
+  _promocao_line=$(tail -n "+$_heading_line" "$ORCH_ROADMAP_POS" | grep -n 'concluido_roadmap' | head -1 | cut -d: -f1)
   [ -n "$_finalize_line" ] || { _fail "commit-mode.sh finalize nao encontrado apos o heading" ""; return 1; }
   [ -n "$_promocao_line" ] || { _fail "concluido_roadmap nao encontrado apos o heading" ""; return 1; }
 
@@ -187,9 +199,9 @@ scenario_orchestrator_finalize_antes_da_promocao_terminal() {
 }
 
 scenario_orchestrator_menciona_guarda_enforced_ativa_no_bloco() {
-  _heading_line=$(grep -n 'Encerramento terminal do modo roadmap' "$ORCH_AGENTE" | head -1 | cut -d: -f1)
+  _heading_line=$(grep -n 'Encerramento terminal do modo roadmap' "$ORCH_ROADMAP_POS" | head -1 | cut -d: -f1)
   [ -n "$_heading_line" ] || { _fail "heading nao encontrado" ""; return 1; }
-  assert_exit 0 sh -c "tail -n '+$_heading_line' '$ORCH_AGENTE' | grep -Eq 'guarda enforced'" || return 1
+  assert_exit 0 sh -c "tail -n '+$_heading_line' '$ORCH_ROADMAP_POS' | grep -Eq 'guarda enforced'" || return 1
 }
 
 run_all_scenarios
