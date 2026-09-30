@@ -83,19 +83,19 @@ Ref: spec.md FR-013, SC-001; plan.md §Ordem de implementacao passo 1
 
 Ref: spec.md FR-006, FR-016, SC-002; data-model.md §ContractInventory; research.md Decision 8
 
-- [ ] 2.3.1 Extrair `contract-literals.tsv` com todos os padroes positivos hoje asseridos pelos 11 testes que leem os orquestradores (`orq`, flags do grep, padrao, `teste:linha`) e a lista dos padroes negativos
-- [ ] 2.3.2 Extrair `command-blocks.baseline.txt` (invocacoes `<script>.sh <subcomando>` do baseline, `sort -u`, por orquestrador)
-- [ ] 2.3.3 Criar `rewritten-lines.tsv` vazio (allowlist das linhas com referencia interna reescrita, FR-004 ii) com o cabecalho do formato
-- [ ] 2.3.4 Conferir que todo padrao de `contract-literals.tsv` casa no baseline `9f97e99` (script de verificacao) e que a contagem por teste bate com o inventario da data-model
+- [x] 2.3.1 Extrair `contract-literals.tsv` com todos os padroes positivos hoje asseridos pelos 11 testes que leem os orquestradores (`orq`, flags do grep, padrao, `teste:linha`) e a lista dos padroes negativos
+- [x] 2.3.2 Extrair `command-blocks.baseline.txt` (invocacoes `<script>.sh <subcomando>` do baseline, `sort -u`, por orquestrador)
+- [x] 2.3.3 Criar `rewritten-lines.tsv` vazio (allowlist das linhas com referencia interna reescrita, FR-004 ii) com o cabecalho do formato
+- [x] 2.3.4 Conferir que todo padrao de `contract-literals.tsv` casa no baseline `9f97e99` (script de verificacao) e que a contagem por teste bate com o inventario da data-model
 
 ### 2.4 Helper de corpus e teste de paridade verde contra o baseline `[A]`
 
 Ref: spec.md FR-006, FR-007, FR-016; research.md Decision 8; quickstart.md Cenarios 3 e 6
 
-- [ ] 2.4.1 Criar `tests/lib/orchestrator-corpus.sh` (sourceable, POSIX) que monta o corpus de um orquestrador (prompt-base + referencias existentes) para grep
-- [ ] 2.4.2 Escrever `tests/test_orchestrator-slim-parity.sh` com: preservacao de linhas contra `9f97e99` (linhas faltantes fora de `rewritten-lines.tsv` = falha), diff de blocos de comando, literais contratuais no corpus, padroes negativos no corpus inteiro, sincronia de `FRAGMENT`, MCP-VS-BASH byte-identico e presenca do bloco `commit-mode.sh finalize` no prompt-base (decisao 1.2)
-- [ ] 2.4.3 Rodar o teste com corpus igual ao prompt-base atual e confirmar verde ANTES de qualquer edicao dos prompts
-- [ ] 2.4.4 Teste negativo do proprio teste (Cenarios 3 e 6, error case): remover uma linha "REGRA DURA" numa copia temporaria e alterar 1 byte numa copia de fragmento; ambos devem falhar citando a linha/fragmento
+- [x] 2.4.1 Criar `tests/lib/orchestrator-corpus.sh` (sourceable, POSIX) que monta o corpus de um orquestrador (prompt-base + referencias existentes) para grep
+- [x] 2.4.2 Escrever `tests/test_orchestrator-slim-parity.sh` com: preservacao de linhas contra `9f97e99` (linhas faltantes fora de `rewritten-lines.tsv` = falha), diff de blocos de comando, literais contratuais no corpus, padroes negativos no corpus inteiro, sincronia de `FRAGMENT`, MCP-VS-BASH byte-identico e presenca do bloco `commit-mode.sh finalize` no prompt-base (decisao 1.2)
+- [x] 2.4.3 Rodar o teste com corpus igual ao prompt-base atual e confirmar verde ANTES de qualquer edicao dos prompts
+- [x] 2.4.4 Teste negativo do proprio teste (Cenarios 3 e 6, error case): remover uma linha "REGRA DURA" numa copia temporaria e alterar 1 byte numa copia de fragmento; ambos devem falhar citando a linha/fragmento
 
 ---
 

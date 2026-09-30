@@ -64,6 +64,7 @@ Arquivos versionados sob `tests/fixtures/orchestrator-slim/`:
 | Arquivo | Conteudo | Uso |
 |---------|----------|-----|
 | `contract-literals.tsv` | `<orchestrator>\t<grep-flags>\t<pattern>\t<source-test:line>` — todos os padroes positivos hoje asseridos pelos 11 testes | casar no baseline E no corpus novo (FR-006) |
+| `contract-negatives.tsv` | mesmo formato de `contract-literals.tsv` — padroes NEGATIVOS (8 linhas) | ausentes do baseline E do corpus inteiro (FR-006) |
 | `command-blocks.baseline.txt` | invocacoes `<script>.sh <subcomando>` extraidas do baseline, `sort -u`, por orquestrador | diff zero contra o corpus novo (FR-016) |
 | `rewritten-lines.tsv` | `<orchestrator>\t<linha-baseline>\t<justificativa>` | allowlist da verificacao de preservacao de linhas (so referencias internas reescritas — FR-004 ii) |
 
