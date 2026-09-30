@@ -18,6 +18,15 @@ feature cobre o sentido inverso, hoje sem cobertura: quando o codigo e a realida
 **a documentacao e que deve ser trazida para o codigo**. A skill nova atua exclusivamente
 sobre documentacao — jamais altera codigo.
 
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: Onde vive o registro de reconciliacao (FR-018) e o que acontece quando nao ha divergencias? → A: Arquivo proprio na feature (`reconciliation.md`), log append-only, atualizado somente quando ha alteracao real; execucao sem divergencia nao grava nada (preserva FR-012/SC-003).
+- Q: Qual o escopo de busca no codigo para confrontar uma feature (FR-004/FR-009)? → A: Somente o codigo alcancavel a partir de caminhos, simbolos, comandos e contratos citados na documentacao (git apenas como atalho de priorizacao, FR-016); comportamento fora dessa ancora nao e detectado e, quando relevante, e reportado como nao verificavel.
+- Q: Que contradicoes codigo x documentacao viram "possivel regressao" (FR-007)? → A: Apenas contradicao de requisitos MUST/MUST NOT da feature e de principios da constitution; SHOULD e texto descritivo sao reescritos para refletir o codigo.
+- Q: Como marcar trechos obsoletos/removidos e acrescimos documentados (FR-005/FR-009)? → A: Marcadores inline padronizados, com data e referencia a evidencia, mantendo o identificador FR-NNN; acrescimos usam novo FR-NNN sequencial; os tokens exatos dos marcadores sao fixados no plan.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Reconciliar UMA feature com o codigo atual (Priority: P1)
@@ -171,7 +180,9 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 - **FR-004**: Para cada feature, o sistema MUST comparar as afirmacoes verificaveis da
   documentacao (comportamentos, requisitos, caminhos de codigo, contratos, estruturas de
   dados, comandos e opcoes citados) com o que o codigo atual de fato faz, e classificar cada
-  divergencia encontrada.
+  divergencia encontrada. O escopo de busca no codigo MUST ser o alcancavel a partir dos
+  caminhos, simbolos, comandos e contratos citados na documentacao; comportamento fora dessa
+  ancora nao e detectado e, quando relevante, MUST ser reportado como nao verificavel.
 - **FR-005**: O sistema MUST atualizar os documentos divergentes da feature — `spec.md`,
   `plan.md`, `data-model.md`, `contracts/` e `quickstart.md` quando existirem — para que
   passem a descrever o comportamento atual, alterando somente os trechos que divergem e
@@ -181,8 +192,9 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   qualquer arquivo que nao seja documentacao de feature dentro de `docs/specs/`; toda
   escrita fora desse escopo e proibida por regra da skill, nao apenas por convencao.
 - **FR-007**: O sistema MUST usar o codigo atual como fonte de verdade da reconciliacao,
-  exceto quando a divergencia contradiz um requisito MUST da propria feature ou um
-  principio da constitution do projeto: nesse caso MUST reportar a divergencia como
+  exceto quando a divergencia contradiz um requisito MUST/MUST NOT da propria feature ou um
+  principio da constitution do projeto (requisitos SHOULD e texto descritivo sao reescritos
+  para refletir o codigo): nesse caso MUST reportar a divergencia como
   "possivel regressao — requer decisao humana", sem reescrever o requisito nem alterar o
   codigo.
 - **FR-008**: O sistema MUST fundamentar cada alteracao de documento em evidencia
@@ -192,7 +204,9 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 - **FR-009**: O sistema MUST tratar a documentacao referente a codigo removido marcando o
   trecho como obsoleto/removido com a evidencia, e MUST registrar como acrescimo
   documentado o comportamento novo do codigo que a documentacao nao cobre, sem apagar
-  requisitos sem rastro.
+  requisitos sem rastro. As marcas MUST ser marcadores inline padronizados, com data e
+  referencia a evidencia, preservando o identificador FR-NNN do requisito afetado; acrescimos
+  MUST usar novo FR-NNN sequencial (tokens exatos definidos no plan).
 - **FR-010**: O sistema MUST produzir, ao final de cada execucao, um relatorio que liste,
   por feature, cada divergencia (tipo, documento e trecho afetados, evidencia no codigo) e
   a acao tomada (atualizado, reportado para decisao humana, nao verificavel, ignorado).
@@ -220,7 +234,10 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 - **FR-018**: O sistema MUST deixar cada feature reconciliada com um registro rastreavel da
   reconciliacao (data e resumo das alteracoes) dentro do proprio diretorio da feature, sem
   duplicar o relatorio completo, para que uma leitura futura saiba quando a documentacao
-  foi confrontada com o codigo pela ultima vez.
+  foi confrontada com o codigo pela ultima vez. O registro MUST viver em arquivo proprio da
+  feature (`reconciliation.md`), em formato append-only, e MUST ser atualizado somente
+  quando a execucao alterar algum documento; execucao sem divergencia MUST NOT gravar nada
+  (preserva FR-012/SC-003).
 
 ### Key Entities
 
