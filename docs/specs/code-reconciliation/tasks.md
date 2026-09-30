@@ -564,3 +564,51 @@ tracejadas, sem impedir Fases 2, 3 e 5 nem as demais tarefas da Fase 4/6.
 | Reescrita de `research.md`, `checklists/`, `tasks.md` | Registro historico; divergencias de tasks so no relatorio | spec.md Assumptions "Escopo de documentos" |
 | Nome alternativo `sync-spec` | Alternativa nao adotada | spec.md Assumptions "Nome da skill" |
 | Tag/PR/merge de release | Fluxo do repositorio, nao deste backlog | Skill local `release-wave` |
+
+## FASE 8 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 8.1 extract-anchors.sh descarta em silencio documento ilegivel `[C]`
+
+Ref: 3.1 · tipo: `partial` · severidade: `HIGH`
+
+FR-004 exige que o que nao pode ser verificado seja reportado como nao
+verificavel; contracts/cli-invocation.md §3 fixa exit 0 so para "0+ linhas".
+Em `plugins/cstk/skills/reconcile-docs/scripts/extract-anchors.sh` o teste
+de presenca usa `[ -f ]` (linha 59) e o awk roda dentro de pipeline cujo
+status e o do `while` final (linhas 70-133): com `spec.md` ilegivel
+(chmod 000 numa copia da fixture `alpha`) o script imprime
+"awk: can't open file" em stderr, sai 0 e omite as 5 ancoras do spec.md,
+sem sinal que o SKILL.md passo 3 consiga tratar.
+
+- [ ] 8.1.1 Corrigir `plugins/cstk/skills/reconcile-docs/scripts/extract-anchors.sh` conforme 3.1: documento da allowlist presente mas ilegivel nao pode resultar em exit 0 silencioso (checar legibilidade ou propagar a falha do awk, com codigo de saida documentado no contrato §3 e no SKILL.md passo 3)
+- [ ] 8.1.2 Cobrir o caso em `tests/test_extract-anchors.sh` (documento ilegivel na fixture copiada)
+
+<!-- converge-key: 5b904d2d8f58 -->
+
+### 8.2 markers.sh lint/verify aprovam arquivo ilegivel `[C]`
+
+Ref: 3.2 · tipo: `partial` · severidade: `HIGH`
+
+contracts/cli-invocation.md §5: `verify` sai 0 so "se toda evidencia
+confere" e `lint` sai 0 so sem marcador mal formado. Em
+`plugins/cstk/skills/reconcile-docs/scripts/markers.sh`,
+`_mk_need_file` (linha 79-81) testa so `[ -f ]` e `_mk_scan` roda dentro
+de pipeline cujo status e o do awk final (linhas 91, 133): com o documento
+ilegivel, `lint` e `verify` imprimem "awk: can't open file" e saem 0
+(medido em arquivo com marcador mal formado e evidencia inexistente, que
+legivel da exit 1 nos dois). Fail-open no passo de conferencia do
+write-policy §2.3.
+
+- [ ] 8.2.1 Corrigir `plugins/cstk/skills/reconcile-docs/scripts/markers.sh` conforme 3.2: arquivo presente mas ilegivel nao pode passar em `lint`/`verify`/`list`/`next-fr` com exit 0 (checar legibilidade em `_mk_need_file` ou propagar a falha do awk)
+- [ ] 8.2.2 Cobrir o caso em `tests/test_markers.sh`
+
+<!-- converge-key: 25aa12a14bda -->
