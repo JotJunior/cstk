@@ -114,6 +114,7 @@ cada chamada).
 | `sanitize.sh` | sanitizar descricao_curta (FR-029 herdado FR-025) |
 | `spawn-tracker.sh enter\|check` | rastrear profundidade de subagente (FR-021) |
 | `commit-mode.sh is-enabled\|guard-branch\|stage-message\|task-message\|finalize` | modo atomic-commit opt-in: commit por etapa, commit por task, push+PR terminal (FR-003/004/008 — atomic-commit-pr) |
+| `orchestrator-refs.sh path\|list` | resolver a referencia de fase movida do prompt-base (FR-008/009/010 — orchestrator-slim); falha => nao executar a fase de memoria |
 
 ## Orientacao MCP-vs-Bash (uso das 7 tools `mcp__cstk-state__*`)
 

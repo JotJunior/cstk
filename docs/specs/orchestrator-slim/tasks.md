@@ -105,19 +105,19 @@ Ref: spec.md FR-006, FR-007, FR-016; research.md Decision 8; quickstart.md Cenar
 
 Ref: spec.md FR-008, FR-009, FR-010; contracts/orchestrator-refs-cli.md; research.md Decisions 1 e 3 (gate owasp-security S1)
 
-- [ ] 3.1.1 Implementar `plugins/cstk/skills/agente-00c-runtime/scripts/orchestrator-refs.sh` (`#!/bin/sh`, `set -eu`, sem `jq`/`sqlite3`) sourceando `_resolve-root.sh` com `resolve_runtime_root strict`
-- [ ] 3.1.2 Implementar `path --orchestrator <root|feature> --phase <phase>` com exit 0/1/2 conforme o contrato: `phase` validada por `[a-z0-9-]+`, arquivo regular, nao symlink, diretorio fisico (`cd -P`) sob `references/orchestrators/`
-- [ ] 3.1.3 Implementar `list [--orchestrator ...]` (linhas `orquestrador<TAB>fase<TAB>caminho`, `sort`)
-- [ ] 3.1.4 Escrever `tests/test_orchestrator-refs.sh`: fase inexistente (exit 1, stdout vazio), `phase` com `../` (exit 2), symlink para fora (exit 1), execucao a partir do subtree e de copia `cp -R` em `$HOME` temporario (ancora irma)
-- [ ] 3.1.5 Registrar `orchestrator-refs.sh path|list` na tabela de Primitivas operacionais de ambos os prompts-base e em `tests/test_doc-subcommands.sh` (labels reais do dispatch), mantendo o teste verde
+- [x] 3.1.1 Implementar `plugins/cstk/skills/agente-00c-runtime/scripts/orchestrator-refs.sh` (`#!/bin/sh`, `set -eu`, sem `jq`/`sqlite3`) sourceando `_resolve-root.sh` com `resolve_runtime_root strict`
+- [x] 3.1.2 Implementar `path --orchestrator <root|feature> --phase <phase>` com exit 0/1/2 conforme o contrato: `phase` validada por `[a-z0-9-]+`, arquivo regular, nao symlink, diretorio fisico (`cd -P`) sob `references/orchestrators/`
+- [x] 3.1.3 Implementar `list [--orchestrator ...]` (linhas `orquestrador<TAB>fase<TAB>caminho`, `sort`)
+- [x] 3.1.4 Escrever `tests/test_orchestrator-refs.sh`: fase inexistente (exit 1, stdout vazio), `phase` com `../` (exit 2), symlink para fora (exit 1), execucao a partir do subtree e de copia `cp -R` em `$HOME` temporario (ancora irma)
+- [x] 3.1.5 Registrar `orchestrator-refs.sh path|list` na tabela de Primitivas operacionais de ambos os prompts-base e em `tests/test_doc-subcommands.sh` (labels reais do dispatch), mantendo o teste verde
 
 ### 3.2 Incluir o diretorio de referencias em `DOC_DIRS` `[M]`
 
 Ref: data-model.md §Testes (`test_doc-subcommands.sh`); spec.md FR-015
 
-- [ ] 3.2.1 Adicionar `plugins/cstk/skills/agente-00c-runtime/references/orchestrators` a `DOC_DIRS` em `tests/test_doc-subcommands.sh`
-- [ ] 3.2.2 Rodar o teste e confirmar que continua verde com o diretorio ainda vazio/ausente (tratamento de diretorio inexistente) e que passa a varrer os `.md` quando as referencias existirem
-- [ ] 3.2.3 Conferir que nenhum identificador ou subcomando citado nas referencias falha a varredura por label inexistente no dispatch real dos scripts
+- [x] 3.2.1 Adicionar `plugins/cstk/skills/agente-00c-runtime/references/orchestrators` a `DOC_DIRS` em `tests/test_doc-subcommands.sh`
+- [x] 3.2.2 Rodar o teste e confirmar que continua verde com o diretorio ainda vazio/ausente (tratamento de diretorio inexistente) e que passa a varrer os `.md` quando as referencias existirem
+- [x] 3.2.3 Conferir que nenhum identificador ou subcomando citado nas referencias falha a varredura por label inexistente no dispatch real dos scripts (vacuo hoje: nenhuma referencia existe; DOC_DIRS cobre `references/orchestrators/root` e `/feature` — o loop varre `<dir>/*.md` nao-recursivo — e o teste e o gate a cada tarefa da FASE 5; sonda com `.md` fantasma confirmou a varredura)
 
 ---
 

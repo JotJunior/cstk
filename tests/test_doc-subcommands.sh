@@ -30,7 +30,11 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 SCRIPTS_DIR="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
-DOC_DIRS="$REPO_ROOT/plugins/cstk/agents $REPO_ROOT/plugins/cstk/commands"
+# orchestrator-slim (FR-015): as referencias de fase dos orquestradores vivem em
+# subdiretorios por orquestrador (o loop abaixo varre `<dir>/*.md`, nao
+# recursivo); diretorio ausente e pulado (`[ -d ]`).
+_ORCH_REFS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/references/orchestrators"
+DOC_DIRS="$REPO_ROOT/plugins/cstk/agents $REPO_ROOT/plugins/cstk/commands $_ORCH_REFS/root $_ORCH_REFS/feature"
 
 # Tokens meta que nunca sao subcomandos de negocio (nao devem falhar).
 _DL_SKIP_TOKENS=" help "

@@ -110,6 +110,7 @@ infraestrutura interna deste agente.
 | `spawn-tracker.sh` | check/enter/leave/current | Tracker de profundidade de subagentes (FR-013, MAX 3) |
 | `state-ondas.sh` | start/end/tool-call-tick/current-id/git-commit | Ciclo de vida de Ondas + commit local (NUNCA push direto — push via commit-mode.sh finalize no terminal) |
 | `commit-mode.sh` | is-enabled/set-enabled/guard-branch/stage-message/task-message/finalize | Modo atomic-commit opt-in: commit por etapa, commit por task, push+PR terminal (FR-003/004/008 — atomic-commit-pr) |
+| `orchestrator-refs.sh` | path/list | Resolve o caminho da referencia de fase movida do prompt-base (FR-008/009/010 — orchestrator-slim); falha => nao executar a fase de memoria |
 | `bloqueios.sh` | register/respond/list/count/next-id/get | Ciclo de vida de BloqueioHumano (FR-015/FR-016) |
 | `budget.sh` | check/status | Proxies de orcamento de sessao (FR-009: tool calls, wallclock, state size) |
 | `guard-hooks-status.sh` | check/tick-mode | Hooks 00c provisionados no projeto-alvo? READ-ONLY. `tick-mode` decide se `tool-call-tick` deve ser chamado na mao (default `manual`, nunca zera a metrica em silencio) |
