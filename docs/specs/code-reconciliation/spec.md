@@ -26,6 +26,7 @@ sobre documentacao — jamais altera codigo.
 - Q: Qual o escopo de busca no codigo para confrontar uma feature (FR-004/FR-009)? → A: Somente o codigo alcancavel a partir de caminhos, simbolos, comandos e contratos citados na documentacao (git apenas como atalho de priorizacao, FR-016); comportamento fora dessa ancora nao e detectado e, quando relevante, e reportado como nao verificavel.
 - Q: Que contradicoes codigo x documentacao viram "possivel regressao" (FR-007)? → A: Apenas contradicao de requisitos MUST/MUST NOT da feature e de principios da constitution; SHOULD e texto descritivo sao reescritos para refletir o codigo.
 - Q: Como marcar trechos obsoletos/removidos e acrescimos documentados (FR-005/FR-009)? → A: Marcadores inline padronizados, com data e referencia a evidencia, mantendo o identificador FR-NNN; acrescimos usam novo FR-NNN sequencial; os tokens exatos dos marcadores sao fixados no plan.
+- Q: Qual a politica de escrita em features arquivadas e no corpus canonico `docs/specs/current/` (FR-017)? → A: Editar diretamente a documentacao de features arquivadas (mesma politica da ativa) e NUNCA editar o corpus `docs/specs/current/`, preservando o fluxo delta-merge (decisao humana, block-001).
 
 ## User Scenarios & Testing
 
@@ -108,8 +109,9 @@ feature.
 **Acceptance Scenarios**:
 
 1. **Given** uma execucao qualquer da skill, **When** ela termina, **Then** o conjunto de
-   arquivos modificados contem apenas documentos de feature dentro de `docs/specs/` e
-   nenhum arquivo de codigo, teste, script ou configuracao.
+   arquivos modificados contem apenas documentos de feature (ativa ou arquivada) dentro de
+   `docs/specs/`, nenhum arquivo do corpus `docs/specs/current/` e nenhum arquivo de codigo,
+   teste, script ou configuracao.
 2. **Given** uma divergencia cuja "correcao" natural seria mudar o codigo (o codigo
    contradiz um requisito MUST da feature ou um principio da constitution do projeto),
    **When** a skill a encontra, **Then** ela NAO reescreve o requisito para acomodar o
@@ -189,8 +191,9 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
   preservando o restante do texto, a estrutura e os identificadores existentes (FR-NNN,
   SC-NNN).
 - **FR-006**: O sistema MUST NEVER alterar codigo-fonte, testes, scripts, configuracoes ou
-  qualquer arquivo que nao seja documentacao de feature dentro de `docs/specs/`; toda
-  escrita fora desse escopo e proibida por regra da skill, nao apenas por convencao.
+  qualquer arquivo que nao seja documentacao de feature (ativa ou arquivada) dentro de
+  `docs/specs/`, excluido o corpus `docs/specs/current/` (FR-017); toda escrita fora desse
+  escopo e proibida por regra da skill, nao apenas por convencao.
 - **FR-007**: O sistema MUST usar o codigo atual como fonte de verdade da reconciliacao,
   exceto quando a divergencia contradiz um requisito MUST/MUST NOT da propria feature ou um
   principio da constitution do projeto (requisitos SHOULD e texto descritivo sao reescritos
@@ -224,13 +227,12 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 - **FR-016**: O sistema MUST funcionar em projeto sem historico de controle de versao,
   usando-o apenas como atalho opcional para priorizar o que mudou; a verificacao MUST
   sempre se basear na leitura do codigo atual.
-- **FR-017**: O sistema MUST respeitar a politica de escrita em features arquivadas e no
-  corpus canonico de comportamento atual (`docs/specs/current/`) definida em
-  [NEEDS CLARIFICATION: features arquivadas sao rounds imutaveis (feature-reopen) e o corpus
-  `docs/specs/current/` e gerado por merge de deltas ("nao editar a mao") — a skill deve (A)
-  editar o arquivado e o corpus diretamente, (B) editar apenas a feature ativa e registrar
-  as divergencias de arquivadas/corpus em um documento de reconciliacao ao lado, sem tocar
-  no original, ou (C) editar o arquivado mas nao o corpus?].
+- **FR-017**: O sistema MUST aplicar a features arquivadas (`docs/specs/_archived/`) a mesma
+  politica de escrita das features ativas (FR-005 a FR-009), editando diretamente a
+  documentacao delas, e MUST NEVER escrever no corpus canonico de comportamento atual
+  (`docs/specs/current/`), que e gerado por merge de deltas e nao e editado a mao; a
+  proibicao preserva o fluxo delta-merge. Divergencias que afetariam o corpus canonico, se
+  relevantes, MUST aparecer apenas no relatorio.
 - **FR-018**: O sistema MUST deixar cada feature reconciliada com um registro rastreavel da
   reconciliacao (data e resumo das alteracoes) dentro do proprio diretorio da feature, sem
   duplicar o relatorio completo, para que uma leitura futura saiba quando a documentacao
@@ -256,8 +258,8 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 ### Measurable Outcomes
 
 - **SC-001**: Em 100% das execucoes, o conjunto de arquivos modificados contem apenas
-  documentacao de feature sob `docs/specs/` (zero arquivos de codigo, teste, script ou
-  configuracao alterados).
+  documentacao de feature (ativa ou arquivada) sob `docs/specs/`, com zero arquivos em
+  `docs/specs/current/` e zero arquivos de codigo, teste, script ou configuracao alterados.
 - **SC-002**: Ao reconciliar uma feature com divergencias conhecidas, 100% das divergencias
   plantadas em um projeto de teste sao detectadas e tratadas (atualizadas ou reportadas
   para decisao humana) e 0% dos trechos ja coerentes sao reescritos.
@@ -285,7 +287,8 @@ relatorio mostra as alteracoes propostas e que nenhum arquivo foi modificado.
 - **Escopo de documentos**: `spec.md`, `plan.md`, `data-model.md`, `contracts/` e
   `quickstart.md` sao reconciliados. `research.md` e `checklists/` sao registro historico
   de decisoes e nao sao reescritos. `tasks.md` nao e reescrito; divergencias com tarefas
-  marcadas como concluidas cujo codigo foi removido aparecem apenas no relatorio.
+  marcadas como concluidas cujo codigo foi removido aparecem apenas no relatorio. O corpus
+  `docs/specs/current/` nunca e reescrito (FR-017).
 - **Modo padrao grava direto**: sem `--dry-run` as alteracoes sao gravadas na hora; o
   controle de versao do projeto e a rede de seguranca para reverter. Nenhuma confirmacao
   interativa por alteracao.
