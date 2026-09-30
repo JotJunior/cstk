@@ -22,7 +22,7 @@
 ## Vazamento e persistencia
 
 - [x] CHK008 - Existe requisito limitando o que do texto de um precedente de outro projeto pode ser persistido em artefatos do projeto corrente (spec, Decisoes, commits)? [Completude, Plan §S-2; Contract `divergent_precedents.answer_excerpt` <= 120 bytes] {auto}
-- [ ] CHK009 - A regra de nao-persistencia de S-2 esta na spec (requisito verificavel) ou apenas no plan? [Gap, Spec §FR-007 exige citar id na justificativa mas nao limita texto; Plan §S-2] {auto}
+- [x] CHK009 - A regra de nao-persistencia de S-2 esta na spec (requisito verificavel) ou apenas no plan? [Gap, Spec §FR-007 exige citar id na justificativa mas nao limita texto; Plan §S-2] {auto}
 - [x] CHK010 - O conteudo entregue ao answerer e requerido ja filtrado de segredos? [Completude, Spec §FR-008; Data-model §Precedent "scrubbed na ingestao"] {auto}
 - [x] CHK011 - O evento auditavel proibe gravar o corpo recuperado? [Clareza, Spec §FR-012; Research §Decision 9] {auto}
 
@@ -43,4 +43,5 @@
 - Items `{auto}` resolvidos contra spec/plan/contracts com citacao; `{humano}` ficam `[ ]`.
 - CHK005 foi aberto como `[Ambiguity]` e resolvido na mesma onda (regra 4b do contrato, com medicao da knowledge.db).
 - CHK009 (`[Gap]`) segue para `/create-tasks`: tarefa de requisito para levar a regra S-2 a prosa dos answerers/referencias com verificacao estatica.
+  Destino (tasks 1.1.3): regra redigida e frases-ancora A1-A4 definidas em `contracts/answerer-precedents.md` §Regra S-2; aplicada nos answerers (tasks 3.1.5 e 3.2.1), nas referencias (tasks 4.1.4 e 4.2.1) e verificada estaticamente pela task 4.3.1/4.3.2. Marcar `[x]` quando 4.3 cobrir.
 - CHK006/CHK017 (`{humano}`) nao bloqueiam o backlog; decidir antes de `/execute-task` das tarefas de answerer.

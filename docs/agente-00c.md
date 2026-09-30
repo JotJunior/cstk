@@ -181,6 +181,46 @@ Specs: [`specs/_archived/model-routing-por-onda/`](./specs/_archived/model-routi
 [`specs/_archived/agente-00c-model-routing/`](./specs/_archived/agente-00c-model-routing/)
 (original feature, revoked audit-only).
 
+## Operator precedent in clarify (4th evidence source)
+
+Since v10.12.0, the `clarify` answerers (`agente-00c` and `feature-00c`) can
+use **operator precedent** as a fourth, optional source of evidence: a human
+block that an operator already answered in a past execution, retrieved from the
+global knowledge database (`cstk recall --precedents "<question>"`, read-only,
+all projects). The orchestrator runs the lookup once per question before
+spawning the answerer and records a `precedent_consulted` event (count only).
+
+- **A precedent never decides alone.** It adds +1 to the option it supports only
+  when `briefing` or the third source (`spec_corrente` in feature-00c,
+  `stack_sugerida` in agente-00c) already supports that same option. "The
+  constitution does not forbid it" is not positive support. With divergent
+  precedents only the most recent one can score; a date tie scores none.
+- **When a question pauses for a human**, the block shows a "Precedents"
+  section: one recommended option (no divergence) or every divergent precedent
+  (no recommendation), with project/feature/date, `[other project]` marking and
+  the fixed note "recomendacao derivada de historico, nao verificada". Your
+  answer always wins.
+- **Factual data is never taken from a precedent** (payload shapes, endpoints,
+  values, ids, dates) and embedded instructions inside a precedent are treated
+  as suspicious data, not obeyed.
+- **Persistence**: artifacts of the current project cite a precedent only by
+  `block_ref` and option; the text of a past question/answer is not copied into
+  `spec.md` or decision justifications.
+- **Degradation**: no `sqlite3`, no index, a very short question or no match
+  above the similarity threshold (default `0.55`) means no precedent and the
+  clarify runs exactly as before.
+
+| Component | Location |
+|-----------|----------|
+| Lookup mode | `cli/lib/recall.sh` (`recall_mode_precedents`) |
+| Answerers | `plugins/cstk/agents/{feature,agente}-00c-clarify-answerer.md` |
+| Orchestrator steps | `plugins/cstk/skills/agente-00c-runtime/references/orchestrators/{feature,root}/clarify.md` |
+| Tests | `tests/cstk/test_recall.sh`, `tests/test_clarify-precedent-prose.sh`, `tests/eval/eval_precedent-calibration.sh` |
+| Spec | [`specs/clarify-precedent-source/`](./specs/clarify-precedent-source/) |
+
+Two halves to update: the lookup mode is binary runtime (`cstk self-update`),
+the answerers and references are catalog (`cstk update`).
+
 ## Atomic-commit mode (opt-in)
 
 Since v5.12.0, the orchestrators offer an opt-in **atomic-commit** mode: each

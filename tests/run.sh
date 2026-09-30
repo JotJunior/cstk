@@ -331,6 +331,14 @@ _is_internal_test() {
       # wave-select. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
       return 1 ;;
+    test_clarify-precedent-prose.sh)
+      # Teste ESTATICO de prosa (clarify-precedent-source FASE 4, task 4.3):
+      # asserta regras/paridade nos 2 answerers e nas 2 referencias de
+      # clarify. Assert no .md, nao em um unico script — existence-guarded
+      # ao answerer portador das regras. Se a fonte sumir, volta a ser
+      # orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/agents/feature-00c-clarify-answerer.md" ] && return 0
+      return 1 ;;
     test_command-wave-summary.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (integracao do
       # resumo deterministico de fechamento de onda, FASE 6 de

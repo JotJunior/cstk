@@ -93,6 +93,34 @@ wave — the ingestion hook and `recall` exit with status 0 emitting only a
 warning. The index is isolated in `~/.claude/cstk/`, separate from the
 per-project transactional state.
 
+## `--precedents` mode (operator precedent for clarify)
+
+Returns the **answered human blocks** most similar to a clarify question,
+labeled with project/feature/stage/date and ready to inject into the
+`clarify-answerer` prompt as its fourth, optional evidence source (see
+[`agente-00c.md`](./agente-00c.md) §"Operator precedent in clarify"). Candidate
+pre-filter: FTS5 with OR composition (pool of 20) restricted to blocks; then
+similarity = Jaccard over the question tokens, with a default floor of **0.55**
+calibrated on the real index (see `specs/clarify-precedent-source/research.md`
+Decision 2). Duplicates of the same ingested block collapse to one entry.
+
+```sh
+cstk recall --precedents "Which cache strategy should we adopt?" --limit 3
+```
+
+- `--limit N` — maximum precedents (default **3**)
+- `--max-bytes N` — byte ceiling (default **2400**; drops whole entries, least
+  similar first)
+- `--min-similarity F` — Jaccard floor, `0 < F <= 1` (default **0.55**)
+- `--db PATH` — alternative index
+- Does **not** accept `--type`, `--project`, `--exclude-feature` or `--explain`
+  (fixed scope: answered blocks of every project).
+
+Read-only and best-effort like `--context`: no `sqlite3`, missing/corrupted
+index, a question with fewer than 3 distinct tokens or no candidate above the
+floor result in a silent no-op (empty stdout, exit 0). Usage errors exit 2.
+The output carries the same **UNTRUSTED** label as `--context`.
+
 ## Full documentation
 
 - [`specs/_archived/cstk-knowledge-db/spec.md`](./specs/_archived/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria

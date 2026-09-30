@@ -31,7 +31,7 @@
 ## Criterios de aceite
 
 - [x] CHK013 - SC-001 e mensuravel com os pares identificados e o limiar? [Mensurabilidade, Spec §SC-001; Research §Decision 2 margem 0.177] {auto}
-- [ ] CHK014 - SC-004 ("saida byte-identica") e verificavel deterministicamente para a parte LLM do answerer? [Ambiguity, Research §Decision 7 "Limite honesto": so o contrato no-op e a omissao do campo sao testaveis de forma gateante] {auto}
+- [x] CHK014 - SC-004 ("saida byte-identica") e verificavel deterministicamente para a parte LLM do answerer? [Ambiguity, Research §Decision 7 "Limite honesto": so o contrato no-op e a omissao do campo sao testaveis de forma gateante] {auto}
 - [x] CHK015 - SC-005/SC-006 cobrem recomendacao, divergencia, diretiva embutida e dado factual? [Cobertura, Spec §SC-005, §SC-006] {auto}
 
 ## Dependencias e premissas
@@ -43,4 +43,7 @@
 ## Notes
 
 - CHK014 (`[Ambiguity]`): nao reabre clarify — o plan ja declara o limite; vai para `/create-tasks` como tarefa de teste que separa a parte gateante (contrato no-op + omissao do campo) da parte eval (saida do answerer).
+- CHK014 — separacao gateante x eval (tasks 1.2.x):
+  - Gateante (deterministica): (G1) contrato no-op do `--precedents` — exit 0 e stdout vazio em sqlite3 ausente, indice ausente/invalido e pergunta < 3 tokens (Cenarios 5, `precedents_degradation`); (G2) prosa das referencias omite o campo `precedents` quando todas as perguntas tem K=0 (Cenario 7, teste estatico 4.3.2).
+  - Nao-gateante (eval): (E1) comparacao da saida do answerer LLM com e sem o campo `precedents` quando K=0 e (E2) comportamento ponta a ponta incluindo o caso "so constitution + precedente" → `scored: false` (Cenarios 8 e 9, task 5.1).
 - CHK018 (`{humano}`): informativo, nao bloqueia o backlog.

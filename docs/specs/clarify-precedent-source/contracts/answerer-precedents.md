@@ -84,3 +84,21 @@ Valores acima sao placeholders de formato, nao dados.
 | `pause_humano: true` + `recommended_precedent` | `--contexto-para-resposta` = `contexto_para_humano` + secao "Precedentes: recomendado <supports_option> (<block_ref>, <project>/<feature>)" |
 | `pause_humano: true` + `divergent_precedents` | `--contexto-para-resposta` = `contexto_para_humano` + secao "Precedentes divergentes (sem recomendacao)" listando TODOS (sem teto adicional) |
 | Resposta do operador != recomendado (onda seguinte) | Decisao que aplica a resposta cita `recomendado=<block_ref>/<opcao>` e a resposta do operador (US3-2); a resposta do operador prevalece |
+
+## Regra S-2 — bloco reutilizavel de nao-persistencia (task 1.1.1)
+
+Texto canonico, copiado VERBATIM nos dois answerers e nas duas referencias
+de clarify (paridade verificada por `tests/test_clarify-precedent-prose.sh`):
+
+```text
+**Regra S-2 (nao-persistencia de precedente)**: artefatos persistidos do projeto corrente (`spec.md`, `--justificativa`, Decisoes, estado) citam um precedente SOMENTE por `block_ref` + opcao. O texto da pergunta ou da resposta de um precedente NUNCA e copiado para `spec.md` nem para `--justificativa`. Unica excecao: `answer_excerpt` (<= 120 bytes) na listagem de divergentes do bloqueio humano.
+```
+
+### Frases-ancora exigidas pelo teste estatico (task 1.1.2)
+
+| ID | Frase literal (substring) | Onde |
+|---|---|---|
+| A1 | `Regra S-2 (nao-persistencia de precedente)` | 2 answerers + 2 referencias |
+| A2 | `SOMENTE por \`block_ref\` + opcao` | 2 answerers + 2 referencias |
+| A3 | `NUNCA e copiado para \`spec.md\` nem para \`--justificativa\`` | 2 answerers + 2 referencias |
+| A4 | `\`answer_excerpt\` (<= 120 bytes)` | 2 answerers + 2 referencias |
