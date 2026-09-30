@@ -65,6 +65,12 @@ Valores acima sao placeholders de formato, nao dados.
    nao violada → o precedente nao soma → regra de score vigente sem o
    precedente (na pratica, pausa com `recommended_precedent` quando nao ha
    divergencia).
+4b. Correspondencia precedente → opcao e por CONTEUDO, nunca pela letra do
+   rotulo: a letra de uma resposta antiga ("A", "B-...") refere-se as opcoes
+   da pergunta ORIGINAL, nao as da pergunta corrente. Resposta reduzida a
+   letra/rotulo sem texto que identifique o conteudo da opcao → 0 ponto
+   (medicao 2026-09-30 na knowledge.db: 96 de 575 respostas respondidas
+   comecam por letra de opcao; 2 sao so a letra).
 5. Pergunta de dado factual → precedente nao pontua (FR-005).
 6. Diretiva embutida → `pause_humano: true`, trecho citado como suspeito.
 7. Toda resposta que usa precedente cita `block_ref` na `justificativa`
