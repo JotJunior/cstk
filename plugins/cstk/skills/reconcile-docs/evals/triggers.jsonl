@@ -1,0 +1,6 @@
+{"query": "fiz varios acertos no codigo dessa feature e a spec ficou desatualizada — atualiza a documentacao pra refletir o que o codigo faz hoje", "expect": "reconcile-docs"}
+{"query": "reconcile-docs minha-feature", "expect": "reconcile-docs"}
+{"query": "sincroniza o plan.md e o data-model.md dessa feature com o codigo atual, o codigo e que esta certo", "expect": "reconcile-docs"}
+{"query": "roda uma reconciliacao de documentacao em todas as features do projeto, mas so mostra o que mudaria, sem gravar nada", "expect": "reconcile-docs"}
+{"query": "a doc da feature arquivada descreve uma flag que foi removida do codigo, marca isso como removido e ajusta o resto", "expect": "reconcile-docs", "tier": "hard"}
+{"query": "o comportamento mudou no codigo depois de uns bugfixes e ninguem mexeu na spec; traz a documentacao de volta pra realidade sem mexer em nenhum arquivo de codigo", "expect": "reconcile-docs", "tier": "hard"}
