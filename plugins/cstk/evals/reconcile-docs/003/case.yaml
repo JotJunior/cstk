@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "reconcile-docs-003"
+description: "trigger eval: a query deve disparar a skill reconcile-docs"
+tags: ["trigger", "reconcile-docs", "base"]
+execution:
+  prompt: "sincroniza o plan.md e o data-model.md dessa feature com o codigo atual, o codigo e que esta certo"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-reconcile-docs"
+    tool: "Skill"
+    input_match: "reconcile-docs"
+    min: 1

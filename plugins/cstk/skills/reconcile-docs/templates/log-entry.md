@@ -1,0 +1,3 @@
+- Contagens: stale=<n>, removed=<n>, undocumented=<n>, possible-regression=<n>, unverifiable=<n>
+- Documentos alterados: <doc1>, <doc2>
+- Resumo: <uma a tres linhas sobre o que foi reconciliado, sem copiar trechos de codigo>

@@ -92,7 +92,8 @@ PROFILES DISPONIVEIS:
                  create-tasks, analyze, execute-task, review-task.
   complementary  Skills de uso pontual (sem sequencia): advisor, bugfix,
                  apply-insights, owasp-security, presentation,
-                 validate-documentation, validate-docs-rendered.
+                 reconcile-docs, validate-documentation,
+                 validate-docs-rendered.
   all            Todas as skills do catalog (uniao de sdd + complementary
                  + qualquer skill nova em plugins/cstk/skills/).
 

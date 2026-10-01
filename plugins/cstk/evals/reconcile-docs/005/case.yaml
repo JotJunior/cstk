@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "reconcile-docs-005"
+description: "trigger eval: a query deve disparar a skill reconcile-docs"
+tags: ["trigger", "reconcile-docs", "hard"]
+execution:
+  prompt: "a doc da feature arquivada descreve uma flag que foi removida do codigo, marca isso como removido e ajusta o resto"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-reconcile-docs"
+    tool: "Skill"
+    input_match: "reconcile-docs"
+    min: 1
