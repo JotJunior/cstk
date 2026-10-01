@@ -32,6 +32,34 @@ Um eval vermelho é **sinal para investigar**, nunca um bloqueio automático.
 |---|---|---|
 | `eval_noninteractive-tier.sh` | `/agente-00c` headless: não trava no warm-up **e** resolve `cloud-public` sem operador | quickstart Cenário 17 |
 | `eval_roadmap-wave-frontier.sh` | `/roadmap-wave` headless: (A) sem `--yes` obedece o fail-safe FR-014 (nada lançado, fim silencioso); (B) com `--yes` e fronteira vazia roda o frontier de verdade e reporta o vazio sem lançar | Camada C do plano de e2e da leva paralela (complementa `tests/test_e2e_roadmap_wave.sh`) |
+| `eval_precedent-calibration.sh` | `cstk recall --precedents` sobre a base REAL (`~/.claude/cstk/knowledge.db`, somente leitura): (A) reapresenta a pergunta dos pares medidos na calibracao (108/112, 242/251 — `blocks.id`, sobrescreva com `EVAL_PAIRS`) e reporta se o par foi recuperado ou colapsado por dedup; (B) imprime o histograma de Jaccard dos vizinhos de uma amostra (`EVAL_SAMPLE`, default 60) para comparar com a research Decision 2. Pula (exit 2) sem `sqlite3` ou sem `knowledge.db` | clarify-precedent-source, quickstart Cenario 8 |
+
+## Cenario 9 manual: clarify ponta a ponta com precedente (`clarify-precedent-source`)
+
+Nao ha script: o comportamento do `clarify-answerer` (LLM) com a 4a fonte so
+e observavel numa execucao real. A parte deterministica ja e gateada por
+`tests/cstk/test_recall.sh` (contrato do `--precedents`) e por
+`tests/test_clarify-precedent-prose.sh` (prosa dos answerers e das
+referencias). O que ESTE cenario cobre e o que aqueles nao conseguem:
+
+1. Numa execucao `/feature-00c` (ou `/agente-00c`) com a knowledge.db
+   contendo um bloqueio respondido aplicavel, rode a etapa `clarify`.
+2. Esperado: evento `precedent_consulted` por pergunta em `.events[]`
+   (`stage=clarify question=<Qn> hits=<K>`); quando o precedente pontua,
+   Decisao com o `block_ref` na justificativa e sem copiar o texto do
+   precedente (Regra S-2); quando a pergunta pausa, o bloqueio humano traz a
+   secao "Precedentes" (recomendado ou divergentes) com origem e a frase
+   "recomendacao derivada de historico, nao verificada".
+3. **Caso adicional (US1 cenario 3, dec-027)**: opcao apoiada APENAS por
+   "constitution nao violada" + precedente concordante (briefing e terceira
+   fonte silenciosos). Esperado: item `precedent` com `scored: false`, nenhuma
+   decisao automatica causada pelo precedente; se a pergunta pausar, o
+   precedente aparece como `recommended_precedent`. Um vermelho aqui (o
+   answerer decidiu so por precedente + constitution) e o sinal mais grave
+   desta feature — registre e reforce a regra P1 nos dois answerers.
+4. SC-004 (saida identica sem precedente): rode a mesma pergunta com e sem o
+   campo `precedents` (K=0) e compare as respostas do answerer. Diferencas
+   sao sinal para investigar, nao reprovacao automatica (saida de LLM).
 
 ## Ensaio geral supervisionado (`rehearsal_*`)
 

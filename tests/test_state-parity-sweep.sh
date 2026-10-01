@@ -222,9 +222,8 @@ scenario_dinamica_17_leitores_sqlite_sem_degradacao() {
 #                                    mesma familia do conjunto canonico acima
 #   pretooluse-bash-guard.sh:codigo-real       — pre-check inline (`[ -f ]`
 #   posttooluse-tool-call-tick.sh:codigo-real  — apenas, sem jq/sourcing)
-#   posttooluse-agent-usage.sh:codigo-real     — MUST pelo contrato SEC-H1/
-#     dec-026/FR-008 (contracts/hook-active-exec.md), ANTES de resolver ou
-#     sourcear o helper: "existe ao menos um state.json OU state.db sob
+#     — MUST pelo contrato SEC-H1/dec-026/FR-008
+#     (contracts/hook-active-exec.md), ANTES de resolver ou sourcear o helper: "existe ao menos um state.json OU state.db sob
 #     .../agente-00c-state/ ou .../feature-00c-state/*/?". Checagem
 #     SIMETRICA de existencia (nunca le/parseia conteudo, nunca so
 #     state.json) — nao e a classe de regressao que este sweep cacha
@@ -233,9 +232,11 @@ scenario_dinamica_17_leitores_sqlite_sem_degradacao() {
 #     tasks.md 7.1.3 pedia os 3 hooks FORA da allowlist; a divergencia e do
 #     desenho ja ratificado (SEC-H1 e MUST), nao um erro de implementacao —
 #     mesmo precedente de tasks.md 4.2.1.
+#   (posttooluse-agent-usage.sh, antes o 3o hook desta familia, foi
+#   APOSENTADO — script removido do catalogo, entrada retirada da allowlist.)
 #
 # Feature loose-usage-capture adiciona:
-#   posttooluse-loose-usage.sh:codigo-real — mesma classe dos 3 hooks acima:
+#   posttooluse-loose-usage.sh:codigo-real — mesma classe dos hooks acima:
 #     pre-check inline de existencia (`[ -f state.json ] || [ -f state.db ]`,
 #     builtins puros, sem jq/sourcing) ANTES de resolver
 #     _hook-active-exec.sh (SEC-H1/dec-006, polaridade invertida). Checagem
@@ -293,7 +294,6 @@ wave-usage-report.sh:prosa
 _hook-active-exec.sh:codigo-real
 pretooluse-bash-guard.sh:codigo-real
 posttooluse-tool-call-tick.sh:codigo-real
-posttooluse-agent-usage.sh:codigo-real
 posttooluse-loose-usage.sh:codigo-real
 state-rounds.sh:codigo-real
 posttooluse-jira-sync.sh:codigo-real

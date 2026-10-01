@@ -93,6 +93,36 @@ onda — o hook de ingestão e o `recall` saem com status 0 emitindo apenas um
 aviso. O índice fica isolado em `~/.claude/cstk/`, separado do estado
 transacional por projeto.
 
+## Modo `--precedents` (precedente do operador para o clarify)
+
+Devolve os **bloqueios humanos respondidos** mais semelhantes a uma pergunta de
+clarify, rotulados com projeto/feature/etapa/data e prontos para injecao no
+prompt do `clarify-answerer` como 4a fonte de evidencia, opcional (ver
+[`agente-00c.pt-BR.md`](./agente-00c.pt-BR.md) §"Precedente do operador no
+clarify"). Prefiltro de candidatos: FTS5 com composicao OR (pool de 20)
+restrito a bloqueios; depois similaridade = Jaccard dos tokens da pergunta, com
+piso default de **0.55** calibrado no indice real (ver
+`specs/clarify-precedent-source/research.md` Decision 2). Duplicatas do mesmo
+bloqueio ingerido colapsam numa entrada.
+
+```sh
+cstk recall --precedents "Qual estrategia de cache adotar?" --limit 3
+```
+
+- `--limit N` — maximo de precedentes (default **3**)
+- `--max-bytes N` — teto de bytes (default **2400**; descarta entradas inteiras,
+  das menos similares)
+- `--min-similarity F` — piso de Jaccard, `0 < F <= 1` (default **0.55**)
+- `--db PATH` — indice alternativo
+- **Nao** aceita `--type`, `--project`, `--exclude-feature` nem `--explain`
+  (escopo fixo: bloqueios respondidos de todos os projetos).
+
+Somente leitura e best-effort como o `--context`: sem `sqlite3`, indice
+ausente/corrompido, pergunta com menos de 3 tokens distintos ou nenhum
+candidato acima do piso resultam em no-op silencioso (stdout vazio, exit 0).
+Erro de uso sai com exit 2. A saida leva o mesmo rotulo **UNTRUSTED** do
+`--context`.
+
 ## Documentação completa
 
 - [`specs/_archived/cstk-knowledge-db/spec.md`](./specs/_archived/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria

@@ -20,6 +20,11 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/orchestrator-corpus.sh"
+
+# Corpus = prompt-base + referencias de fase (orchestrator-slim): o negativo
+# do orquestrador de feature vale para o corpus INTEIRO de F.
+orch_corpus_init
 
 CMD_INIT_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
 CMD_RESUME_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
@@ -173,7 +178,7 @@ scenario_ausente_em_feature_00c_commands() {
 }
 
 scenario_ausente_em_feature_orchestrator_agent() {
-  f="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+  f=$(orch_corpus_file feature) || f="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
   [ -f "$f" ] || { _error "arquivo ausente" "$f"; return 2; }
   assert_exit 1 grep -Eiq 'delivery_tier|delivery-tier' "$f" || return 1
 }

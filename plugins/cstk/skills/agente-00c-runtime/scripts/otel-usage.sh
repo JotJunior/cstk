@@ -11,7 +11,9 @@
 #      orquestrador, e e o orquestrador que abre e fecha a onda por dentro.
 #      O tool_result chega DEPOIS do `end` (que ja resetou o sidecar) e e
 #      destruido pelo `start` da onda seguinte. O consumo do orquestrador —
-#      a maior parte do custo — nunca era capturado.
+#      a maior parte do custo — nunca era capturado. Com subagentes em
+#      background por default, nem o proprio spawn trazia uso (todo registro
+#      saia `indisponivel`): o hook foi APOSENTADO; esta e a fonte por onda.
 #
 #   2. A Usage & Cost Admin API da Anthropic nao serve: exige Admin key
 #      (`sk-ant-admin01-...`), e indisponivel para contas individuais, e

@@ -1,6 +1,7 @@
 ---
 name: agente-00c-runtime
 description: 'Internal POSIX runtime helpers for agente-00c/feature-00c orchestrators (state, lock, validation, hashes, secrets filter). NOT user-invocable.'
+user-invocable: false
 allowed-tools:
   - Bash
   - Read

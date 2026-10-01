@@ -133,7 +133,7 @@ descartados antes de tocar o disco.
 │   ├── cstk/                    # Plugin default (entrada "cstk" no marketplace)
 │   │   ├── commands/            # Os 7 slash commands /agente-00c*, /feature-00c*, /roadmap-wave
 │   │   ├── agents/              # Orquestradores, clarify asker/answerer, data-veracity
-│   │   ├── hooks/hooks.json     # 3 guard hooks enforced (bash-guard, tool-call-tick, agent-usage)
+│   │   ├── hooks/hooks.json     # 2 guard hooks enforced (bash-guard, tool-call-tick)
 │   │   ├── .mcp.json            # registra o servidor MCP cstk-state (sobe sozinho no caminho plugin)
 │   │   ├── mcp/state-server/    # fonte do servidor MCP (Node/TS, stdio) — viaja DENTRO do plugin
 │   │   ├── evals/               # suite do `claude plugin eval` (gerada dos triggers.jsonl das skills)
@@ -355,8 +355,8 @@ binário `cstk`, sem clone, sem bootstrap via `curl`:
 
 Habilite o plugin e abra uma sessão nova em qualquer projeto — as skills, os
 7 commands `/agente-00c*`/`/feature-00c*`/`/roadmap-wave` e os guard hooks enforced
-(`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
-`posttooluse-agent-usage`) ativam automaticamente, **sem** o passo
+(`pretooluse-bash-guard`, `posttooluse-tool-call-tick`) ativam
+automaticamente, **sem** o passo
 `cstk hooks install` (confirmado empiricamente — ver
 [`docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md`](docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md)
 §Clarifications, assumption A1). O `posttooluse-loose-usage.sh` (captura
@@ -454,9 +454,9 @@ Detalhes: [docs/specs/cstk-jira/quickstart.md](docs/specs/cstk-jira/quickstart.m
 
 ### Hooks do runtime 00c (`cstk hooks`)
 
-Os três hooks do runtime 00c — `pretooluse-bash-guard.sh` (guarda
-fail-closed de Bash), `posttooluse-tool-call-tick.sh` e
-`posttooluse-agent-usage.sh` (métricas por onda) — só rodam num projeto-alvo
+Os dois hooks do runtime 00c — `pretooluse-bash-guard.sh` (guarda
+fail-closed de Bash) e `posttooluse-tool-call-tick.sh` (métrica de tool calls
+por onda) — só rodam num projeto-alvo
 depois de copiados para `.claude/hooks/` **e** registrados em
 `.claude/settings.json`.
 

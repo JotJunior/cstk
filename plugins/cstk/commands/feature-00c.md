@@ -277,13 +277,13 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
 8. coleta de consumo: PEDIR instalacao ao operador (nunca instalar sozinho)
    guard-hooks-status.sh check --projeto-alvo-path "$_proj" || :
    otel-usage.sh preflight || :
-   - READ-ONLY: diagnosticam, nunca instalam. Os tres hooks ativos E
+   - READ-ONLY: diagnosticam, nunca instalam. Os hooks ativos E
      `current` (4a coluna do TSV) => siga sem incomodar o operador.
    - 4a coluna `stale` = copia do projeto diverge da do catalogo: reprova
      igual a ausente, MESMA remediacao (`cstk hooks install`). Copia stale
      roda codigo de versao anterior — foi assim que o cutover
      `state.json`->`state.db` zerou `tool_calls` em projetos que exibiam
-     "3/3 hooks ativos". `unknown` nao e veredito: siga.
+     todos os hooks como ativos. `unknown` nao e veredito: siga.
    - preflight com `status=port-conflict` (porta do exporter presa por
      OUTRO processo; owner_pid/owner_cwd na saida) ou `status=exporter-down`
      => REPASSE o aviso ao operador antes de seguir (execucao sairia com
@@ -297,9 +297,6 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
          . posttooluse-tool-call-tick.sh -> alimenta tool_calls (proxy de
            orcamento da onda). NAO substituivel: a telemetria OTel conta
            API requests e tokens, nao tool calls.
-         . posttooluse-agent-usage.sh -> consumo POR SPAWN (agent_id,
-           agent_type). Parcialmente substituido: o total por onda hoje vem
-           do OTel com mais precisao; o detalhe por spawn so vem daqui.
 
      (2) O custo — diga o NUMERO (medido; nao ha custo de token, sao shell
          local):

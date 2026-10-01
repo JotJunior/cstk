@@ -194,9 +194,9 @@ scenario_merge_source_ausente() {
 # ==== apply_guard_hooks (enforced-guards US1, task 2.4.4) ====
 
 # _guard_src_fixture: monta um src_dir minimo com pretooluse-bash-guard.sh +
-# posttooluse-tool-call-tick.sh + posttooluse-agent-usage.sh (conteudo
-# trivial, so precisa existir p/ cp) + settings.snippet.json (PreToolUse +
-# PostToolUse, como o catalogo real).
+# posttooluse-tool-call-tick.sh (conteudo trivial, so precisa existir p/ cp)
+# + settings.snippet.json (PreToolUse + PostToolUse, como o catalogo real —
+# o hook aposentado posttooluse-agent-usage.sh nao faz mais parte dele).
 _guard_src_fixture() {
   _gsf_dir="$TMPDIR_TEST/guard-src"
   mkdir -p "$_gsf_dir"
@@ -204,9 +204,7 @@ _guard_src_fixture() {
   chmod +x "$_gsf_dir/pretooluse-bash-guard.sh"
   printf '#!/bin/sh\nexit 0\n' > "$_gsf_dir/posttooluse-tool-call-tick.sh"
   chmod +x "$_gsf_dir/posttooluse-tool-call-tick.sh"
-  printf '#!/bin/sh\nexit 0\n' > "$_gsf_dir/posttooluse-agent-usage.sh"
-  chmod +x "$_gsf_dir/posttooluse-agent-usage.sh"
-  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}],"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"y","timeout":5}]},{"matcher":"Agent","hooks":[{"type":"command","command":"z","timeout":5}]}]}}\n' \
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}],"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"y","timeout":5}]}]}}\n' \
     > "$_gsf_dir/settings.snippet.json"
   printf '%s' "$_gsf_dir"
 }
@@ -260,10 +258,6 @@ scenario_apply_guard_hooks_com_flag_provisiona_e_appenda() {
   jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="y")] | length == 1' \
     "$_dest/settings.json" >/dev/null \
     || { _fail "comando do tick (base) foi perdido pelo append do opt-in" "$(cat "$_dest/settings.json")"; return 1; }
-  # A entrada matcher="Agent" (posttooluse-agent-usage) tambem sobrevive.
-  jq -e '[.hooks.PostToolUse[] | select(.matcher=="Agent")] | length == 1' \
-    "$_dest/settings.json" >/dev/null \
-    || { _fail "entrada matcher=Agent foi perdida" "$(cat "$_dest/settings.json")"; return 1; }
 }
 
 # Idempotencia: reinstalar com a flag nao duplica o comando no array.
@@ -281,7 +275,7 @@ scenario_apply_guard_hooks_com_flag_idempotente() {
 }
 
 # Catalogo SEM o hook opt-in mas flag passada: best-effort, nao quebra o
-# provisionamento dos 3 hooks obrigatorios.
+# provisionamento dos hooks obrigatorios.
 scenario_apply_guard_hooks_flag_sem_catalogo_best_effort() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
   _src=$(_guard_src_fixture)
@@ -390,19 +384,144 @@ scenario_apply_guard_hooks_copia_posttooluse_tick() {
     || { _fail "settings.json sem bloco PostToolUse" "$(cat "$_dest/settings.json" 2>/dev/null)"; return 1; }
 }
 
-# Provisionamento do hook de metrica de uso de tokens por spawn
-# (wave-token-metrics FASE 2, tarefa 2.2.4) — mesmo padrao do tick acima.
-scenario_apply_guard_hooks_copia_posttooluse_agent_usage() {
+# ==== Aposentadoria do hook posttooluse-agent-usage.sh ====
+#
+# O hook (PostToolUse/Agent) foi APOSENTADO: com spawn em background o
+# tool_response nao traz uso e toda linha do sidecar saia `indisponivel`.
+# apply_guard_hooks nao o copia mais e, via _retire_agent_usage_hook, limpa
+# o que provisionamentos ANTERIORES deixaram no projeto (registro em
+# settings.json/settings.local.json + copia do script) — sem tocar hooks de
+# terceiros nem os 2 hooks obrigatorios.
+
+# _legacy_agent_usage_settings FILE -> settings no formato de um projeto
+# provisionado ANTES da aposentadoria: guard + tick + agent-usage (matcher
+# Agent, em dois grupos: um com hook de TERCEIRO junto, outro so com o
+# aposentado) + um hook de terceiro num grupo proprio.
+_legacy_agent_usage_settings() {
+  mkdir -p "$(dirname "$1")"
+  cat > "$1" <<'JSON'
+{
+  "permissions": {"allow": ["Bash(ls:*)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pretooluse-bash-guard.sh", "timeout": 5}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse-tool-call-tick.sh", "timeout": 5}]},
+      {"matcher": "Agent", "hooks": [
+        {"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse-agent-usage.sh", "timeout": 5},
+        {"type": "command", "command": "/opt/terceiro/agent-audit.sh"}
+      ]},
+      {"matcher": "Agent", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse-agent-usage.sh"}]},
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "/usr/local/bin/lint-terceiro.sh"}]}
+    ]
+  }
+}
+JSON
+}
+
+# _legacy_agent_usage_script ROOT -> copia antiga do script em ROOT/hooks/.
+_legacy_agent_usage_script() {
+  mkdir -p "$1/hooks"
+  printf '#!/bin/sh\n# copia antiga do hook aposentado\nexit 0\n' > "$1/hooks/posttooluse-agent-usage.sh"
+  chmod +x "$1/hooks/posttooluse-agent-usage.sh"
+}
+
+# _assert_retired_in FILE -> registro do aposentado sumiu; guard + tick e os
+# hooks de terceiros seguem; grupos vazios foram podados.
+_assert_retired_in() {
+  _ari_f=$1
+  grep -q 'posttooluse-agent-usage' "$_ari_f" \
+    && { _fail "registro aposentado" "posttooluse-agent-usage.sh ainda registrado em $_ari_f: $(cat "$_ari_f")"; return 1; }
+  jq -e '[.hooks.PreToolUse[].hooks[].command | select(endswith("/.claude/hooks/pretooluse-bash-guard.sh"))] | length == 1' \
+    "$_ari_f" >/dev/null \
+    || { _fail "guard perdido" "$(cat "$_ari_f")"; return 1; }
+  jq -e '[.hooks.PostToolUse[].hooks[].command | select(endswith("/.claude/hooks/posttooluse-tool-call-tick.sh"))] | length == 1' \
+    "$_ari_f" >/dev/null \
+    || { _fail "tick perdido" "$(cat "$_ari_f")"; return 1; }
+  jq -e '([.hooks.PostToolUse[].hooks[].command] | index("/opt/terceiro/agent-audit.sh") != null)
+         and ([.hooks.PostToolUse[].hooks[].command] | index("/usr/local/bin/lint-terceiro.sh") != null)
+         and (.permissions.allow[0] == "Bash(ls:*)")' "$_ari_f" >/dev/null \
+    || { _fail "terceiros/chaves perdidos" "$(cat "$_ari_f")"; return 1; }
+  # O grupo Agent com terceiro fica (so com o terceiro); o grupo Agent que
+  # tinha APENAS o aposentado e podado.
+  jq -e '([.hooks.PostToolUse[] | select(.matcher=="Agent")] | length == 1)
+         and ([.hooks.PostToolUse[] | .hooks | length] | all(. > 0))' "$_ari_f" >/dev/null \
+    || { _fail "poda de grupo vazio" "$(cat "$_ari_f")"; return 1; }
+  return 0
+}
+
+_REAL_HOOKS_SRC="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"
+
+# (a) Projeto legado com o registro em settings.json + copia do script.
+scenario_apply_guard_hooks_aposenta_agent_usage_em_settings_json() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
-  _src=$(_guard_src_fixture)
-  _dest="$TMPDIR_TEST/claude-root"
-  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  _dest="$TMPDIR_TEST/claude-root-legacy"
+  _legacy_agent_usage_settings "$_dest/settings.json"
+  _legacy_agent_usage_script "$_dest"
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0' _ "$_REAL_HOOKS_SRC" "$_dest"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "merged" || return 1
+  _assert_retired_in "$_dest/settings.json" || return 1
+  [ -e "$_dest/hooks/posttooluse-agent-usage.sh" ] \
+    && { _fail "script aposentado" "copia de posttooluse-agent-usage.sh nao foi removida"; return 1; }
+  [ -x "$_dest/hooks/pretooluse-bash-guard.sh" ] || { _fail "guard nao provisionado" ""; return 1; }
+  [ -x "$_dest/hooks/posttooluse-tool-call-tick.sh" ] || { _fail "tick nao provisionado" ""; return 1; }
+  assert_stderr_contains "posttooluse-agent-usage.sh removido de" || return 1
+  [ -f "$_dest/settings.json.bak" ] || { _fail "backup" "settings.json.bak nao gravado"; return 1; }
+  # Idempotente: 2a chamada nao tem mais o que aposentar.
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0' _ "$_REAL_HOOKS_SRC" "$_dest"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a chamada exit" "$_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"hook aposentado"*) _fail "idempotencia" "2a chamada ainda reportou aposentadoria: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  _assert_retired_in "$_dest/settings.json" || return 1
+  return 0
+}
+
+# (b) Mesmo cenario com o registro legado em settings.local.json (issue
+# #135, --local). settings.json do time, sem o aposentado, fica intacto.
+scenario_apply_guard_hooks_aposenta_agent_usage_em_settings_local_json() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _dest="$TMPDIR_TEST/claude-root-legacy-local"
+  _legacy_agent_usage_settings "$_dest/settings.local.json"
+  _legacy_agent_usage_script "$_dest"
+  printf '{\n  "permissions": {"allow": ["Bash(git:*)"]}\n}\n' > "$_dest/settings.json"
+  cp "$_dest/settings.json" "$TMPDIR_TEST/settings.json.team-orig"
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0 0 settings.local.json' _ "$_REAL_HOOKS_SRC" "$_dest"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  _assert_retired_in "$_dest/settings.local.json" || return 1
+  [ -e "$_dest/hooks/posttooluse-agent-usage.sh" ] \
+    && { _fail "script aposentado" "copia de posttooluse-agent-usage.sh nao foi removida"; return 1; }
+  cmp -s "$_dest/settings.json" "$TMPDIR_TEST/settings.json.team-orig" \
+    || { _fail "settings.json do time tocado" "$(cat "$_dest/settings.json")"; return 1; }
+  [ -e "$_dest/settings.json.bak" ] \
+    && { _fail "settings.json.bak" "nada a aposentar em settings.json: nao deveria gerar backup"; return 1; }
+  assert_stderr_contains "settings.local.json (backup em" || return 1
+  return 0
+}
+
+# (c) dry-run: anuncia a aposentadoria mas nao toca settings nem o script.
+scenario_apply_guard_hooks_dry_run_nao_aposenta_agent_usage() {
+  _dest="$TMPDIR_TEST/claude-root-legacy-dry"
+  _legacy_agent_usage_settings "$_dest/settings.json"
+  _legacy_agent_usage_settings "$_dest/settings.local.json"
+  _legacy_agent_usage_script "$_dest"
+  cp "$_dest/settings.json" "$TMPDIR_TEST/dry-settings.orig"
+  cp "$_dest/settings.local.json" "$TMPDIR_TEST/dry-settings-local.orig"
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 1' _ "$_REAL_HOOKS_SRC" "$_dest"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "removeria o hook aposentado" || return 1
+  cmp -s "$_dest/settings.json" "$TMPDIR_TEST/dry-settings.orig" \
+    || { _fail "dry-run alterou settings.json" "$(cat "$_dest/settings.json")"; return 1; }
+  cmp -s "$_dest/settings.local.json" "$TMPDIR_TEST/dry-settings-local.orig" \
+    || { _fail "dry-run alterou settings.local.json" "$(cat "$_dest/settings.local.json")"; return 1; }
   [ -x "$_dest/hooks/posttooluse-agent-usage.sh" ] \
-    || { _fail "agent-usage hook nao copiado/executavel" ""; return 1; }
-  jq -e '[.hooks.PostToolUse[] | select(.matcher == "Agent")] | length == 1' "$_dest/settings.json" >/dev/null \
-    || { _fail "settings.json sem entrada PostToolUse/Agent" "$(cat "$_dest/settings.json" 2>/dev/null)"; return 1; }
+    || { _fail "dry-run apagou o script" ""; return 1; }
+  for _b in settings.json.bak settings.local.json.bak; do
+    [ -e "$_dest/$_b" ] && { _fail "dry-run gerou backup" "$_b"; return 1; }
+  done
+  return 0
 }
 
 # Catalogo ANTIGO (skill sem o hook de metrica): provisionamento do guard
@@ -423,7 +542,7 @@ scenario_apply_guard_hooks_catalogo_antigo_sem_tick() {
   [ -f "$_dest/hooks/posttooluse-tool-call-tick.sh" ] \
     && { _fail "tick fantasma" "catalogo antigo nao traz o tick; nada a copiar"; return 1; }
   [ -f "$_dest/hooks/posttooluse-agent-usage.sh" ] \
-    && { _fail "agent-usage fantasma" "catalogo antigo nao traz o hook de uso; nada a copiar"; return 1; }
+    && { _fail "agent-usage fantasma" "hook aposentado nunca e provisionado"; return 1; }
   return 0
 }
 
@@ -461,9 +580,11 @@ scenario_hooks_main_install_provisiona_so_hooks() {
   mkdir -p "$_proj"
   _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
-  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh; do
+  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh; do
     [ -x "$_proj/.claude/hooks/$_h" ] || { _fail "hook ausente" "$_h"; return 1; }
   done
+  [ -e "$_proj/.claude/hooks/posttooluse-agent-usage.sh" ] \
+    && { _fail "hook aposentado provisionado" "posttooluse-agent-usage.sh"; return 1; }
   jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_proj/.claude/settings.json" >/dev/null \
     || { _fail "settings.json nao mesclado" ""; return 1; }
   # A diferenca para `cstk install --scope project`: NAO duplica catalogo.
@@ -886,7 +1007,9 @@ scenario_dedup_sem_registro_classico_e_noop() {
 }
 
 # Plugin incompleto (hooks.json ausente): o classico e provisionado de
-# proposito (F4) — remover seria deixar o projeto SEM guarda nenhuma.
+# proposito (F4) — remover seria deixar o projeto SEM guarda nenhuma. O
+# fixture e LEGADO (inclui o hook aposentado): o provisionamento aposenta so
+# o agent-usage; guard + tick classicos ficam.
 scenario_dedup_nao_remove_quando_plugin_incompleto() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
   _cat=$(_hooks_catalog_fixture)
@@ -897,8 +1020,12 @@ scenario_dedup_nao_remove_quando_plugin_incompleto() {
   _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --remove-classic
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   _n=$(_n_hooks_cstk "$_proj/.claude/settings.json")
-  [ "$_n" -ge 3 ] \
+  [ "$_n" -ge 2 ] \
     || { _fail "F4" "plugin incompleto NAO pode perder o registro classico (restaram $_n)"; return 1; }
+  grep -q 'pretooluse-bash-guard.sh' "$_proj/.claude/settings.json" \
+    || { _fail "F4" "registro classico da guarda perdido"; return 1; }
+  grep -q 'posttooluse-agent-usage.sh' "$_proj/.claude/settings.json" \
+    && { _fail "F4" "hook aposentado deveria ter saido do registro"; return 1; }
   return 0
 }
 
@@ -938,12 +1065,12 @@ scenario_local_registra_em_settings_local_e_preserva_settings_json() {
     || { _fail "settings.json do time foi tocado" "$(cat "$_proj/.claude/settings.json")"; return 1; }
   [ -f "$_proj/.claude/settings.json.bak" ] \
     && { _fail "settings.json.bak criado" "--local nao pode sujar o git status do cliente"; return 1; }
-  # Registro (3 obrigatorios + opt-in) no arquivo local.
+  # Registro (2 obrigatorios + opt-in) no arquivo local.
   [ -f "$_proj/.claude/settings.local.json" ] || { _fail "settings.local.json ausente" ""; return 1; }
-  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "4" ] \
-    || { _fail "registro local" "esperado 4 entradas 00c, obtido $(_n_hooks_cstk "$_proj/.claude/settings.local.json")"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
+    || { _fail "registro local" "esperado 3 entradas 00c, obtido $(_n_hooks_cstk "$_proj/.claude/settings.local.json")"; return 1; }
   # Scripts continuam em .claude/hooks/ (o registro local aponta para la).
-  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh posttooluse-loose-usage.sh; do
+  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-loose-usage.sh; do
     [ -x "$_proj/.claude/hooks/$_h" ] || { _fail "hook ausente" "$_h"; return 1; }
   done
   # (path via pwd -P pode diferir de $_proj em symlinks de TMPDIR — casa so o sufixo)
@@ -962,8 +1089,8 @@ scenario_local_idempotente() {
   _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a run exit" "$_CAPTURED_EXIT"; return 1; }
   _n2=$(_n_hooks_cstk "$_proj/.claude/settings.local.json")
-  [ "$_n1" = "3" ] && [ "$_n1" = "$_n2" ] \
-    || { _fail "idempotencia" "entradas 00c: $_n1 -> $_n2 (esperado 3 -> 3)"; return 1; }
+  [ "$_n1" = "2" ] && [ "$_n1" = "$_n2" ] \
+    || { _fail "idempotencia" "entradas 00c: $_n1 -> $_n2 (esperado 2 -> 2)"; return 1; }
   [ -e "$_proj/.claude/settings.json" ] \
     && { _fail "settings.json criado" "--local nunca deve criar settings.json"; return 1; }
   return 0
@@ -982,7 +1109,9 @@ scenario_local_dry_run_nao_escreve_e_cita_arquivo_local() {
 
 # Registro nos DOIS arquivos = cada tool call contada em dobro. Sem TTY e
 # sem --remove-classic o outro arquivo e MANTIDO com aviso (settings.json e
-# do operador/time; nada e removido sem confirmacao explicita).
+# do operador/time; nada e removido sem confirmacao explicita). Excecao
+# deliberada: o registro do hook APOSENTADO (fixture legado) sai de ambos os
+# arquivos — apontaria para um script que o provisionamento acabou de apagar.
 scenario_local_dedup_sem_tty_avisa_e_mantem_settings_json() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
   _cat=$(_hooks_catalog_fixture_real)
@@ -994,10 +1123,16 @@ scenario_local_dedup_sem_tty_avisa_e_mantem_settings_json() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   assert_stderr_contains "duplicidade com o registro em settings.local.json" || return 1
   assert_stderr_contains "MANTIDO" || return 1
+  # --local NUNCA toca o settings.json versionado do time — nem para aposentar
+  # o hook legado: o registro fica, a copia do script tambem (senao o registro
+  # apontaria para arquivo inexistente) e o operador recebe um aviso.
   [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "$_n_before" ] \
-    || { _fail "settings.json alterado sem confirmacao" ""; return 1; }
-  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
-    || { _fail "registro local" "esperado 3, obtido $(_n_hooks_cstk "$_proj/.claude/settings.local.json")"; return 1; }
+    || { _fail "settings.json alterado sem confirmacao" "esperado $_n_before entradas intactas: $(cat "$_proj/.claude/settings.json")"; return 1; }
+  assert_stderr_contains "ainda registra o hook aposentado" || return 1
+  grep -q 'pretooluse-bash-guard.sh' "$_proj/.claude/settings.json" \
+    || { _fail "settings.json alterado sem confirmacao" "bloco classico da guarda removido"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "2" ] \
+    || { _fail "registro local" "esperado 2, obtido $(_n_hooks_cstk "$_proj/.claude/settings.local.json")"; return 1; }
   return 0
 }
 
@@ -1017,8 +1152,8 @@ scenario_local_dedup_remove_classic_limpa_settings_json_preservando_terceiros() 
     "$_proj/.claude/settings.json" >/dev/null \
     || { _fail "hooks de terceiros/chaves perdidos" "$(cat "$_proj/.claude/settings.json")"; return 1; }
   [ -f "$_proj/.claude/settings.json.bak-pre-dedup" ] || { _fail "backup" "backup nao gravado"; return 1; }
-  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
-    || { _fail "registro local" "esperado 3"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "2" ] \
+    || { _fail "registro local" "esperado 2"; return 1; }
   return 0
 }
 
@@ -1032,9 +1167,9 @@ scenario_classico_sobre_local_avisa_duplicidade() {
   _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local
   _hooks_main_run install --project-path "$_proj" --catalog "$_cat" </dev/null
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
-  assert_stderr_contains "settings.local.json ainda registra 3 hook(s) 00c" || return 1
+  assert_stderr_contains "settings.local.json ainda registra 2 hook(s) 00c" || return 1
   assert_stderr_contains "duplicidade com o registro em settings.json" || return 1
-  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "2" ] \
     || { _fail "settings.local.json alterado sem confirmacao" ""; return 1; }
   return 0
 }
@@ -1047,7 +1182,7 @@ scenario_sem_local_comportamento_identico() {
   mkdir -p "$_proj"
   _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
-  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "3" ] || { _fail "settings.json" "esperado 3"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "2" ] || { _fail "settings.json" "esperado 2"; return 1; }
   [ -e "$_proj/.claude/settings.local.json" ] && { _fail "settings.local.json criado sem --local" ""; return 1; }
   return 0
 }
@@ -1071,7 +1206,7 @@ scenario_status_reporta_registro_local() {
   _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local --with-loose-usage
   _hooks_main_run status --project-path "$_proj"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
-  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh posttooluse-loose-usage.sh; do
+  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-loose-usage.sh; do
     printf '%s\n' "$_CAPTURED_STDOUT" | grep -E "^  $_h +script=present +registro=settings.local.json" >/dev/null \
       || { _fail "linha de $_h" "$_CAPTURED_STDOUT"; return 1; }
   done
@@ -1089,7 +1224,9 @@ scenario_status_reporta_both_e_avisa_dobro() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (diagnostico), obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -E "^  pretooluse-bash-guard.sh +script=present +registro=both" >/dev/null \
     || { _fail "esperado registro=both" "$_CAPTURED_STDOUT"; return 1; }
-  assert_stderr_contains "3 hook(s) registrados em MAIS de um lugar" || return 1
+  # Fixture legado: o aposentado sai de settings.json no install e nao e
+  # mais listado pelo status — sobram guard + tick em dobro.
+  assert_stderr_contains "2 hook(s) registrados em MAIS de um lugar" || return 1
   return 0
 }
 

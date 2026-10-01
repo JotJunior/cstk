@@ -1,6 +1,6 @@
 ---
 name: jira-convert
-description: 'Converte uma feature documentada localmente (spec.md + tasks.md) num Epic do Jira com Tasks e Sub-tasks correspondentes, gravando o mapeamento local<->Jira (jira-map.tsv). Reexecucao cria apenas o que falta. Triggers: "jira-convert", "converter para jira", "criar epic no jira", "sincronizar backlog com jira", "mandar feature para o jira". Skip if `jira-map.tsv` da feature ja cobre todos os itens de `tasks.md` (nada para criar) and the user did not ask to reconvert.'
+description: 'Converte uma feature documentada localmente (spec.md + tasks.md) num Epic do Jira com Tasks e Sub-tasks correspondentes, gravando o mapeamento entre local e Jira (jira-map.tsv). Reexecucao cria apenas o que falta. Triggers: "jira-convert", "converter para jira", "criar epic no jira", "sincronizar backlog com jira", "mandar feature para o jira". Skip if `jira-map.tsv` da feature ja cobre todos os itens de `tasks.md` (nada para criar) and the user did not ask to reconvert.'
 argument-hint: "<feature> (short-name em docs/specs/<feature>/)"
 allowed-tools:
   - Read

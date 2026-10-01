@@ -1,18 +1,19 @@
 #!/bin/bash
-# PostToolCall hook: Go Build Gate
+# PostToolUse hook: Go Build Gate
 # After any Write/Edit to a .go file, runs `go build ./...` in the affected service.
 # Catches compilation errors immediately instead of at session end.
 #
-# Environment: CLAUDE_TOOL_INPUT contains JSON with tool parameters
+# Input: hook JSON on stdin (.tool_input.file_path)
 
 set -euo pipefail
+
+HOOK_INPUT=$(cat)
 
 cd "$CLAUDE_PROJECT_DIR" 2>/dev/null || exit 0
 
 # Extract file_path from tool input JSON
-FILE_PATH=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.file_path // empty' 2>/dev/null)
+FILE_PATH=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 
-# Fallback: try reading from stdin (some hook versions pipe input)
 if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
@@ -41,7 +42,8 @@ BUILD_OUTPUT=$(cd "$FULL_SERVICE_DIR" && go build ./... 2>&1) || {
   echo "$BUILD_OUTPUT" >&2
   echo "" >&2
   echo "Fix the compilation errors before continuing." >&2
-  exit 1
+  # exit 2 em PostToolUse = stderr volta ao Claude como feedback
+  exit 2
 }
 
 exit 0

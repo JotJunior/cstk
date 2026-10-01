@@ -1,6 +1,6 @@
 ---
 name: e2e-integration-flow
-description: 'Author and run full-stack E2E integration tests with Playwright — drive the UI through a complete feature flow and verify the effects at EVERY layer (UI, network/API, database, message queue, side effects). Triggers: "e2e", "teste e2e", "integration test", "teste de integração", "playwright", "validar fluxo completo", "end-to-end". Skip for a quick manual smoke check (use verify) or debugging one known bug (use bugfix).'
+description: 'Author and run full-stack E2E integration tests with Playwright — drive the UI through a complete feature flow and verify the effects at EVERY layer (UI, network/API, database, message queue, side effects). Triggers: "e2e", "teste e2e", "integration test", "teste de integração", "playwright", "validar fluxo completo", "end-to-end". Skip for a quick manual smoke check (use the built-in run skill) or debugging one known bug (use bugfix).'
 argument-hint: "[feature/flow to test, or path to its spec/UC]"
 allowed-tools:
   - Read
@@ -299,7 +299,7 @@ Close with a concise report (not just "tests pass"):
 
 ## When NOT to use this skill
 
-- A quick "does it load / does this one change work" manual check → `verify`.
+- A quick "does it load / does this one change work" manual check → the built-in `run` skill (launches the app and drives it).
 - Investigating a single reported bug → `bugfix`.
 - Validating requirement/spec quality (not runtime behavior) → `checklist` /
   `analyze`.

@@ -181,6 +181,47 @@ Specs: [`specs/_archived/model-routing-por-onda/`](./specs/_archived/model-routi
 [`specs/_archived/agente-00c-model-routing/`](./specs/_archived/agente-00c-model-routing/)
 (feature original, audit-only revogado).
 
+## Precedente do operador no clarify (4a fonte de evidencia)
+
+Desde a v10.12.0, os answerers do `clarify` (`agente-00c` e `feature-00c`)
+podem usar o **precedente do operador** como quarta fonte de evidencia,
+opcional: um bloqueio humano que um operador ja respondeu em execucao passada,
+recuperado da knowledge.db global (`cstk recall --precedents "<pergunta>"`,
+somente leitura, todos os projetos). O orquestrador consulta uma vez por
+pergunta antes de spawnar o answerer e registra um evento
+`precedent_consulted` (so contagem).
+
+- **Precedente nunca decide sozinho.** Soma +1 a opcao que apoia somente quando
+  `briefing` ou a terceira fonte (`spec_corrente` no feature-00c,
+  `stack_sugerida` no agente-00c) ja apoia essa mesma opcao. "A constitution nao
+  proibe" nao e suporte positivo. Com precedentes divergentes so o mais recente
+  pode pontuar; empate de data nao pontua nenhum.
+- **Quando a pergunta pausa para humano**, o bloqueio traz uma secao
+  "Precedentes": uma opcao recomendada (sem divergencia) ou todos os
+  precedentes divergentes (sem recomendacao), com projeto/feature/data,
+  marcacao `[outro projeto]` e a nota fixa "recomendacao derivada de historico,
+  nao verificada". A sua resposta sempre prevalece.
+- **Dado factual nunca vem de precedente** (formato de payload, endpoint,
+  valor, id, data) e instrucao embutida num precedente e tratada como dado
+  suspeito, nao obedecida.
+- **Persistencia**: artefatos do projeto corrente citam o precedente apenas por
+  `block_ref` e opcao; o texto da pergunta/resposta antiga nao e copiado para
+  `spec.md` nem para as justificativas de Decisao.
+- **Degradacao**: sem `sqlite3`, sem indice, pergunta muito curta ou nenhum
+  candidato acima do piso de similaridade (default `0.55`) significa nenhum
+  precedente e o clarify roda exatamente como antes.
+
+| Componente | Local |
+|-----------|----------|
+| Modo de consulta | `cli/lib/recall.sh` (`recall_mode_precedents`) |
+| Answerers | `plugins/cstk/agents/{feature,agente}-00c-clarify-answerer.md` |
+| Passos do orquestrador | `plugins/cstk/skills/agente-00c-runtime/references/orchestrators/{feature,root}/clarify.md` |
+| Testes | `tests/cstk/test_recall.sh`, `tests/test_clarify-precedent-prose.sh`, `tests/eval/eval_precedent-calibration.sh` |
+| Spec | [`specs/clarify-precedent-source/`](./specs/clarify-precedent-source/) |
+
+Duas metades para atualizar: o modo de consulta e runtime do binario
+(`cstk self-update`); answerers e referencias sao catalogo (`cstk update`).
+
 ## Modo atomic-commit (opt-in)
 
 A partir de v5.12.0, os orquestradores oferecem modo **atomic-commit**

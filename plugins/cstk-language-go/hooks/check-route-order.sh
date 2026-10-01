@@ -1,5 +1,5 @@
 #!/bin/bash
-# PreToolCall hook: Route Order Sentinel
+# PreToolUse hook: Route Order Sentinel
 # Checks if handler files have /:id routes before static routes (Fiber trie conflict).
 # Only runs on *_handler.go files.
 #
@@ -7,7 +7,10 @@
 
 set -euo pipefail
 
-FILE_PATH=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.file_path // empty' 2>/dev/null)
+# Entrada do hook chega via stdin (JSON com .tool_input), nao via env var.
+HOOK_INPUT=$(cat)
+
+FILE_PATH=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -z "$FILE_PATH" ] && exit 0
 
 # Only check handler files
@@ -15,8 +18,8 @@ FILE_PATH=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.file_path // empty' 2>/dev/n
 
 # Get the new content being written
 # For Write tool: new_string or content field
-# For Edit tool: we check the full file after edit — skip PreToolCall, rely on PostToolCall
-CONTENT=$(echo "${CLAUDE_TOOL_INPUT:-}" | jq -r '.content // empty' 2>/dev/null)
+# For Edit tool: no full content available before the edit — skip
+CONTENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null)
 [ -z "$CONTENT" ] && exit 0
 
 # Look for RegisterRoutes function and check route order
@@ -40,7 +43,8 @@ while IFS= read -r line; do
     echo "" >&2
     echo "Static routes MUST be registered BEFORE /:id routes in Fiber." >&2
     echo "Move static routes above parameterized routes in RegisterRoutes()." >&2
-    exit 1
+    # exit 2 = bloqueia a tool call e devolve o stderr ao Claude
+    exit 2
   fi
 done <<< "$ROUTE_LINES"
 

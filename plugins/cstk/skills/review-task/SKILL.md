@@ -242,9 +242,10 @@ ratificado em
 
 Ref: feature `wave-token-metrics`, FASE 6 (F5, US2/FR-007).
 
-Quando a mesma `state.json` tambem tem `.waves[].agent_usage` (populado
-pelo hook `posttooluse-agent-usage.sh` + `state-ondas.sh end` — ver
-`docs/specs/wave-token-metrics/`), cruze a secao **por-onda** do
+Quando a mesma `state.json` tambem tem `.waves[].agent_usage` (hoje so
+populado retroativamente por `wave-usage-report.sh backfill` a partir do
+transcript da sessao — o hook de captura ao vivo `posttooluse-agent-usage.sh`
+foi aposentado; ver `docs/specs/wave-token-metrics/`), cruze a secao **por-onda** do
 model-routing (`linhas_onda[]`, saida `--json` de
 `model-routing-report.sh`) com o agregado do `wave-usage-report.sh`
 (`por_onda[]`, saida `--json`) pela chave comum `onda`. Objetivo: por

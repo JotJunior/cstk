@@ -212,6 +212,31 @@ _is_internal_test() {
       # tratamento de test_validate-plugin-manifests.sh). FASE 5.1-5.3 de
       # panel-monorepo (FR-015/FR-016).
       return 0 ;;
+    test_measure-orchestrator-prompts.sh)
+      # Cobre scripts/measure-orchestrator-prompts.sh (top-level scripts/,
+      # fora da convencao cli/lib | skills/*/scripts — mesmo tratamento de
+      # test_validate-plugin-manifests.sh). orchestrator-slim FASE 2.
+      # Existence-guarded ao script coberto.
+      [ -f "$REPO_ROOT/scripts/measure-orchestrator-prompts.sh" ] && return 0
+      return 1 ;;
+    test_orchestrator-slim-parity.sh)
+      # Prova de paridade dos prompts dos orquestradores contra o baseline
+      # (inventarios em tests/fixtures/orchestrator-slim/) — textual, sem
+      # script "dono" 1:1. orchestrator-slim FASE 2. Existence-guarded aos
+      # inventarios.
+      [ -d "$REPO_ROOT/tests/fixtures/orchestrator-slim" ] && return 0
+      return 1 ;;
+    test_orchestrator-refs-distribution.sh|test_orchestrator-refs-failsafe.sh)
+      # Cobrem orchestrator-refs.sh por outros angulos (distribuicao nos dois
+      # canais; stubs de falha segura nos prompts-base) — o dono 1:1 do
+      # script e test_orchestrator-refs.sh. orchestrator-slim FASE 7.
+      # Existence-guarded ao script coberto.
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/orchestrator-refs.sh" ] && return 0
+      return 1 ;;
+    test_go-language-hooks.sh)
+      # Cobre plugins/cstk-language-go/hooks/*.sh + language-related/go/
+      # settings.json — fora da convencao cli/lib | skills/*/scripts.
+      return 0 ;;
     test_plugin-hooks-manifest.sh)
       # Cobre plugins/cstk/hooks/hooks.json — manifesto de dados estatico,
       # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de
@@ -305,6 +330,14 @@ _is_internal_test() {
       # um unico script — existence-guarded ao command portador da instrucao
       # wave-select. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
+      return 1 ;;
+    test_clarify-precedent-prose.sh)
+      # Teste ESTATICO de prosa (clarify-precedent-source FASE 4, task 4.3):
+      # asserta regras/paridade nos 2 answerers e nas 2 referencias de
+      # clarify. Assert no .md, nao em um unico script — existence-guarded
+      # ao answerer portador das regras. Se a fonte sumir, volta a ser
+      # orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/agents/feature-00c-clarify-answerer.md" ] && return 0
       return 1 ;;
     test_command-wave-summary.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (integracao do
@@ -541,14 +574,6 @@ _is_internal_test() {
       # do test_pretooluse-bash-guard.sh acima: hooks/ esta fora do escaneio
       # por convencao. Existence-guarded.
       [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh" ] && return 0
-      return 1 ;;
-    test_posttooluse-agent-usage.sh)
-      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh
-      # (hook PostToolUse/matcher "Agent" de metrica de uso de tokens por
-      # spawn de subagente — wave-token-metrics FASE 2) — mesma razao dos
-      # dois casos acima: hooks/ esta fora do escaneio por convencao.
-      # Existence-guarded.
-      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh" ] && return 0
       return 1 ;;
     test_posttooluse-loose-usage.sh)
       # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh

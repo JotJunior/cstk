@@ -157,7 +157,7 @@ merge_settings() {
 # (verificado empiricamente: `jq -s '.[0]*.[1]'` com dois arrays sempre
 # devolve o array do segundo operando, nunca uma uniao). Como o snippet
 # base (settings.snippet.json) ja populou target.hooks.PostToolUse com as
-# 2 entradas obrigatorias (tick + agent-usage) ANTES deste merge rodar,
+# entrada obrigatoria (tick) ANTES deste merge rodar,
 # aplicar merge_settings aqui perderia o hook opt-in silenciosamente.
 #
 # Estrategia: acha (ou cria) a entrada de matcher "*" dentro de
@@ -278,6 +278,67 @@ print_paste_block() {
   return 0
 }
 
+# _retire_agent_usage_hook <dest_claude_root>
+#
+# Aposenta o hook legado posttooluse-agent-usage.sh (PostToolUse/Agent). Com
+# subagentes rodando em background por default, o PostToolUse do Agent
+# dispara no LANCAMENTO do spawn — o tool_response nao traz uso, e toda linha
+# do sidecar saia `indisponivel` (observado em todas as execucoes desde
+# 2026-07-28). O consumo por onda ja vem do OTel (otel-usage.sh).
+#
+# O merge_settings e "target vence": sem esta limpeza, projetos provisionados
+# antes continuariam com o registro antigo apontando para a copia antiga do
+# script. Remove, SO no arquivo de registro alvo (<settings_basename>: o
+# mesmo que apply_guard_hooks esta escrevendo — com --local, o settings.json
+# versionado do time NUNCA e tocado), as entradas cujo command termina em
+# /.claude/hooks/posttooluse-agent-usage.sh (grupos que ficam vazios saem
+# junto; hooks de terceiros intactos). A copia do script so e apagada quando
+# NENHUM dos dois arquivos de registro a referencia mais — senao o registro
+# restante apontaria para um script inexistente. Best-effort: nunca muda a
+# palavra de estado de apply_guard_hooks.
+_retire_agent_usage_in() {
+  _raui_settings=$1
+  [ -f "$_raui_settings" ] || return 0
+  grep -Fq -- 'posttooluse-agent-usage.sh' "$_raui_settings" 2>/dev/null || return 0
+  if ! detect_jq; then
+    log_warn "hooks: $_raui_settings ainda registra o hook aposentado posttooluse-agent-usage.sh — remova a entrada manualmente (jq ausente)"
+    return 0
+  fi
+  _raui_tmp=$(mktemp -- "$(dirname -- "$_raui_settings")/.cstk-retire.XXXXXX") || return 0
+  if jq --arg re '/\.claude/hooks/posttooluse-agent-usage\.sh"?$' '
+    if (.hooks.PostToolUse | type) == "array" then
+      .hooks.PostToolUse |= (map(
+          .hooks |= map(select(((.command // "") | test($re)) | not))
+        ) | map(select((.hooks | length) > 0)))
+    else . end
+  ' -- "$_raui_settings" > "$_raui_tmp" 2>/dev/null \
+     && cp -- "$_raui_settings" "${_raui_settings}.bak" \
+     && mv -f -- "$_raui_tmp" "$_raui_settings"; then
+    log_info "hooks: registro do hook aposentado posttooluse-agent-usage.sh removido de $_raui_settings (backup em ${_raui_settings}.bak)"
+  else
+    rm -f -- "$_raui_tmp"
+    log_warn "hooks: nao consegui remover o registro do hook aposentado de $_raui_settings (demais hooks intactos)"
+  fi
+  return 0
+}
+
+_retire_agent_usage_hook() {
+  _rau_root=$1
+  _retire_agent_usage_in "$_rau_root/${2:-settings.json}"
+  _rau_still=""
+  for _rau_settings in "$_rau_root/settings.json" "$_rau_root/settings.local.json"; do
+    [ -f "$_rau_settings" ] && grep -Fq -- 'posttooluse-agent-usage.sh' "$_rau_settings" 2>/dev/null \
+      && _rau_still="$_rau_settings"
+  done
+  if [ -n "$_rau_still" ]; then
+    log_warn "hooks: $_rau_still ainda registra o hook aposentado posttooluse-agent-usage.sh — copia do script mantida; remova a entrada (ou rode 'cstk hooks install' sem --local) para aposenta-lo"
+  elif [ -f "$_rau_root/hooks/posttooluse-agent-usage.sh" ]; then
+    rm -f -- "$_rau_root/hooks/posttooluse-agent-usage.sh" 2>/dev/null \
+      && log_info "hooks: copia do hook aposentado posttooluse-agent-usage.sh removida de $_rau_root/hooks"
+  fi
+  return 0
+}
+
 # apply_guard_hooks <src_dir> <dest_claude_root> <dry_run>
 #
 # Provisiona os hooks de execucao 00c num projeto-alvo:
@@ -288,10 +349,9 @@ print_paste_block() {
 #      calls por onda, sidecar tool-call-ticks.log) quando presente no
 #      catalogo. BEST-EFFORT: ausencia (catalogo antigo) ou falha de cp
 #      NAO muda a palavra de estado nem aborta — e metrica, nao guarda.
-#   1c. Copia <src_dir>/posttooluse-agent-usage.sh (metrica de uso de
-#      tokens/tool-uses/duracao por spawn de subagente, sidecar
-#      wave-agent-usage.jsonl — wave-token-metrics FASE 2) quando presente
-#      no catalogo. Mesma politica BEST-EFFORT do item 1b.
+#   1c. APOSENTA o hook legado posttooluse-agent-usage.sh (ver
+#      _retire_agent_usage_hook): remove o registro e a copia deixados por
+#      provisionamentos anteriores. BEST-EFFORT.
 #   2. Mescla <src_dir>/settings.snippet.json em
 #      <dest_claude_root>/settings.json via merge_settings (jq) ou
 #      print_paste_block (fallback sem jq) — mesma mecanica ja testada dos
@@ -301,7 +361,7 @@ print_paste_block() {
 #      <src_dir>/posttooluse-loose-usage.sh e mescla (append idempotente,
 #      via merge_settings_loose_usage) <src_dir>/settings.loose-usage.snippet.json.
 #      Best-effort — falha aqui NUNCA muda a palavra de estado nem os
-#      3 hooks obrigatorios (dec-008/FR-006).
+#      hooks obrigatorios (dec-008/FR-006).
 #
 # <src_dir> = diretorio contendo pretooluse-bash-guard.sh +
 # settings.snippet.json (tipicamente <catalog>/skills/agente-00c-runtime/hooks,
@@ -315,7 +375,7 @@ print_paste_block() {
 # que --scope global sempre pula, mesma regra ja aplicada a language-*).
 #
 # Retorno: imprime em stdout UMA palavra de estado (sem newline extra),
-# SEMPRE derivada dos 3 hooks OBRIGATORIOS (o opt-in de item 3 nunca altera
+# SEMPRE derivada dos hooks OBRIGATORIOS (o opt-in de item 3 nunca altera
 # esta palavra — best-effort separado):
 #   merged           — settings.json mesclado via jq
 #   paste-instructed — jq ausente, bloco impresso em stderr p/ colar manual
@@ -368,7 +428,6 @@ apply_guard_hooks() {
   fi
 
   _agh_tick_script="$_agh_src/posttooluse-tool-call-tick.sh"
-  _agh_usage_script="$_agh_src/posttooluse-agent-usage.sh"
   _agh_loose_script="$_agh_src/posttooluse-loose-usage.sh"
   _agh_loose_snippet="$_agh_src/settings.loose-usage.snippet.json"
 
@@ -377,8 +436,8 @@ apply_guard_hooks() {
     if [ -f "$_agh_tick_script" ]; then
       log_info "[dry-run] guard-hooks: copiaria $_agh_tick_script -> $_agh_hooks_dst/posttooluse-tool-call-tick.sh"
     fi
-    if [ -f "$_agh_usage_script" ]; then
-      log_info "[dry-run] guard-hooks: copiaria $_agh_usage_script -> $_agh_hooks_dst/posttooluse-agent-usage.sh"
+    if [ -f "$_agh_hooks_dst/posttooluse-agent-usage.sh" ]; then
+      log_info "[dry-run] guard-hooks: removeria o hook aposentado posttooluse-agent-usage.sh (script + registro)"
     fi
     if [ "$_agh_with_loose" = 1 ]; then
       if [ -f "$_agh_loose_script" ]; then
@@ -430,17 +489,6 @@ apply_guard_hooks() {
     fi
   fi
 
-  # Hook de metrica de uso de tokens por spawn (best-effort, mesma politica
-  # do item acima — wave-token-metrics FASE 2).
-  if [ -f "$_agh_usage_script" ]; then
-    if cp -- "$_agh_usage_script" "$_agh_hooks_dst/posttooluse-agent-usage.sh" 2>/dev/null; then
-      chmod +x -- "$_agh_hooks_dst/posttooluse-agent-usage.sh" 2>/dev/null || :
-      log_info "hooks: posttooluse-agent-usage.sh provisionado em $_agh_hooks_dst"
-    else
-      log_warn "hooks: cp de posttooluse-agent-usage.sh falhou — metrica de uso de tokens indisponivel (guard intacto)"
-    fi
-  fi
-
   # Hook OPT-IN de consumo avulso: copia do script e best-effort, independe
   # do settings.json e por isso pode rodar aqui. So o MERGE do snippet
   # precisa acontecer DEPOIS do merge base (bloco abaixo) — ver nota la.
@@ -480,7 +528,7 @@ apply_guard_hooks() {
   # SO com o snippet opt-in; o merge base seguinte entao veria
   # target.hooks.PostToolUse ja populado (so com o comando opt-in) e o
   # `jq -s '.[0]*.[1]'` do merge_settings faria TARGET vencer o array
-  # inteiro — descartando o comando do tick/agent-usage. Rodar o append
+  # inteiro — descartando o comando do tick. Rodar o append
   # DEPOIS garante que o array PostToolUse ja tem as entradas obrigatorias
   # quando o append (idempotente, por comando) acontece.
   if [ "$_agh_with_loose" = 1 ] && [ -f "$_agh_loose_snippet" ]; then
@@ -496,6 +544,8 @@ apply_guard_hooks() {
   elif [ "$_agh_with_loose" = 1 ]; then
     log_warn "hooks: settings.loose-usage.snippet.json ausente no catalogo — --with-loose-usage sem registro automatico"
   fi
+
+  _retire_agent_usage_hook "$_agh_dest_root" "$_agh_settings_name"
 
   printf '%s' "$_agh_state"
   return 0
@@ -539,7 +589,7 @@ apply_guard_hooks() {
 #                        posttooluse-loose-usage.sh (captura de consumo
 #                        avulso fora de execucoes 00c). Sem esta flag,
 #                        apply_guard_hooks() se comporta EXATAMENTE como
-#                        antes (3 hooks obrigatorios, zero regressao).
+#                        antes (hooks obrigatorios, zero regressao).
 #
 # Escopo de PROJETO apenas, por construcao: os hooks so fazem sentido
 # registrados no settings.json de um projeto (FR-009c — `--scope global`
@@ -693,10 +743,11 @@ USO:
                       [--with-loose-usage] [--remove-classic] [--local]
   cstk hooks status  [--project-path PATH]
 
-Copia pretooluse-bash-guard.sh + posttooluse-tool-call-tick.sh +
-posttooluse-agent-usage.sh para <PATH>/.claude/hooks/ e mescla o bloco de
-registro em <PATH>/.claude/settings.json (via jq; sem jq, imprime o bloco
-para colagem manual).
+Copia pretooluse-bash-guard.sh + posttooluse-tool-call-tick.sh para
+<PATH>/.claude/hooks/ e mescla o bloco de registro em
+<PATH>/.claude/settings.json (via jq; sem jq, imprime o bloco para colagem
+manual). Remove o hook aposentado posttooluse-agent-usage.sh (script +
+registro) se um provisionamento antigo o deixou no projeto.
 
 --local: grava o REGISTRO em <PATH>/.claude/settings.local.json em vez de
 settings.json (os scripts continuam em .claude/hooks/). Para repos de
@@ -798,7 +849,7 @@ _hooks_status_main() {
 
   _hs_dup=0
   _hs_none=0
-  for _hs_hook in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh posttooluse-loose-usage.sh; do
+  for _hs_hook in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-loose-usage.sh; do
     if [ -f "$_hs_dest/hooks/$_hs_hook" ]; then _hs_script="present"; else _hs_script="missing"; fi
     _hs_in_p=0; _hs_in_l=0
     [ -f "$_hs_settings" ] && grep -Fq -- "$_hs_hook" "$_hs_settings" 2>/dev/null && _hs_in_p=1
