@@ -5,6 +5,17 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.13.1] - 2026-10-01
+
+### Fixed
+
+- **`/presentation`: valor de métrica vazando do card** no slide "Em
+  números". Valores longos (ex.: `2264/2268` tarefas) estouravam a
+  largura do card e invadiam o vizinho. O card agora contém o conteúdo e
+  o deck reduz a fonte só do valor que não cabe (piso de 40% do tamanho
+  original), nos modos slides e relatório e na impressão; números curtos
+  mantêm o tamanho. Rótulos alinhados na base do card.
+
 ## [10.13.0] - 2026-09-30
 
 Nova skill complementar `reconcile-docs`: o sentido inverso da `converge`.
@@ -8629,6 +8640,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.13.1]: https://github.com/JotJunior/cstk/releases/tag/v10.13.1
 [10.13.0]: https://github.com/JotJunior/cstk/releases/tag/v10.13.0
 [10.12.0]: https://github.com/JotJunior/cstk/releases/tag/v10.12.0
 [10.11.0]: https://github.com/JotJunior/cstk/releases/tag/v10.11.0
