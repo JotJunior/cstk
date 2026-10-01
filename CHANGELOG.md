@@ -30,9 +30,10 @@ para tras, a skill traz a documentacao de volta para o que o codigo faz hoje.
   `reconciliation.md` por feature, gravado so quando ha alteracao. Politica
   de gravacao: sem git a skill recusa gravar (so `--dry-run`, via
   `git-probe.sh can-write`) e `--all` mostra o resumo global e pede UMA
-  confirmacao antes de gravar (sem operador presente cai em `--dry-run`). Contagens do README e dos
-  perfis atualizadas (23 skills globais, 12 em `complementary`, 30 em
-  `all`). Nenhuma `description` de skill existente foi alterada.
+  confirmacao antes de gravar (sem operador presente cai em `--dry-run`).
+  Contagens do README e dos perfis atualizadas (23 skills globais, 12 em
+  `complementary`, 30 em `all`). Nenhuma `description` de skill existente
+  foi alterada.
 
 ## [10.12.0] - 2026-09-30
 
@@ -8628,6 +8629,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.13.0]: https://github.com/JotJunior/cstk/releases/tag/v10.13.0
 [10.12.0]: https://github.com/JotJunior/cstk/releases/tag/v10.12.0
 [10.11.0]: https://github.com/JotJunior/cstk/releases/tag/v10.11.0
 [10.10.1]: https://github.com/JotJunior/cstk/releases/tag/v10.10.1
