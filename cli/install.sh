@@ -156,8 +156,8 @@ extract_and_install() {
 
   # Localiza cli/cstk e cli/lib/ na arvore extraida (tarball pode ter dir-raiz
   # cstk-<tag>/ ou nao, dependendo de como foi empacotado).
-  src_cstk=$(find "$EXTRACT_DIR" -type f -path '*/cli/cstk' 2>/dev/null | head -1)
-  src_lib=$(find "$EXTRACT_DIR" -type d -path '*/cli/lib' 2>/dev/null | head -1)
+  src_cstk=$(find "$EXTRACT_DIR" -maxdepth 3 -type f -path '*/cli/cstk' 2>/dev/null | head -1)
+  src_lib=$(find "$EXTRACT_DIR" -maxdepth 3 -type d -path '*/cli/lib' 2>/dev/null | head -1)
 
   [ -n "$src_cstk" ] && [ -f "$src_cstk" ] || die "tarball nao contem cli/cstk"
   [ -n "$src_lib" ] && [ -d "$src_lib" ] || die "tarball nao contem cli/lib/"

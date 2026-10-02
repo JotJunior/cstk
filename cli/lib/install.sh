@@ -85,6 +85,17 @@ OPCOES:
   --yes          Pula confirmacoes interativas.
   --interactive  Seletor numerado em TTY (FASE 8 — nao implementado ainda).
   --help         Imprime esta mensagem.
+  --cli C        claude (default) ou codex; aceita --cli=codex.
+  --codex-home P Instalacao Codex alternativa (default CODEX_HOME ou ~/.codex).
+  --knowledge-db P Banco compartilhado do Codex (default CSTK_KNOWLEDGE_DB
+                   ou ~/.claude/cstk/knowledge.db). Nao cria nem migra o banco.
+
+CODEX:
+  cstk install --cli=codex instala as seis entradas 00c, MCP e hooks como
+  plugin nativo global. Requer python3, jq, sqlite3 e Codex com plugin add.
+  No checkout usa os assets locais; fora dele usa a release verificada.
+  --dry-run mostra o plano. Confianca dos hooks continua sendo revisada
+  pelo operador em /hooks; o instalador nao concede essa confianca.
 
 PROFILES DISPONIVEIS:
   sdd            (default) Pipeline Spec-Driven Development sequencial:
@@ -120,6 +131,15 @@ install_main() {
   if [ "$_install_help" = 1 ]; then
     _install_print_help
     return 0
+  fi
+
+  if [ "$_install_cli" = codex ]; then
+    _install_codex
+    return $?
+  fi
+  if [ -n "$_install_codex_home" ] || [ -n "$_install_knowledge_db" ]; then
+    log_error "install: --codex-home/--knowledge-db exigem --cli=codex"
+    return 2
   fi
 
   if [ "$_install_interactive" = 1 ]; then
@@ -229,6 +249,9 @@ install_main() {
 # podem chamar install_main multiplas vezes via dot-source).
 _install_reset_state() {
   _install_help=0
+  _install_cli=claude
+  _install_codex_home=""
+  _install_knowledge_db=""
   _install_interactive=0
   _install_dry_run=0
   _install_yes=0
@@ -277,6 +300,18 @@ _install_parse_args() {
       --interactive|-i) _install_interactive=1; shift ;;
       --dry-run) _install_dry_run=1; shift ;;
       --yes|-y) _install_yes=1; shift ;;
+      --cli|--codex-home|--knowledge-db)
+        [ "$#" -ge 2 ] && [ -n "$2" ] || { log_error "install: $1 exige valor"; return 1; }
+        case "$1" in
+          --cli) _install_cli=$2 ;;
+          --codex-home) _install_codex_home=$2 ;;
+          --knowledge-db) _install_knowledge_db=$2 ;;
+        esac
+        shift 2
+        ;;
+      --cli=*) _install_cli=${1#--cli=}; shift ;;
+      --codex-home=*) _install_codex_home=${1#--codex-home=}; shift ;;
+      --knowledge-db=*) _install_knowledge_db=${1#--knowledge-db=}; shift ;;
       --profile)
         if [ "$#" -lt 2 ] || [ -z "$2" ]; then
           log_error "install: --profile exige valor"
@@ -354,10 +389,50 @@ $1"
   done
 
   # Default profile = sdd quando nada e informado (FR-009).
+  case "$_install_cli" in
+    claude|claude-code) _install_cli=claude ;;
+    codex) ;;
+    *) log_error "install: --cli invalido (use claude ou codex)"; return 1 ;;
+  esac
   if [ -z "$_install_profile" ] && [ -z "$_install_explicit_skills" ]; then
     _install_profile=sdd
   fi
   return 0
+}
+
+# Codex has its own native plugin lifecycle; never run Claude installers here.
+_install_codex() {
+  if [ "$_install_scope" != global ] || [ "$_install_interactive" = 1 ] \
+      || [ -n "$_install_explicit_skills" ]; then
+    log_error "install codex: use escopo global e o pacote completo de workflows 00c"
+    return 2
+  fi
+  case "$_install_profile" in
+    sdd|all) ;;
+    *) log_error "install codex: perfil suportado sdd ou all (seis workflows 00c)"; return 2 ;;
+  esac
+  command -v python3 >/dev/null 2>&1 || { log_error "install codex: python3 necessario"; return 1; }
+  _ic_root=$(cd -- "$CSTK_LIB/../.." && pwd)
+  if [ -z "$_install_from" ] && [ -z "${CSTK_RELEASE_URL:-}" ] \
+      && [ -f "$_ic_root/adapters/codex/plugin.json" ] \
+      && [ -f "$_ic_root/scripts/build-codex-plugin.py" ]; then
+    set -- --source-tree "$_ic_root"
+  else
+    _install_resolve_urls || return 1
+    _install_staged=$(mktemp -d 2>/dev/null) || return 1
+    trap '_install_cleanup' EXIT INT TERM
+    download_and_verify "$_install_tarball_url" "$_install_sha256_url" "$_install_staged" || return 1
+    _install_locate_catalog || return 1
+    if [ ! -f "$_install_catalog_dir/codex/plugin.json" ]; then
+      log_error "install codex: release sem adaptador Codex; use uma release que inclua catalog/codex"
+      return 1
+    fi
+    set -- --package "$_install_catalog_dir/codex"
+  fi
+  [ -z "$_install_codex_home" ] || set -- "$@" --codex-home "$_install_codex_home"
+  [ -z "$_install_knowledge_db" ] || set -- "$@" --knowledge-db "$_install_knowledge_db"
+  [ "$_install_dry_run" != 1 ] || set -- "$@" --dry-run
+  python3 "$CSTK_LIB/install-codex.py" "$@"
 }
 
 # _install_resolve_scope_dir: traduz scope -> path.

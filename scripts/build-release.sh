@@ -149,12 +149,19 @@ mkdir -p -- "$STAGE_ROOT/cli/lib"
 cp -- "$REPO_ROOT/cli/cstk" "$STAGE_ROOT/cli/cstk"
 chmod 755 "$STAGE_ROOT/cli/cstk"
 # Copia somente *.sh e README.md de cli/lib/ (nao queremos lixo).
-for _f in "$REPO_ROOT/cli/lib/"*.sh; do
+for _f in "$REPO_ROOT/cli/lib/"*.sh "$REPO_ROOT/cli/lib/"*.py; do
   [ -f "$_f" ] || continue
   cp -- "$_f" "$STAGE_ROOT/cli/lib/"
 done
 if [ -f "$REPO_ROOT/cli/lib/README.md" ]; then
   cp -- "$REPO_ROOT/cli/lib/README.md" "$STAGE_ROOT/cli/lib/"
+fi
+
+# Self-contained Codex assets are optional for legacy fixture trees and are
+# distributed in real releases for cstk install --cli=codex.
+if [ -f "$REPO_ROOT/adapters/codex/plugin.json" ]; then
+  command -v python3 >/dev/null 2>&1 || { printf 'build-release: python3 necessario para o adaptador Codex\n' >&2; exit 1; }
+  python3 "$REPO_ROOT/scripts/build-codex-plugin.py" --out "$STAGE_ROOT/catalog/codex" >/dev/null
 fi
 
 # ==== 2. catalog/skills/ (mirror de plugins/cstk/skills/) ====

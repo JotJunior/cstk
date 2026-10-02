@@ -4,10 +4,10 @@
  * Verifica recorrentemente execucoes agente-00c/feature-00c ativas na
  * knowledge.db E state-dirs presentes no filesystem das raizes conhecidas
  * (CSTK_PROJECT_PATHS + executions.target_project_path) — a descoberta via
- * filesystem cobre o ovo-e-galinha de `state.json` recem-criados que ainda
+ * filesystem cobre o ovo-e-galinha de estados JSON/SQLite recem-criados que ainda
  * nao tem linha em `executions` (a linha so nasce na primeira ingestao).
  * DELEGA a ingestao canonica `cstk recall --ingest` via subprocesso seguro —
- * NUNCA escreve na knowledge.db, NUNCA toca `state.json` (apenas stat/readdir),
+ * NUNCA escreve na knowledge.db ou no estado canonico (apenas stat/readdir),
  * NUNCA roda `--reindex` (Principio I; Constitution IV Opcao B).
  *
  * Ref: research.md Decisions 2, 3, 4, 9; contracts/watchers.md; tasks.md FASE 2
@@ -86,7 +86,7 @@ const SAFE_SEGMENT_RE = /^[^/\\.<>]+$/;
 // ---------------------------------------------------------------------------
 
 export interface WatcherCacheEntry {
-  /** ultima assinatura vista (mtimeMs de state.json como string) — null se state.json ilegivel */
+  /** assinatura do estado canônico (JSON ou SQLite + WAL); null se ilegível */
   signature: string | null;
   /** epoch ms da ultima ingestao bem-sucedida; null se nunca */
   lastIngestAt: number | null;
@@ -166,9 +166,26 @@ export function deriveStateDir(projectPath: string, feature: string | null): str
   return join(projectPath, '.claude', 'feature-00c-state', trimmed);
 }
 
-/** Assinatura barata de mudanca: mtimeMs de `state.json` (Decision 4 — mtime escolhido sobre sha256). */
+/** Presenca do estado canonico, seguindo os backends do runtime compartilhado. */
+function hasCanonicalState(stateDir: string): boolean {
+  return existsSync(join(stateDir, 'state.db')) || existsSync(join(stateDir, 'state.json'));
+}
+
+/** Assinatura por stat: JSON usa mtime; SQLite inclui banco e WAL ate checkpoint. */
 function computeSignature(stateDir: string): string | null {
   try {
+    // SQLite commits may change only the WAL until checkpoint. Follow the
+    // runtime's backend precedence without reading/writing the database.
+    const database = join(stateDir, 'state.db');
+    if (existsSync(database)) {
+      const db = statSync(database);
+      let walSignature = 'absent';
+      try {
+        const wal = statSync(database + '-wal');
+        walSignature = `${wal.mtimeMs}:${wal.ctimeMs}:${wal.size}`;
+      } catch { /* no WAL after checkpoint is a valid SQLite state */ }
+      return `sqlite:${db.mtimeMs}:${db.ctimeMs}:${db.size}:${walSignature}`;
+    }
     const st = statSync(join(stateDir, 'state.json'));
     return String(st.mtimeMs);
   } catch {
@@ -181,7 +198,7 @@ function computeSignature(stateDir: string): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Enumera state-dirs COM `state.json` presentes no disco sob uma raiz de
+ * Enumera state-dirs COM `state.json` ou `state.db` sob uma raiz de
  * projeto, nos dois layouts canonicos (Decision 3):
  *   - `<root>/.claude/agente-00c-state/`
  *   - `<root>/.claude/feature-00c-state/<feature>/` (readdir de 1 nivel)
@@ -202,7 +219,7 @@ function computeSignature(stateDir: string): string | null {
 export function discoverStateDirsInRoot(projectRoot: string): string[] {
   const found: string[] = [];
   const agentDir = join(projectRoot, '.claude', 'agente-00c-state');
-  if (existsSync(join(agentDir, 'state.json'))) found.push(agentDir);
+  if (hasCanonicalState(agentDir)) found.push(agentDir);
 
   const featureBase = join(projectRoot, '.claude', 'feature-00c-state');
   try {
@@ -210,7 +227,7 @@ export function discoverStateDirsInRoot(projectRoot: string): string[] {
       if (!entry.isDirectory()) continue;
       if (!isSafeSegment(entry.name)) continue;
       const dir = join(featureBase, entry.name);
-      if (existsSync(join(dir, 'state.json'))) found.push(dir);
+      if (hasCanonicalState(dir)) found.push(dir);
     }
   } catch {
     // feature-00c-state ausente/ilegivel — sem contribuicao deste layout
@@ -410,7 +427,7 @@ export async function runWatcherTick(opts: WatcherTickOptions): Promise<WatcherT
 
     const stateDir = deriveStateDir(projectPath, row.feature);
     if (!stateDir) { skipped++; continue; } // feature falhou anti-traversal (Decision 9)
-    if (!existsSync(join(stateDir, 'state.json'))) { skipped++; continue; } // sem state.json no FS (FR-012)
+    if (!hasCanonicalState(stateDir)) { skipped++; continue; } // sem estado no FS (FR-012)
     if (targeted.has(stateDir)) continue; // duas execucoes ativas no mesmo state-dir
     targeted.add(stateDir);
     targets.push({ stateDir, seedFirst: false });
@@ -496,7 +513,7 @@ export async function runWatcherTick(opts: WatcherTickOptions): Promise<WatcherT
 
       const sig = computeSignature(stateDir);
       if (sig !== null && cached?.signature === sig) {
-        skipped++; return; // idempotencia (FR-014) — state.json nao mudou desde a ultima vista
+        skipped++; return; // idempotencia (FR-014) — estado nao mudou desde a ultima vista
       }
 
       if (seedFirst && cached === undefined) {

@@ -1,0 +1,15 @@
+{
+  "source_matches_receipt": true,
+  "cache_matches_receipt": true,
+  "plugin_enabled": true,
+  "skills": [
+    "agente-00c",
+    "agente-00c-abort",
+    "agente-00c-resume",
+    "feature-00c",
+    "feature-00c-abort",
+    "feature-00c-resume"
+  ],
+  "managed_hooks_intact": true,
+  "knowledge_exists": true
+}

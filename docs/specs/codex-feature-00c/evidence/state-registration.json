@@ -1,0 +1,28 @@
+{
+  "execution": {
+    "id": "feat-codex-2aff8813b29343d9b20a93baab6da5a5",
+    "target_project_path": "/Users/joao.zanon/Projetos/_lab/cstk",
+    "target_project_description": "Compatibilidade Codex do CSTK; registro retroativo documentado para auditoria e visibilidade no painel, com homologacao pendente.",
+    "suggested_stack": null,
+    "status": "aguardando_humano",
+    "termination_reason": null,
+    "started_at": "2026-10-02T21:08:43Z",
+    "finished_at": null,
+    "canonical_project": "cstk"
+  },
+  "provenance": {
+    "runtime": "codex",
+    "model": null,
+    "toolkit_version": "0.0.0-dev"
+  },
+  "current_stage": "converge",
+  "waves": 0,
+  "operational_task_outcomes": 0,
+  "documented_subtasks": 51,
+  "optin_responses": 0,
+  "integrity_check": "ok",
+  "foreign_key_check": [],
+  "state_json_exists": false,
+  "tasks_sha256": "e2f270acff2212f7abbede8cb954272a03c97152531327372e765b8dee64febc",
+  "lock_released": true
+}

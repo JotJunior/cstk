@@ -175,8 +175,11 @@ _sr_db_insert_execution_from_doc_file() {
     local|internal-network|cloud-internal|cloud-public) : ;;
     *) _ie_delivery_tier="cloud-public" ;;
   esac
+  _ie_provenance=$(jq -c '.execution_provenance // null' "$_ie_doc")
   _ie_extra_json=$(jq -cn --argjson v "$_ie_roadmap" --arg t "$_ie_delivery_tier" \
-    '{roadmap_mode_enabled: $v, delivery_tier: $t}')
+    --argjson p "$_ie_provenance" \
+    '{roadmap_mode_enabled: $v, delivery_tier: $t}
+     + (if $p == null then {} else {execution_provenance: $p} end)')
 
   _ie_sql="INSERT INTO execution (id,schema_version,short_name,target_project_path,\
 target_project_description,suggested_stack,status,termination_reason,started_at,\

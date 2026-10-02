@@ -15,7 +15,7 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
-/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v15.
+/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v16.
  *  v4 (recall-memory-mirror) adiciona a tabela `memories`; v5 (recall-suggestions)
  *  adiciona a tabela `suggestions`; v6 adiciona a coluna `decisions.options`;
  *  v7 (new-schema) migra todas as colunas pt-BR→EN snake_case;
@@ -48,9 +48,11 @@ import { resolve } from 'node:path';
  *  (enum fechado de eixos estruturais) e `human_consent_block_id`
  *  (id `block-NNN` do BloqueioHumano respondido que consente a decisao).
  *  Decisao legada sem os campos → NULL, nunca fabricado.
+ *  v16 (codex-feature-00c) adiciona executions.execution_provenance nullable,
+ *  preservando as consultas existentes e registros legados.
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
-export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'] as const;
+export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16'] as const;
 
 export interface ServerConfig {
   /** Path absoluto canonicalizado para knowledge.db */

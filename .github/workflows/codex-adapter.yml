@@ -1,0 +1,40 @@
+name: Codex adapter contracts
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'adapters/codex/**'
+      - 'docs/specs/codex-feature-00c/**'
+      - 'tests/codex/**'
+      - 'scripts/build-codex-plugin.py'
+      - 'scripts/build-release.sh'
+      - 'plugins/cstk/skills/agente-00c-runtime/**'
+      - 'cli/**'
+      - '.github/workflows/codex-adapter.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'AGENTS.md'
+      - 'adapters/codex/**'
+      - 'docs/specs/codex-feature-00c/**'
+      - 'tests/codex/**'
+      - 'scripts/build-codex-plugin.py'
+      - 'scripts/build-release.sh'
+      - 'plugins/cstk/skills/agente-00c-runtime/**'
+      - 'cli/**'
+      - '.github/workflows/codex-adapter.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install shared runtime test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq sqlite3
+      - name: Test local adapter contracts
+        run: python3 -m unittest discover -s tests/codex -v

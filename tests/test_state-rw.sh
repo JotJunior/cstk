@@ -38,6 +38,37 @@ _init_default() {
 
 # ==== Scenarios ====
 
+scenario_init_proveniencia_codex_modelo_desconhecido() {
+  _sd="$TMPDIR_TEST/state"
+  capture "$SCRIPT" init --state-dir "$_sd" --execucao-id "codex-test" \
+    --projeto-alvo-path "/tmp/poc-test" --descricao "Teste de proveniencia" \
+    --runtime codex --toolkit-version 10.13.1
+  [ "$_CAPTURED_EXIT" -eq 0 ] || return 1
+  jq -e '.execution_provenance == {runtime:"codex",model:null,toolkit_version:"10.13.1"}' \
+    "$_sd/state.json" >/dev/null || return 1
+}
+
+scenario_init_proveniencia_opcional_preserva_legado() {
+  _sd="$TMPDIR_TEST/state"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" -eq 0 ] || return 1
+  jq -e 'has("execution_provenance") | not' "$_sd/state.json" >/dev/null || return 1
+}
+
+scenario_init_proveniencia_invalida_nao_cria_estado() {
+  _sd="$TMPDIR_TEST/state"
+  capture "$SCRIPT" init --state-dir "$_sd" --execucao-id "codex-test" \
+    --projeto-alvo-path "/tmp/poc-test" --descricao "Teste de proveniencia" \
+    --runtime unknown
+  [ "$_CAPTURED_EXIT" -eq 2 ] || { _fail "proveniencia invalida" "esperado exit=2, obtido $_CAPTURED_EXIT"; return 1; }
+  [ ! -f "$_sd/state.json" ] || return 1
+  capture "$SCRIPT" init --state-dir "$_sd" --execucao-id "codex-test" \
+    --projeto-alvo-path "/tmp/poc-test" --descricao "Teste de proveniencia" \
+    --observed-model fixture-model
+  [ "$_CAPTURED_EXIT" -eq 2 ] || { _fail "proveniencia invalida" "esperado exit=2, obtido $_CAPTURED_EXIT"; return 1; }
+  [ ! -f "$_sd/state.json" ] || return 1
+}
+
 scenario_init_cria_estrutura_base() {
   _sd="$TMPDIR_TEST/state"
   _init_default "$_sd"

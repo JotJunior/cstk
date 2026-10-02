@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "cstk-codex-pilot",
+  "version": "0.5.0",
+  "description": "Supervised auditable CSTK project and feature pipelines for local Codex",
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json"
+    }
+  }
+}

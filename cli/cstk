@@ -143,7 +143,7 @@ USO:
   cstk <comando> [opcoes]
 
 COMANDOS:
-  install       Instala skills do toolkit em escopo global ou de projeto
+  install       Instala o toolkit para Claude ou Codex (--cli=codex)
   update        Atualiza skills ja instaladas
   self-update   Atualiza o proprio binario cstk
   list          Lista skills instaladas

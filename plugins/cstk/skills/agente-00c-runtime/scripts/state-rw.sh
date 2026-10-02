@@ -15,6 +15,8 @@
 #                     --projeto-alvo-path PATH --descricao TEXT
 #                     [--stack-json TEXT] [--whitelist-urls JSON-ARRAY]
 #                     [--canonical-project NAME] [--session-name NAME]
+#                     [--runtime codex|claude-code] [--observed-model ID]
+#                     [--toolkit-version VERSION]
 #                     — modo PROJETO (agente-00c): cria state.json
 #                       (current_stage="briefing") + sha256 + state-history/
 #   state-rw.sh init  --state-dir DIR --short-name NAME
@@ -351,6 +353,10 @@ _sr_cmd_init() {
   # Omitido => default cloud-public (profundidade plena, zero regressao).
   # Valor fora do enum de 4 tokens => _sr_die exit 2 SEM escrever estado.
   _delivery_tier="cloud-public"
+  # Proveniencia opcional do executor. Omitida preserva o documento legado.
+  _runtime=""
+  _observed_model=""
+  _toolkit_version=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)            _sd=$2;                   shift 2 ;;
@@ -368,6 +374,9 @@ _sr_cmd_init() {
       --key-aspects)          _key_aspects=$2;          shift 2 ;;
       --canonical-project)    _canonical_project=$2;   shift 2 ;;
       --session-name)         _session_name=$2;         shift 2 ;;
+      --runtime)              _runtime=$2;              shift 2 ;;
+      --observed-model)       _observed_model=$2;       shift 2 ;;
+      --toolkit-version)      _toolkit_version=$2;      shift 2 ;;
       --atomic-commit)
         case "$2" in
           true|false) _atomic_commit=$2; shift 2 ;;
@@ -392,6 +401,13 @@ _sr_cmd_init() {
   [ -n "$_sd" ]   || _sr_die "init: --state-dir obrigatorio" 2
   [ -n "$_pap" ]  || _sr_die "init: --projeto-alvo-path obrigatorio" 2
   [ -n "$_desc" ] || _sr_die "init: --descricao obrigatorio" 2
+  case "$_runtime" in
+    ''|codex|claude-code) : ;;
+    *) _sr_die "init: --runtime aceita codex|claude-code" 2 ;;
+  esac
+  if [ -z "$_runtime" ] && { [ -n "$_observed_model" ] || [ -n "$_toolkit_version" ]; }; then
+    _sr_die "init: proveniencia exige --runtime" 2
+  fi
 
   # Validacao: --session-name requer --canonical-project (data-model §regras de presenca)
   if [ -n "$_session_name" ] && [ -z "$_canonical_project" ]; then
@@ -474,7 +490,15 @@ _sr_cmd_init() {
     --argjson atomic_commit "$_atomic_commit" \
     --argjson roadmap_mode "$_roadmap_mode" \
     --arg delivery_tier "$_delivery_tier" \
+    --arg runtime "$_runtime" \
+    --arg observed_model "$_observed_model" \
+    --arg toolkit_version "$_toolkit_version" \
     '{ schema_version: "1.0.0" }
+    + (if $runtime != "" then { execution_provenance: {
+        runtime: $runtime,
+        model: (if $observed_model == "" then null else $observed_model end),
+        toolkit_version: (if $toolkit_version == "" then null else $toolkit_version end)
+      } } else {} end)
     + (if $short != "" then { short_name: $short } else {} end)
     + {
       execution: (

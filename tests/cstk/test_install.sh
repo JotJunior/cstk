@@ -452,4 +452,28 @@ scenario_install_catalogo_sem_mcp_e_noop() {
   [ ! -e "$_h/.claude/mcp" ] || { _fail "mcp/ criado sem fonte no catalogo" ""; return 1; }
 }
 
+scenario_install_cli_codex_dry_run_nao_toca_claude() {
+  _h="$TMPDIR_TEST/codex-home"
+  _run_install "$_h" --cli=codex --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "Codex dry-run" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains '"cli": "codex"' || return 1
+  [ ! -e "$_h/.claude" ] || { _fail "Claude alterado no dry-run Codex" ""; return 1; }
+  [ ! -e "$_h/.codex" ] || { _fail "Codex alterado no dry-run" ""; return 1; }
+}
+
+scenario_install_cli_invalida_rejeitada() {
+  _run_install "$TMPDIR_TEST/home" --cli=outro
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "CLI invalida" "exit $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_install_cli_claude_explicita_preserva_fluxo_legado() {
+  _h="$TMPDIR_TEST/home-claude"
+  _r="$TMPDIR_TEST/release-claude"
+  _make_fixture_release "$_r" || return 2
+  _run_install "$_h" --cli=claude --from "file://$_r/cstk-test-v0.1.0.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "Claude explicito" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_h/.claude/skills/foo/SKILL.md" ] || return 1
+  [ ! -e "$_h/.codex" ] || return 1
+}
+
 run_all_scenarios
