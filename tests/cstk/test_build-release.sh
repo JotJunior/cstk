@@ -76,6 +76,7 @@ scenario_build_release_estrutura_layout() {
   for _expected in \
     'cstk-0.1.0/cli/cstk' \
     'cstk-0.1.0/cli/lib/install.sh' \
+    'cstk-0.1.0/cli/lib/install-codex.sh' \
     'cstk-0.1.0/cli/lib/self-update.sh' \
     'cstk-0.1.0/cli/lib/ui.sh' \
     'cstk-0.1.0/catalog/VERSION' \
@@ -88,6 +89,11 @@ scenario_build_release_estrutura_layout() {
       _fail "entry ausente" "$_expected"
       return 1
     fi
+  done
+
+  for _codex_asset in plugin.json mcp.json skills/feature-00c-resume/SKILL.md skills/agente-00c-abort/SKILL.md; do
+    printf '%s\n' "$_list" | grep -qx "cstk-0.1.0/catalog/codex/$_codex_asset" \
+      || { _fail "Codex asset ausente" "$_codex_asset"; return 1; }
   done
 
   # catalog/skills/ deve conter pelo menos uma SKILL.md
@@ -225,7 +231,7 @@ scenario_build_release_profiles_parseavel() {
 # ==== Layout consumivel por bootstrap (cli/cstk + cli/lib/) ====
 
 scenario_build_release_layout_para_bootstrap() {
-  # Bootstrap usa: find $extracted -type f -path '*/cli/cstk'
+  # Bootstrap limita ao layout externo, excluindo a CLI aninhada do Codex.
   # Tem que retornar exatamente uma entry. Self-update tambem usa esse path.
   _o="$TMPDIR_TEST/out"
   _x="$TMPDIR_TEST/extracted"
@@ -237,12 +243,12 @@ scenario_build_release_layout_para_bootstrap() {
   fi
   tar -xzf "$_o/cstk-0.4.0.tar.gz" -C "$_x"
 
-  _hits=$(find "$_x" -type f -path '*/cli/cstk' | wc -l | awk '{print $1}')
+  _hits=$(find "$_x" -maxdepth 3 -type f -path '*/cli/cstk' | wc -l | awk '{print $1}')
   if [ "$_hits" != 1 ]; then
     _fail "find cli/cstk" "esperado 1 hit, obtido $_hits"
     return 1
   fi
-  _hits=$(find "$_x" -type d -path '*/cli/lib' | wc -l | awk '{print $1}')
+  _hits=$(find "$_x" -maxdepth 3 -type d -path '*/cli/lib' | wc -l | awk '{print $1}')
   if [ "$_hits" != 1 ]; then
     _fail "find cli/lib" "esperado 1 hit, obtido $_hits"
     return 1

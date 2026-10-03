@@ -5,6 +5,18 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Added
+
+- Adaptador Codex com as seis entradas feature-00c/agente-00c, resume e abort,
+  controlador MCP de ondas, decisões e respostas humanas auditáveis,
+  transferência explícita entre runtimes e reconciliação de governança.
+- `cstk install --cli=codex`, com pacote nativo, MCP, hooks e configuração do
+  knowledge.db compartilhado; dry-run, reinstalação com proteção de alterações
+  locais e distribuição do adaptador em releases. Instalação Claude permanece
+  como default. Confiança dos hooks exige revisão do operador no Codex.
+
 ## [10.13.1] - 2026-10-01
 
 ### Fixed

@@ -1,0 +1,15 @@
+Command: npm run test -w @cstk-panel/server
+Exit: 0
+SHA-256: c7430ccf1eb7b98deeefb39a946a082ffcbdb2682571e7fd639d676c60b98fb8
+Log: /tmp/cstk-codex-panel-tests.log
+ ✓ test/lib/executions-list.test.ts  (3 tests) 93ms
+ ✓ test/docs/docs-routes.test.ts  (22 tests) 2282ms
+
+ Test Files  40 passed | 4 skipped (44)
+      Tests  496 passed | 48 skipped (544)
+   Start at  18:10:50
+   Duration  2.54s (transform 930ms, setup 0ms, collect 2.53s, tests 5.42s, environment 4ms, prepare 2.15s)
+
+
+Build shared-types/server: exit 0
+Server typecheck: exit 0

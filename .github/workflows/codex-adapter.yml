@@ -1,0 +1,51 @@
+name: Codex adapter contracts
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'adapters/codex/**'
+      - 'docs/specs/codex-feature-00c/**'
+      - 'tests/codex/**'
+      - 'tests/cstk/test_codex-*.sh'
+      - 'tests/cstk/test_install-codex.sh'
+      - 'tests/run.sh'
+      - 'scripts/build-codex-plugin.sh'
+      - 'scripts/build-release.sh'
+      - 'plugins/cstk/skills/agente-00c-runtime/**'
+      - 'cli/**'
+      - '.github/workflows/codex-adapter.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'AGENTS.md'
+      - 'adapters/codex/**'
+      - 'docs/specs/codex-feature-00c/**'
+      - 'tests/codex/**'
+      - 'tests/cstk/test_codex-*.sh'
+      - 'tests/cstk/test_install-codex.sh'
+      - 'tests/run.sh'
+      - 'scripts/build-codex-plugin.sh'
+      - 'scripts/build-release.sh'
+      - 'plugins/cstk/skills/agente-00c-runtime/**'
+      - 'cli/**'
+      - '.github/workflows/codex-adapter.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install shared runtime test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq sqlite3 shellcheck
+      - name: Check POSIX entrypoints
+        run: |
+          find adapters/codex -name '*.sh' -type f -exec dash -n {} \;
+          shellcheck -S warning cli/lib/codex-*.sh cli/lib/install-codex.sh scripts/build-codex-plugin.sh adapters/codex/hooks/*.sh adapters/codex/skills/feature-00c/scripts/*.sh
+      - name: Test local adapter contracts
+
+        run: sh tests/run.sh codex

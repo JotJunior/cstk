@@ -1,0 +1,111 @@
+[coverage]
+Command: sh plugins/cstk/skills/checklist/scripts/requirement-coverage.sh /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/spec.md
+Exit: 0
+RESULT|/Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/spec.md|requirements=19|covered=19|errors=0
+
+
+[tasks-template]
+Command: sh plugins/cstk/skills/create-tasks/scripts/validate-tasks-template.sh /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/tasks.md
+Exit: 0
+RESULT|/Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/tasks.md|critical=0|warning=0
+
+
+[task-metrics]
+Command: sh plugins/cstk/skills/review-task/scripts/metrics.sh /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/tasks.md
+Exit: 0
+## Metricas: /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/tasks.md
+
+| Metrica       | Valor |
+|---------------|-------|
+| Fases         | 8 |
+| Tarefas       | 17 |
+| Subtarefas    | 51 |
+| Concluidas    | 39 (76%) |
+| Em andamento  | 0 |
+| Pendentes     | 5 |
+| Bloqueadas    | 7 |
+
+### Criticidade (tarefas)
+
+| Nivel | Qtd |
+|-------|-----|
+| [C] Critico | 4 |
+| [A] Alto    | 12 |
+| [M] Medio   | 1 |
+
+### JSON
+
+{"file":"/Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/tasks.md","phases":8,"tasks":17,"subtasks":51,"done":39,"in_progress":0,"pending":5,"blocked":7,"pct_done":76,"critical":4,"high":12,"medium":1}
+
+
+[rendering]
+Command: sh plugins/cstk/skills/validate-docs-rendered/scripts/validate.sh /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c
+Exit: 0
+## Rendering Validation Report
+
+**Escopo**: /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c
+**Arquivos analisados**: 18
+
+### Resumo
+
+| Severidade | Quantidade |
+|------------|------------|
+| ERRO       | 0 |
+| AVISO      | 0 |
+
+Nenhum issue encontrado.
+
+### Proximos Passos
+
+- Nenhuma acao necessaria. Documentacao renderiza corretamente.
+
+
+[intent]
+Command: sh plugins/cstk/skills/converge/scripts/extract-intent.sh --tasks /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/tasks.md --plan /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c/plan.md
+Exit: 0
+adapters/codex/skills/feature-00c/scripts/context.py	2.1
+adapters/codex/skills/feature-00c/scripts/session.py	2.1
+adapters/codex/skills/feature-00c/scripts/controller.py	2.2
+adapters/codex/skills/feature-00c/scripts/lifecycle.py	3.1
+adapters/codex/skills/feature-00c/scripts/mcp_bridge.py	3.2
+cli/lib/recall.sh	4.1
+adapters/codex/hooks/pretooluse.py	4.2
+adapters/codex/hooks/posttooluse.py	4.2
+adapters/codex/skills/feature-00c/scripts/native_status.py	4.2
+adapters/codex/skills/feature-00c/scripts/native_mcp.py	4.2
+cli/lib/install.sh	5.1
+cli/lib/install-codex.py	5.1
+scripts/build-codex-plugin.py	5.2
+scripts/build-release.sh	5.2
+panel/apps/server/src/config.ts	8.2
+panel/apps/server/src/watchers/ingest-watcher.ts	8.2
+
+
+[must]
+Command: sh plugins/cstk/skills/converge/scripts/extract-must.sh --constitution docs/constitution.md
+Exit: 0
+I	Spec-Driven Development Aplica-se Recursivamente
+II	Scripts POSIX sh Puros, Zero Dependencia Externa
+III	Formato Canonico de Skill: Progressive Disclosure, Gotchas, Description-como-Trigger
+IV	Zero Coleta Remota de Uso ou Dados
+VI	Veracidade de Dados — Zero Fabricacao
+
+
+[must-coverage]
+Command: sh plugins/cstk/skills/converge/scripts/extract-must.sh --constitution docs/constitution.md --coverage
+Exit: 0
+fontes declaradas: docs/constitution.md
+ocorrencias da palavra MUST no arquivo (contagem independente): 17
+linhas de regra MUST reconhecidas pelo parser: 5
+principios emitidos: 5
+principios emitidos so por rotulo de heading (sem regra MUST lida): 0
+cobertura de MUST: ok
+
+
+[convergence-status]
+Command: sh plugins/cstk/skills/converge/scripts/converge-status.sh check --feature-dir /Users/joao.zanon/Projetos/_lab/cstk/docs/specs/codex-feature-00c
+Exit: 1
+pending actionable=2
+
+
+Convergence intentionally remains actionable; no accept-risk.

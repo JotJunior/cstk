@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.160.0",
+  "installation_scope": "isolated copy of actual installed package",
+  "skills": [
+    "cstk-codex-pilot:agente-00c",
+    "cstk-codex-pilot:agente-00c-abort",
+    "cstk-codex-pilot:agente-00c-resume",
+    "cstk-codex-pilot:feature-00c",
+    "cstk-codex-pilot:feature-00c-abort",
+    "cstk-codex-pilot:feature-00c-resume"
+  ],
+  "mcp_status": "connected",
+  "tools": [
+    "cstk_abort",
+    "cstk_block",
+    "cstk_bootstrap",
+    "cstk_complete",
+    "cstk_context",
+    "cstk_decision",
+    "cstk_handoff",
+    "cstk_open_wave",
+    "cstk_optin",
+    "cstk_pause",
+    "cstk_reconcile_governance",
+    "cstk_recover",
+    "cstk_resume",
+    "cstk_select_execution",
+    "cstk_status"
+  ],
+  "native_hooks_loaded": true,
+  "native_hooks_trusted": false,
+  "hook_errors": [],
+  "hook_warnings": [],
+  "model_turn_executed": false,
+  "selection": {
+    "runtime": "codex",
+    "model": null,
+    "kind": "feature",
+    "short_name": "governance-validator",
+    "knowledge_best_effort": true,
+    "autonomous_ready": false
+  }
+}

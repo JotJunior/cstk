@@ -167,7 +167,8 @@ export LC_ALL
 # decisions na knowledge.db). Decisao legada sem os 3 campos -> NULL, nunca
 # fabricado (Principio VI, FR-013). `subject_key` NAO e propagado ao
 # indice nesta feature (unico campo novo derivado de texto de projeto).
-RECALL_SCHEMA_VERSION=15
+# v16 (codex-feature-00c): proveniencia nullable por execucao; indice aditivo.
+RECALL_SCHEMA_VERSION=16
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -225,6 +226,7 @@ MODO CONTEXT (--context): leitura-para-contexto (read-back loop). Retorna um
   --project P          filtra por projeto de origem
   --max-bytes N        teto de bytes do bloco (default 2000; corta por achado inteiro)
   --db PATH            indice
+  --include-source-ids  inclui chave composta de origem para auditoria (opcional)
   Exemplo:
     cstk recall --context "cache fts query" --limit 4 \
       --exclude-feature recall-autoconsume --max-bytes 2000
@@ -241,6 +243,7 @@ MODO PRECEDENTS (--precedents): precedente do operador para o clarify. Retorna
                        inteiras, das menos similares)
   --min-similarity F   limiar de Jaccard, 0 < F <= 1 (default 0.55)
   --db PATH            indice
+  --include-source-ids  inclui chave composta de origem para auditoria (opcional)
   Exemplo:
     cstk recall --precedents "Qual estrategia de cache adotar?" --limit 3
 
@@ -568,6 +571,7 @@ CREATE TABLE IF NOT EXISTS executions (
   toolkit_issues_opened INTEGER,
   session TEXT,
   target_project_path TEXT,
+  execution_provenance TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -845,6 +849,12 @@ ALTER TABLE decisions ADD COLUMN options TEXT;" ;;
         ''|*'|session|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
         *) _as_extra="$_as_extra
 ALTER TABLE executions ADD COLUMN session TEXT;" ;;
+      esac
+      # Proveniencia v16: registros legados permanecem NULL; sem DROP.
+      case "$_as_ecols" in
+        ''|*'|execution_provenance|'*) : ;;
+        *) _as_extra="$_as_extra
+ALTER TABLE executions ADD COLUMN execution_provenance TEXT;" ;;
       esac
       _as_wcols=$(printf 'PRAGMA table_info(waves);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_wcols=""
       case "$_as_wcols" in
@@ -1410,10 +1420,15 @@ recall_ingest_state_json() {
       _isj_bt_sql=$(recall_int_or_null "$_f_bt")
       _isj_sg_sql=$(recall_int_or_null "$_f_sg")
       _isj_it_sql=$(recall_int_or_null "$_f_it")
+      _isj_provenance=$(jq -c '.execution_provenance // null' "$_isj_state" 2>/dev/null) || _isj_provenance="null"
+      _isj_provenance_sql="NULL"
+      if [ "$_isj_provenance" != "null" ] && [ -n "$_isj_provenance" ]; then
+        _isj_provenance_sql="'$(sql_escape "$(recall_scrub "$_isj_provenance")")'"
+      fi
       _isj_sql="$_isj_sql
-INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_isj_wave_exec")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,$_isj_proj_path_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,ingested_at=excluded.ingested_at;"
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,execution_provenance,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_isj_wave_exec")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,$_isj_proj_path_sql,$_isj_provenance_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,execution_provenance=excluded.execution_provenance,ingested_at=excluded.ingested_at;"
       _isj_n_exec=1
     fi
   fi
@@ -2342,11 +2357,20 @@ SELECT json_object(
     _isd_dec_class_select="NULL, NULL, NULL"
   fi
 
+  # Proveniencia estruturada e filtrada ANTES do PASS 1, em paridade
+  # com ingestao JSON; nunca copiar um payload novo cru para o indice.
+  _isd_provenance=$(recall_query_sql_ro "$_isd_state_db" \
+    "SELECT json_extract(extra_fields,'\$.execution_provenance') FROM execution WHERE id=$_isd_exec_id_sql LIMIT 1;") || _isd_provenance=""
+  _isd_provenance_sql="NULL"
+  if [ -n "$_isd_provenance" ] && [ "$_isd_provenance" != "null" ]; then
+    _isd_provenance_sql="'$(sql_escape "$(recall_scrub "$_isd_provenance")")'"
+  fi
+
   # ==== PASS 1: ATTACH + INSERT...SELECT em bloco (texto livre AINDA cru) ====
   _isd_attach_val="$(sql_escape "$(recall_sqlite_ro_uri "$_isd_state_db")")"
   _isd_p1="ATTACH DATABASE '$_isd_attach_val' AS src;
 BEGIN;
-INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,ingested_at)
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,execution_provenance,ingested_at)
 SELECT $_isd_project_sql,$_isd_feature_sql,$_isd_wave_exec_sql,e.id,e.started_at,e.id,
   e.status, e.termination_reason,
   CASE WHEN e.status='concluida' THEN 'concluido' ELSE e.current_stage END,
@@ -2361,10 +2385,11 @@ SELECT $_isd_project_sql,$_isd_feature_sql,$_isd_wave_exec_sql,e.id,e.started_at
   (SELECT count(*) FROM src.human_block WHERE execution_id=e.id),
   json_array_length(coalesce(json_extract(e.extra_fields,'\$.suggestions'),'[]')),
   (SELECT count(*) FROM json_each(coalesce(json_extract(e.extra_fields,'\$.suggestions'),'[]')) AS je WHERE json_extract(je.value,'\$.issue_opened') IS NOT NULL),
-  $_isd_session_sql,$_isd_path_sql,$_isd_now_sql
+  $_isd_session_sql,$_isd_path_sql,
+  $_isd_provenance_sql,$_isd_now_sql
 FROM src.execution e
 WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,ingested_at=excluded.ingested_at;
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,execution_provenance=excluded.execution_provenance,ingested_at=excluded.ingested_at;
 
 INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,agent_spawns_total,agent_spawns_with_usage,agent_total_tokens,agent_input_tokens,agent_output_tokens,agent_cache_read_tokens,agent_cache_creation_tokens,agent_tool_use_count,agent_duration_ms,otel_cost_usd,otel_cost_main_usd,otel_cost_subagent_usd,otel_total_tokens,otel_subagent_tokens,otel_main_input_tokens,otel_main_output_tokens,otel_main_cache_read_tokens,otel_main_cache_creation_tokens,otel_subagent_input_tokens,otel_subagent_output_tokens,otel_subagent_cache_read_tokens,otel_subagent_cache_creation_tokens,ingested_at)
 SELECT $_isd_project_sql,$_isd_feature_sql,w.id,w.execution_id,w.started_at,w.id,
@@ -3209,10 +3234,12 @@ recall_mode_context() {
   _cx_max_bytes="2000"
   _cx_db_flag=""
   _cx_have_query=0
+  _cx_include_source_ids=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --context) ;;
+      --include-source-ids) _cx_include_source_ids=1 ;;
       --project) shift; _cx_project="${1:-}" ;;
       --type) shift; _cx_type="${1:-}" ;;
       --exclude-feature) shift; _cx_exclude="${1:-}" ;;
@@ -3386,6 +3413,10 @@ $_cx_sql")
       _r_body_short="$_r_body_short..."
     fi
     _cx_entry="- **[$_r_type]** $_r_proj/$_r_feat/$_r_wave ($_r_ts): $_r_body_short"
+    if [ "$_cx_include_source_ids" -eq 1 ]; then
+      _r_sid=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $6}')
+      _cx_entry="$_cx_entry [source: $_r_type/$_r_proj/$_r_feat/$_r_wave/$_r_sid]"
+    fi
     # Candidato a bloco com este achado adicionado.
     if [ -z "$_cx_body_acc" ]; then
       _cx_cand="$_cx_header
@@ -3504,10 +3535,12 @@ recall_mode_precedents() {
   _pq_max_bytes="2400"
   _pq_min="$RECALL_PREC_MIN_SIMILARITY"
   _pq_db_flag=""
+  _pq_include_source_ids=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --precedents) ;;
+      --include-source-ids) _pq_include_source_ids=1 ;;
       --limit) shift; _pq_limit="${1:-}" ;;
       --max-bytes) shift; _pq_max_bytes="${1:-}" ;;
       --min-similarity) shift; _pq_min="${1:-}" ;;
@@ -3592,7 +3625,7 @@ recall_mode_precedents() {
   _pq_us=$(printf '\037')
   _pq_match=$(sql_escape "$(fts_query_escape_or "$_pq_qspaced")")
   _pq_flat() { printf "replace(replace(replace(replace(coalesce(%s,''),char(10),' '),char(13),' '),char(9),' '),'|@|',' ')" "$1"; }
-  _pq_sql="SELECT $(_pq_flat b.project) || '|@|' || $(_pq_flat b.feature) || '|@|' || $(_pq_flat b.source_id) || '|@|' || coalesce(nullif($(_pq_flat d.stage),''),'-') || '|@|' || $(_pq_flat b.answered_at) || '|@|' || $(_pq_flat b.question) || '|@|' || $(_pq_flat b.answer)
+  _pq_sql="SELECT $(_pq_flat b.project) || '|@|' || $(_pq_flat b.feature) || '|@|' || $(_pq_flat b.source_id) || '|@|' || coalesce(nullif($(_pq_flat d.stage),''),'-') || '|@|' || $(_pq_flat b.answered_at) || '|@|' || $(_pq_flat b.question) || '|@|' || $(_pq_flat b.answer) || '|@|' || $(_pq_flat b.wave)
 FROM (SELECT project, feature, wave, source_id, bm25(knowledge_fts) AS rk, source_ts AS fts_ts
       FROM knowledge_fts WHERE knowledge_fts MATCH '$_pq_match' AND type = 'block') f
 JOIN blocks b ON b.project = f.project AND b.feature = f.feature AND b.wave = f.wave AND b.source_id = f.source_id
@@ -3611,12 +3644,12 @@ $_pq_sql")
   _pq_rows=$(printf '%s\n' "$_pq_rows" | sed "s/|@|/$_pq_us/g")
 
   # ---- Similaridade (Jaccard) + limiar, sobre a pergunta COMPLETA ----
-  _pq_scored=$(printf '%s\n' "$_pq_rows" | while IFS="$_pq_us" read -r _r_proj _r_feat _r_sid _r_stage _r_at _r_q _r_a; do
+  _pq_scored=$(printf '%s\n' "$_pq_rows" | while IFS="$_pq_us" read -r _r_proj _r_feat _r_sid _r_stage _r_at _r_q _r_a _r_wave; do
     [ -n "$_r_sid" ] || continue
     _r_sim=$(recall_prec_similarity "$_pq_qspaced" "$_pq_min" "$_r_q")
     [ -n "$_r_sim" ] || continue
-    printf '%s\037%s\037%s/%s/%s\037%s\037%s\037%s\n' \
-      "$_r_sim" "$_r_at" "$_r_proj" "$_r_feat" "$_r_sid" "$_r_stage" "$_r_q" "$_r_a"
+    printf '%s\037%s\037%s/%s/%s\037%s\037%s\037%s\037%s\n' \
+      "$_r_sim" "$_r_at" "$_r_proj" "$_r_feat" "$_r_sid" "$_r_stage" "$_r_q" "$_r_a" "block/$_r_proj/$_r_feat/$_r_wave/$_r_sid"
   done)
   [ -n "$_pq_scored" ] || return "$RECALL_EXIT_OK"
 
@@ -3639,7 +3672,7 @@ $_pq_sql")
   for _pq_line in $_pq_ranked; do
     [ -n "$_pq_line" ] || continue
     [ "$_pq_k" -lt "$_pq_limit" ] || break
-    IFS="$_pq_us" read -r _e_sim _e_at _e_ref _e_stage _e_q _e_a <<EOF_PQ
+    IFS="$_pq_us" read -r _e_sim _e_at _e_ref _e_stage _e_q _e_a _e_source <<EOF_PQ
 $_pq_line
 EOF_PQ
     _e_q=$(recall_prec_truncate "$_e_q" 300)
@@ -3647,6 +3680,8 @@ EOF_PQ
     _pq_entry="- ref=$_e_ref stage=$_e_stage answered_at=$_e_at similarity=$_e_sim
   question: $_e_q
   answer: $_e_a"
+    if [ "$_pq_include_source_ids" -eq 1 ]; then _pq_entry="$_pq_entry
+  [source: $_e_source]"; fi
     if [ -z "$_pq_acc" ]; then
       _pq_cand="$_pq_header
 

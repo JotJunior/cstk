@@ -432,8 +432,8 @@ _su_resolve_latest() {
 
 # _su_locate_cli: encontra cli/cstk e cli/lib na arvore extraida.
 _su_locate_cli() {
-  _su_src_bin=$(find "$_su_staged" -type f -path '*/cli/cstk' 2>/dev/null | head -1)
-  _su_src_lib=$(find "$_su_staged" -type d -path '*/cli/lib' 2>/dev/null | head -1)
+  _su_src_bin=$(find "$_su_staged" -maxdepth 3 -type f -path '*/cli/cstk' 2>/dev/null | head -1)
+  _su_src_lib=$(find "$_su_staged" -maxdepth 3 -type d -path '*/cli/lib' 2>/dev/null | head -1)
   if [ -z "$_su_src_bin" ] || [ ! -f "$_su_src_bin" ]; then
     log_error "self-update: tarball nao contem cli/cstk"
     return 1

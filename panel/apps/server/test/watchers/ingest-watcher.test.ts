@@ -9,13 +9,14 @@
  * ambiente de CI.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, realpathSync, rmSync, utimesSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, realpathSync, rmSync, utimesSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import {
   runWatcherTick,
   deriveStateDir,
+  discoverStateDirsInRoot,
   resolveCstkBinary,
   resetCstkBinaryCacheForTests,
   resetWatcherCacheForTests,
@@ -90,6 +91,70 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────
 // deriveStateDir (task 2.1.3 / 2.3.2)
 // ─────────────────────────────────────────────────────────
+
+describe('SQLite canonical state', () => {
+  function sqliteState(kind: 'feature-00c' | 'agente-00c', feature = 'codex-feature'): string {
+    const dir = kind === 'feature-00c'
+      ? join(projectDir, '.claude', 'feature-00c-state', feature)
+      : join(projectDir, '.claude', 'agente-00c-state');
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  it('discovers project and feature SQLite states without JSON copies', () => {
+    const feature = sqliteState('feature-00c');
+    const project = sqliteState('agente-00c');
+    for (const dir of [feature, project]) {
+      const db = new Database(join(dir, 'state.db'));
+      db.exec('CREATE TABLE marker (value INTEGER)');
+      db.close();
+    }
+    expect(discoverStateDirsInRoot(projectDir).sort()).toEqual([feature, project].sort());
+  });
+
+  it('ingests a new SQLite state before any indexed execution exists', async () => {
+    const dir = sqliteState('feature-00c');
+    const state = new Database(join(dir, 'state.db'));
+    state.exec('CREATE TABLE marker (value INTEGER)');
+    state.close();
+    makeExecutionsDb(dbPath, []);
+    const calls: string[][] = [];
+    const execFileImpl: ExecFileFn = async (_file, args) => {
+      calls.push(args);
+      return { stdout: '', stderr: '' };
+    };
+    const result = await runWatcherTick({ dbPath, supportedSchemaVersions: ['2'], execFileImpl });
+    expect(result.fsDiscovered).toBe(1);
+    expect(result.triggered).toBe(1);
+    expect(calls[0]).toContain(dir);
+  });
+
+  it('detects a real WAL commit without a database checkpoint and skips unchanged state', async () => {
+    const dir = sqliteState('feature-00c');
+    const path = join(dir, 'state.db');
+    const state = new Database(path);
+    try {
+      state.pragma('journal_mode = WAL');
+      state.pragma('wal_autocheckpoint = 0');
+      state.exec('CREATE TABLE marker (value INTEGER); INSERT INTO marker VALUES (1)');
+      state.pragma('wal_checkpoint(TRUNCATE)');
+      makeExecutionsDb(dbPath, [{ project: 'proj', feature: 'codex-feature', status: 'em_andamento' }]);
+      const execFileImpl: ExecFileFn = async () => ({ stdout: '', stderr: '' });
+      const options = { dbPath, supportedSchemaVersions: ['2'], execFileImpl };
+      expect((await runWatcherTick(options)).triggered).toBe(1);
+      expect((await runWatcherTick(options)).triggered).toBe(0);
+      const databaseMtime = statSync(path).mtimeMs;
+      state.exec('UPDATE marker SET value = 2');
+      expect(statSync(path).mtimeMs).toBe(databaseMtime);
+      expect((await runWatcherTick(options)).triggered).toBe(1);
+      expect((await runWatcherTick(options)).triggered).toBe(0);
+      state.pragma('wal_checkpoint(TRUNCATE)');
+      expect((await runWatcherTick(options)).triggered).toBe(1);
+    } finally {
+      state.close();
+    }
+  });
+});
 
 describe('deriveStateDir', () => {
   it('deriva layout feature-00c quando feature esta presente', () => {

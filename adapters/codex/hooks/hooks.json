@@ -1,0 +1,29 @@
+{
+  "description": "cstk Codex local pilot guards; review and trust before use",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/hooks/pretooluse.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/hooks/posttooluse.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
