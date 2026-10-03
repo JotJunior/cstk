@@ -3535,10 +3535,12 @@ recall_mode_precedents() {
   _pq_max_bytes="2400"
   _pq_min="$RECALL_PREC_MIN_SIMILARITY"
   _pq_db_flag=""
+  _pq_include_source_ids=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --precedents) ;;
+      --include-source-ids) _pq_include_source_ids=1 ;;
       --limit) shift; _pq_limit="${1:-}" ;;
       --max-bytes) shift; _pq_max_bytes="${1:-}" ;;
       --min-similarity) shift; _pq_min="${1:-}" ;;
@@ -3623,7 +3625,7 @@ recall_mode_precedents() {
   _pq_us=$(printf '\037')
   _pq_match=$(sql_escape "$(fts_query_escape_or "$_pq_qspaced")")
   _pq_flat() { printf "replace(replace(replace(replace(coalesce(%s,''),char(10),' '),char(13),' '),char(9),' '),'|@|',' ')" "$1"; }
-  _pq_sql="SELECT $(_pq_flat b.project) || '|@|' || $(_pq_flat b.feature) || '|@|' || $(_pq_flat b.source_id) || '|@|' || coalesce(nullif($(_pq_flat d.stage),''),'-') || '|@|' || $(_pq_flat b.answered_at) || '|@|' || $(_pq_flat b.question) || '|@|' || $(_pq_flat b.answer)
+  _pq_sql="SELECT $(_pq_flat b.project) || '|@|' || $(_pq_flat b.feature) || '|@|' || $(_pq_flat b.source_id) || '|@|' || coalesce(nullif($(_pq_flat d.stage),''),'-') || '|@|' || $(_pq_flat b.answered_at) || '|@|' || $(_pq_flat b.question) || '|@|' || $(_pq_flat b.answer) || '|@|' || $(_pq_flat b.wave)
 FROM (SELECT project, feature, wave, source_id, bm25(knowledge_fts) AS rk, source_ts AS fts_ts
       FROM knowledge_fts WHERE knowledge_fts MATCH '$_pq_match' AND type = 'block') f
 JOIN blocks b ON b.project = f.project AND b.feature = f.feature AND b.wave = f.wave AND b.source_id = f.source_id
@@ -3642,12 +3644,12 @@ $_pq_sql")
   _pq_rows=$(printf '%s\n' "$_pq_rows" | sed "s/|@|/$_pq_us/g")
 
   # ---- Similaridade (Jaccard) + limiar, sobre a pergunta COMPLETA ----
-  _pq_scored=$(printf '%s\n' "$_pq_rows" | while IFS="$_pq_us" read -r _r_proj _r_feat _r_sid _r_stage _r_at _r_q _r_a; do
+  _pq_scored=$(printf '%s\n' "$_pq_rows" | while IFS="$_pq_us" read -r _r_proj _r_feat _r_sid _r_stage _r_at _r_q _r_a _r_wave; do
     [ -n "$_r_sid" ] || continue
     _r_sim=$(recall_prec_similarity "$_pq_qspaced" "$_pq_min" "$_r_q")
     [ -n "$_r_sim" ] || continue
-    printf '%s\037%s\037%s/%s/%s\037%s\037%s\037%s\n' \
-      "$_r_sim" "$_r_at" "$_r_proj" "$_r_feat" "$_r_sid" "$_r_stage" "$_r_q" "$_r_a"
+    printf '%s\037%s\037%s/%s/%s\037%s\037%s\037%s\037%s\n' \
+      "$_r_sim" "$_r_at" "$_r_proj" "$_r_feat" "$_r_sid" "$_r_stage" "$_r_q" "$_r_a" "block/$_r_proj/$_r_feat/$_r_wave/$_r_sid"
   done)
   [ -n "$_pq_scored" ] || return "$RECALL_EXIT_OK"
 
@@ -3670,7 +3672,7 @@ $_pq_sql")
   for _pq_line in $_pq_ranked; do
     [ -n "$_pq_line" ] || continue
     [ "$_pq_k" -lt "$_pq_limit" ] || break
-    IFS="$_pq_us" read -r _e_sim _e_at _e_ref _e_stage _e_q _e_a <<EOF_PQ
+    IFS="$_pq_us" read -r _e_sim _e_at _e_ref _e_stage _e_q _e_a _e_source <<EOF_PQ
 $_pq_line
 EOF_PQ
     _e_q=$(recall_prec_truncate "$_e_q" 300)
@@ -3678,6 +3680,8 @@ EOF_PQ
     _pq_entry="- ref=$_e_ref stage=$_e_stage answered_at=$_e_at similarity=$_e_sim
   question: $_e_q
   answer: $_e_a"
+    if [ "$_pq_include_source_ids" -eq 1 ]; then _pq_entry="$_pq_entry
+  [source: $_e_source]"; fi
     if [ -z "$_pq_acc" ]; then
       _pq_cand="$_pq_header
 

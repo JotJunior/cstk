@@ -1,7 +1,9 @@
-# Matriz de suporte — adaptador local 0.5.0
+# Matriz de suporte — adaptador POSIX local 0.6.0
 
 Escopo: adaptador feature-00c local supervisionado. A matriz descreve evidência
 observada; não equivale a compatibilidade universal/100% com interfaces Codex.
+A reescrita de 2026-10-03 está validada em [validation-posix.md](validation-posix.md).
+Observações semânticas antigas são históricas e não certificam o novo runtime.
 
 | Capacidade | Evidência | Estado |
 | --- | --- | --- |
@@ -9,7 +11,7 @@ observada; não equivale a compatibilidade universal/100% com interfaces Codex.
 | Decisões, bloqueios e budget | Persistência canônica, recusa de avanço com bloqueio/backlog/limite | Validado em testes |
 | Opt-ins | Resposta explícita, I-2, idempotência e recusa de substituição | Implementado; resposta real do piloto aguardada |
 | knowledge.db compartilhado | Migração 15→16 aditiva, origem nullable, ingestão idempotente e IDs usados | Validado em testes |
-| Interrupção/retomada | SIGTERM/SIGKILL em processos Python reais; lock vivo nunca tomado | Validado localmente |
+| Interrupção/retomada | SIGTERM/SIGKILL em processos shell reais; lock vivo nunca tomado | Validado localmente |
 | Seis workflows nativos 00c | feature/agente, resume e abort descobertos habilitados por skills/list | Validado no Codex CLI 0.160.0 |
 | Retomada com resposta humana | cstk_resume registra uma resposta real por bloqueio e abre a onda da etapa persistida | Validado em JSON/SQLite e no MCP nativo |
 | Aborto feature/projeto | Onda própria/idle, estado terminal, backup/relatório filtrados, purge explícito, commit condicionado | Validado em JSON/SQLite e no MCP nativo |
@@ -56,7 +58,7 @@ Ver [data-model.md](data-model.md) para o contrato de persistência.
 Use uma instalação previamente preparada e execute:
 
 ```sh
-python3 adapters/codex/skills/feature-00c/scripts/native_status.py --project /caminho/projeto --codex-home /caminho/codex-home-isolado
+sh adapters/codex/skills/feature-00c/scripts/native-status.sh --project /caminho/projeto --codex-home /caminho/codex-home-isolado
 ```
 
 O helper consulta initialize e hooks/list. Não executa modelo, não concede

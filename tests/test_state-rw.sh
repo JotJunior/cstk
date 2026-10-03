@@ -1642,4 +1642,9 @@ scenario_sqlite_operator_answers_array_cai_em_extra_fields() {
   [ "$_qid" = "q-1" ] || { _fail "operator_answers nao persistiu (roundtrip)" "obtido '$_CAPTURED_STDOUT'"; return 1; }
 }
 
+scenario_check_dependencies_is_read_only() {
+  assert_exit 0 sh "$SCRIPT" check-dependencies --state-dir "$TMPDIR_TEST/absent" || return
+  [ ! -e "$TMPDIR_TEST/absent" ] || return 1
+  assert_exit 2 sh "$SCRIPT" check-dependencies
+}
 run_all_scenarios

@@ -30,11 +30,11 @@
 - [x] CHK013 - Escritor único, confinamento e recuperação explícita estão definidos? [Segurança, Spec FR-012; Story 3 cenário 4] {auto}
 - [x] CHK014 - Revisão humana das proteções é independente de instalação/opt-ins? [Segurança, Spec FR-004; Story 1 cenário 3] {auto}
 - [x] CHK015 - Conflito de governança tem critério de resolução em vez de aprovação implícita? [Completude, Spec FR-018; Plan Constitution Check] {auto}
-- [ ] CHK016 - Qual alternativa deve resolver a regra constitucional do adaptador? [Decisão, Plan Constitution Check II; contracts/governance-proposal.md; task 7.1] {humano}
+- [x] CHK016 - Qual alternativa deve resolver a regra constitucional do adaptador? [Decisão, Plan Constitution Check II; contracts/governance-proposal.md; task 7.1] {humano}
 
 ## Notes
 
 15 itens automáticos resolvidos contra os artefatos citados; um humano aberto.
-CHK016 virou tarefa de governança 7.1; não é marcação de homologação nem pedido
+CHK016 foi resolvido pelo mantenedor em 2026-10-03: redesenho POSIX sem emenda; não é marcação de homologação nem pedido
 redundante de autorização para editar documentos. Nenhum item humano foi
 marcado pelo agente. Perguntas de opt-in do piloto não são checklists de qualidade.

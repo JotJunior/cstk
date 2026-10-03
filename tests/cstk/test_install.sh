@@ -456,7 +456,7 @@ scenario_install_cli_codex_dry_run_nao_toca_claude() {
   _h="$TMPDIR_TEST/codex-home"
   _run_install "$_h" --cli=codex --dry-run
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "Codex dry-run" "$_CAPTURED_STDERR"; return 1; }
-  assert_stdout_contains '"cli": "codex"' || return 1
+  assert_stdout_match '"cli"[[:space:]]*:[[:space:]]*"codex"' || return 1
   [ ! -e "$_h/.claude" ] || { _fail "Claude alterado no dry-run Codex" ""; return 1; }
   [ ! -e "$_h/.codex" ] || { _fail "Codex alterado no dry-run" ""; return 1; }
 }

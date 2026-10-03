@@ -1,5 +1,8 @@
 # Review: Pipeline CSTK no Codex
 
+> Histórico da implementação anterior à reescrita POSIX de 2026-10-03.
+> Estado atual e novas evidências em [validation-posix.md](validation-posix.md).
+
 **Date**: 2026-10-02 | **Scope**: documentação canônica, inventário e incremento FR-019 do painel.
 **Resultado**: padronização documental concluída; feature com aceite pendente.
 
@@ -124,3 +127,15 @@ Os documentos seguem os templates/gates do CSTK e expõem as dependências
 para concluir a feature. A conclusão editorial não marca o projeto como
 concluído nem arquiva a spec. O cadastro posterior registra pendências reais. Ver
 [support-matrix.md](support-matrix.md) para suporte disponível e limites.
+
+## Remediação do PR #223 — 2026-10-03
+
+O mantenedor escolheu redesenho POSIX. O incremento Python foi removido,
+sem emenda constitucional. As seis skills agora têm Gotchas e triggers
+explícitos. Os hooks são vinculados ao proprietário da onda, com contenção
+por projeto; uma execução Claude anterior na ordenação não recebe seus ticks.
+A flag --include-source-ids agora funciona também em recall --precedents.
+
+Evidências e limites atuais: [validation-posix.md](validation-posix.md).
+D1/D2 e os três itens da revisão foram tratados; V1 (aceite semântico nativo)
+continua aberto. O histórico acima preserva os achados anteriores.

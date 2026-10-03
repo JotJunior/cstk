@@ -1,6 +1,6 @@
 # Contracts: Instalação Codex
 
-**Fonte**: cli/cstk, cli/lib/install.sh, cli/lib/install-codex.py e
+**Fonte**: cli/cstk, cli/lib/install.sh, cli/lib/install-codex.sh e
 scripts/build-release.sh. Contrato existente, inventariado em 2026-10-02.
 
 ## Command: cstk install --cli=codex
@@ -23,8 +23,8 @@ real de opções em cli/lib/install.sh antes de adicionar outra combinação.
 
 ## Efeitos observados
 
-Dependências codex/python3/jq/sqlite3 e capacidade plugin add verificadas antes
-à instalação. Checkout usa source-tree; release inclui catalog/codex e segue
+Codex com capacidade plugin add e utilitário SHA-256 são verificados antes
+da instalação. Checkout usa source-tree; release inclui catalog/codex e segue
 verificação de origem/hash existente. Não há instalação de pip nem auth.
 
 CODEX_HOME/cstk contém packages/<versão>-<hash>, marketplace local estável e
@@ -48,5 +48,5 @@ Confiança/revisão é do operador. Nova sessão é necessária para usar o plug
 | 4 | Edição local/conflito de integridade/symlink em área gerenciada |
 
 O shell externo pode reportar o contexto do erro; os códigos acima descrevem
-o helper Python. Falha não é promessa de rollback de todas as operações do
+o helper POSIX. Falha não é promessa de rollback de todas as operações do
 CLI nativo. Recibo/hash verificados e teste de reinstalação detectam divergência.

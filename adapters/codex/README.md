@@ -20,8 +20,7 @@ No checkout, use `sh cli/cstk install --cli=codex`. A CLI já instalada precisa
 ser atualizada a partir de uma release que contenha esta implementação.
 O comando usa o checkout quando disponível, ou baixa/verifica a release e
 consome catalog/codex. Instala o plugin nativo, MCP e hooks no CODEX_HOME
-(default ~/.codex), por comandos oficiais do Codex. Requer python3, jq,
-sqlite3 e Codex com suporte a plugin add. Aceita --codex-home para instalação
+(default ~/.codex), por comandos oficiais do Codex. Requer shell POSIX e SHA-256; jq/sqlite3 são requisitos do estado canônico e Codex com suporte a plugin add. Aceita --codex-home para instalação
 isolada; escopo global e pacote completo das seis entradas, perfil sdd/all.
 
 Configura knowledge.db no env explícito do MCP. Não cria nem migra o banco
@@ -63,19 +62,18 @@ hashes atuais revisados e justificativa, mantendo snapshots anteriores.
 Execute o preflight sem instalar nem alterar o projeto-alvo:
 
 ```sh
-python3 adapters/codex/skills/feature-00c/scripts/context.py --project /caminho/projeto --short-name minha-feature
+sh adapters/codex/skills/feature-00c/scripts/context.sh --project /caminho/projeto --short-name minha-feature
 ```
 
 Para projeto novo, acrescente `--kind project` e use a identidade canônica do
 projeto como `--short-name` em todos os comandos. Não exige governança prévia.
-Após bootstrap, registre as três respostas reais usando optins.py com
+Após bootstrap, registre as três respostas reais usando optins.sh com
 `--field atomic_commit --value false`, `--field roadmap_mode --value false`
 e `--field delivery_tier --value local` (valores escolhidos pelo operador),
 sempre com `--channel` e `--response-source`. A skill
 [agente-00c](skills/agente-00c/SKILL.md) detalha os contratos.
 
-O transporte `mcp_bridge.py --project PAP --short-name SLUG
---kind project` expõe initialize, tools/list e tools/call por stdio JSON-RPC,
+O transporte `sh mcp-bridge.sh`, selecionado por cstk_select_execution, expõe initialize, tools/list e tools/call por stdio JSON-RPC,
 conforme a [especificação MCP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
 Preserva um único proprietário entre chamadas e fecha a onda no EOF/SIGTERM.
 O manifest portátil plugin.json e o mcp.json registram `cstk_pipeline`.
@@ -114,12 +112,12 @@ Claude; custo e tokens do Codex permanecem sem medição até integração próp
 Preparação de uma execução (não abre onda):
 
 ```sh
-python3 adapters/codex/skills/feature-00c/scripts/session.py bootstrap \
+sh adapters/codex/skills/feature-00c/scripts/session.sh bootstrap \
   --project /caminho/projeto --short-name minha-feature \
   --description 'Descrição concreta da feature' --canonical-project meu-projeto
-python3 adapters/codex/skills/feature-00c/scripts/session.py resume \
+sh adapters/codex/skills/feature-00c/scripts/session.sh resume \
   --project /caminho/projeto --short-name minha-feature
-python3 adapters/codex/skills/feature-00c/scripts/phase.py \
+sh adapters/codex/skills/feature-00c/scripts/phase.sh \
   --project /caminho/projeto --short-name minha-feature
 ```
 
@@ -136,7 +134,7 @@ caminho no Codex 0.160.0 e não é distribuído como fallback MCP.
 Para gerar o pacote com as dependências compartilhadas:
 
 ```sh
-python3 scripts/build-codex-plugin.py --out dist/cstk-codex-pilot
+sh scripts/build-codex-plugin.sh --out dist/cstk-codex-pilot
 ```
 
 O builder copia CLI, skills, agentes de referência e runtime para um diretório
@@ -175,28 +173,28 @@ Fonte: https://learn.chatgpt.com/docs/hooks
 O diagnóstico MCP nativo não executa turno de modelo nem concede confiança:
 
 ```sh
-python3 adapters/codex/skills/feature-00c/scripts/native_mcp.py --project /caminho/projeto --codex-home /caminho/instalacao-temporaria
+sh adapters/codex/skills/feature-00c/scripts/native-mcp.sh --project /caminho/projeto --codex-home /caminho/instalacao-temporaria
 ```
 
 Para o teste opcional de contrato pelo app-server, use
-`CSTK_NATIVE_TEST_HOME=/caminho/instalacao-temporaria python3 -m unittest discover -s tests/codex -p test_native_mcp.py -v`.
+`CSTK_NATIVE_TEST_HOME=/caminho/instalacao-temporaria sh tests/codex/test_native-mcp.sh`.
 Ele usa projeto/banco temporários e respostas de fixture identificadas como
 teste. Chamadas MCP por RPC não certificam execução semântica nem hooks.
 
-Validação desta fundação (Python stdlib, sem dependências instaladas):
+Validação desta fundação (shell/awk POSIX, com helpers canônicos existentes):
 
 ```sh
-python3 -m unittest discover -s tests/codex -v
+sh tests/run.sh codex
 sh tests/run.sh pipeline
 sh tests/run.sh --check-coverage
 ```
 
-Os testes Python têm runner próprio; `tests/run.sh` descobre testes shell.
+Os testes POSIX do adaptador são descobertos por `tests/run.sh`, inclusive no check de cobertura.
 
 ## Controle das ondas e opt-ins
 
-Os helpers `optins.py`, `controller.py` e `native_status.py` ficam ao lado de
-`session.py`. A skill descreve o transporte JSONL e as ações de decisão,
+Os helpers `optins.sh`, `controller.sh` e `native-status.sh` ficam ao lado de
+`session.sh`. A skill descreve o transporte JSONL e as ações de decisão,
 contagem, bloqueio, pausa e conclusão. O controlador despacha uma fase para a
 sessão atual, sem abrir outro modelo. EOF/SIGTERM fecha sem avançar; recuperação
 após SIGKILL exige ação explícita e PID morto igual ao dono registrado do lock.
@@ -218,7 +216,7 @@ origem. Compartilhar memória não autoriza assumir a execução de outro runtim
 Diagnóstico nativo, sem conceder confiança:
 
 ```sh
-python3 adapters/codex/skills/feature-00c/scripts/native_status.py --project /caminho/projeto
+sh adapters/codex/skills/feature-00c/scripts/native-status.sh --project /caminho/projeto
 ```
 
 Veja [a matriz de suporte](../../docs/specs/codex-feature-00c/support-matrix.md)

@@ -1,5 +1,8 @@
 # Validation: Pipeline CSTK no Codex
 
+> Histórico da implementação anterior à reescrita POSIX de 2026-10-03.
+> Estado atual e novas evidências em [validation-posix.md](validation-posix.md).
+
 **Date**: 2026-10-02 | **Feature**: [spec.md](spec.md)
 
 ## Níveis de evidência

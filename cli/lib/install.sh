@@ -92,7 +92,7 @@ OPCOES:
 
 CODEX:
   cstk install --cli=codex instala as seis entradas 00c, MCP e hooks como
-  plugin nativo global. Requer python3, jq, sqlite3 e Codex com plugin add.
+  plugin nativo global. Requer shell POSIX e Codex com plugin add; estado usa jq/sqlite3 canônicos.
   No checkout usa os assets locais; fora dele usa a release verificada.
   --dry-run mostra o plano. Confianca dos hooks continua sendo revisada
   pelo operador em /hooks; o instalador nao concede essa confianca.
@@ -411,11 +411,10 @@ _install_codex() {
     sdd|all) ;;
     *) log_error "install codex: perfil suportado sdd ou all (seis workflows 00c)"; return 2 ;;
   esac
-  command -v python3 >/dev/null 2>&1 || { log_error "install codex: python3 necessario"; return 1; }
   _ic_root=$(cd -- "$CSTK_LIB/../.." && pwd)
   if [ -z "$_install_from" ] && [ -z "${CSTK_RELEASE_URL:-}" ] \
       && [ -f "$_ic_root/adapters/codex/plugin.json" ] \
-      && [ -f "$_ic_root/scripts/build-codex-plugin.py" ]; then
+      && [ -f "$_ic_root/scripts/build-codex-plugin.sh" ]; then
     set -- --source-tree "$_ic_root"
   else
     _install_resolve_urls || return 1
@@ -432,7 +431,7 @@ _install_codex() {
   [ -z "$_install_codex_home" ] || set -- "$@" --codex-home "$_install_codex_home"
   [ -z "$_install_knowledge_db" ] || set -- "$@" --knowledge-db "$_install_knowledge_db"
   [ "$_install_dry_run" != 1 ] || set -- "$@" --dry-run
-  python3 "$CSTK_LIB/install-codex.py" "$@"
+  sh "$CSTK_LIB/install-codex.sh" "$@"
 }
 
 # _install_resolve_scope_dir: traduz scope -> path.

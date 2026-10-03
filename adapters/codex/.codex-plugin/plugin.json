@@ -1,6 +1,6 @@
 {
   "name": "cstk-codex-pilot",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Local supervised adapter for the cstk auditable feature pipeline; autonomous execution pending native coverage validation",
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json"

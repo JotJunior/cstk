@@ -1,6 +1,6 @@
 ---
 name: agente-00c-resume
-description: Retomar a pipeline de um projeto CSTK existente no Codex, desde sua etapa persistida até review-features ou roadmap, com respostas humanas, recuperação e decisões auditáveis. Use para agente-00c-resume.
+description: Use quando o usuário solicitar explicitamente agente-00c-resume no Codex para retomar a execução de projeto pela pipeline CSTK compartilhada.
 ---
 
 # Retomar projeto no Codex
@@ -17,3 +17,11 @@ legados ainda ausentes podem ser inicializados com init_aspects,
 technical_aspects e operational_aspects fornecidos pelo operador; não
 sobrescreva aspectos existentes. Recuperação, handoff e reconciliação de
 governança seguem o contrato de ciclo de vida, sem reinicializar a execução.
+
+## Gotchas
+
+- Use a identidade e o kind do estado existente; não faça bootstrap para retomar.
+- Dono vivo ou desconhecido nunca é roubado; recuperação exige PID registrado comprovadamente morto.
+- Origem Claude/desconhecida exige handoff autorizado com proveniência preservada.
+- Respostas humanas são reais, identificadas e imutáveis; várias pendências exigem block_id.
+- Deriva de governança bloqueia retomada até revisão dos dois hashes atuais.

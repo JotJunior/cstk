@@ -5624,6 +5624,18 @@ scenario_precedents_pair_above_threshold() {
   assert_stdout_contains "  answer: Usar cache em memoria com expiracao curta" || return 1
 }
 
+scenario_precedents_optional_source_id_includes_wave() {
+  _have_deps || return 0
+  _db="$TMPDIR_TEST/source-identity.db"; _prec_db "$_db"
+  _prec_block "$_db" projP featB block-001 respondido "$PQ_B" "Resposta observada" "" "2026-08-23T02:11:11Z"
+  capture _rc --precedents "$PQ_A" --include-source-ids --db "$_db"
+  [ "$_CAPTURED_EXIT" = 0 ] || return 1
+  assert_stdout_contains '[source: block/projP/featB/onda-001/block-001]' || return 1
+  capture _rc --precedents "$PQ_A" --db "$_db"
+  assert_stdout_not_contains '[source:' || return 1
+  assert_stdout_contains 'ref=projP/featB/block-001'
+}
+
 scenario_precedents_dedup() {
   _have_deps || return 0
   _db="$TMPDIR_TEST/pr2.db"; _prec_db "$_db"

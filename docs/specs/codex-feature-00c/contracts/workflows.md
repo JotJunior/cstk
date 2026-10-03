@@ -1,8 +1,8 @@
 # Contracts: Workflows Codex 00c
 
 **Fonte**: schemas TOOLS e Bridge.call em
-`adapters/codex/skills/feature-00c/scripts/mcp_bridge.py`; lifecycle.py,
-controller.py, optins.py e Session. Campos abaixo extraídos do código em
+`adapters/codex/skills/feature-00c/scripts/mcp-bridge.sh`; lifecycle.sh,
+controller.sh, optins.sh e Session. Campos abaixo extraídos do código em
 2026-10-02. Não são uma API proposta nem aliases de commands Claude.
 
 ## Entradas nativas
@@ -57,9 +57,9 @@ certificam hooks de um turno de modelo.
 
 ## Fallback de terminal
 
-controller.py serve/resume mantém stdin/stdout JSONL persistente; ações são
+controller.sh serve/resume mantém stdin/stdout JSONL persistente; ações são
 decision, tick, block, pause, complete e abort. EOF/SIGTERM fecham sem avanço.
-Scripts lifecycle.py status/resume/abort/handoff/reconcile-governance têm os
+Scripts lifecycle.sh status/resume/abort/handoff/reconcile-governance têm os
 mesmos gates; lifecycle resume prepara, controller resume abre onda.
 
 ## Caminho de estado e interoperabilidade

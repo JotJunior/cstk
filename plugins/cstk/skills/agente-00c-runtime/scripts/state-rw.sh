@@ -1070,6 +1070,7 @@ SUBCOMANDOS:
   path-check     Valida --projeto-alvo-path (existe/cria/gravavel)
   infer-aspectos Infere aspectos tocados via git diff + matcher fuzzy
   migrate        Canonicaliza chaves pt-BR -> EN no lugar (idempotente)
+  check-dependencies Verifica jq e, para state.db, sqlite3; somente leitura
 
 Flags variam por subcomando — consulte cabecalho do script para detalhes.
 
@@ -1096,6 +1097,13 @@ case "$_sr_subcmd" in
   path-check)      _sr_cmd_path_check "$@" ;;
   infer-aspectos)  _sr_cmd_infer_aspectos "$@" ;;
   migrate)         _sr_cmd_migrate "$@" ;;
+  check-dependencies)
+    [ "$#" = 2 ] && [ "$1" = --state-dir ] || _sr_die 'check-dependencies: use --state-dir DIR' 2
+    _sr_require_jq
+    if [ -f "$2/state.db" ]; then
+      command -v sqlite3 >/dev/null 2>&1 || _sr_die 'sqlite3 ausente para o estado SQLite' 1
+    fi
+    ;;
   -h|--help|help)  _sr_print_help; exit 0 ;;
   *) _sr_die "subcomando desconhecido: $_sr_subcmd (use --help)" 2 ;;
 esac

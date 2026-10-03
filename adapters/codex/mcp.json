@@ -3,8 +3,8 @@
   "mcpServers": {
     "cstk_pipeline": {
       "type": "stdio",
-      "command": "python3",
-      "args": ["${PLUGIN_ROOT}/skills/feature-00c/scripts/mcp_bridge.py"]
+      "command": "sh",
+      "args": ["${PLUGIN_ROOT}/skills/feature-00c/scripts/mcp-bridge.sh"]
     }
   }
 }

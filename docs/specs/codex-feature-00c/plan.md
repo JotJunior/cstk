@@ -8,16 +8,26 @@ Seis entradas 00c no Codex, instalação específica, pipeline compartilhada,
 estado exclusivo e conhecimento derivado auditável. O código existente usa
 `adapters/codex`, helpers canônicos `plugins/cstk` e plugin/MCP nativo.
 
-Plano retrospectivo da implementação observada: Constitution Check **FAIL**.
+A implementação anterior reprovou os princípios II/III. A revisão POSIX de
+2026-10-03 resolve esses achados sem emenda; o histórico permanece em review.md.
 Pesquisa, modelo e contratos abaixo documentam código existente; não são
 avanço de novo design através de gate reprovado. Aceite real permanece aberto.
 
 ## Technical Context
 
-**Language/Version**: POSIX sh no runtime; Python 3 no adaptador, hooks, builder e instalador. Instalador não declara versão mínima Python; teste observado usa `/opt/homebrew/bin/python3`.
-**Primary Dependencies**: instalador exige `codex`, `python3`, `jq`, `sqlite3`; stdlib Python, sem pip. Harness observado: Codex CLI 0.160.0.
+**Revisão POSIX autorizada (2026-10-03)**: substituir o incremento Python por
+POSIX sh, incluindo testes e empacotamento. Biblioteca JSON local usa awk POSIX
+sem eval e sem dependência jq. Helpers transacionais existentes continuam donos
+de estado/locks/gates. Transporte MCP síncrono mantém o escritor entre chamadas;
+EOF/sinais fecham sem avançar. Binding de onda sob lock de projeto permite aos
+hooks apontar ao state-dir proprietário; contenção/ambiguidade nunca seleciona
+outra execução. Instalação preserva recibos, caches, hooks e config do usuário.
+A escolha atende à alternativa de redesenho, sem alterar constitution.md.
+
+**Language/Version**: POSIX sh e awk no adaptador, hooks, builder, instalador e testes.
+**Primary Dependencies**: shell POSIX, awk e utilitários já usados no projeto; SHA-256 e Codex com plugin add no instalador. jq/sqlite3 somente nos helpers canônicos existentes. Harness observado: Codex CLI 0.160.0.
 **Storage**: JSON/SQLite canônicos; knowledge.db derivado schema 16; evidências, backups e relatórios locais.
-**Testing**: unittest em `tests/codex`, grupos shell, contratos MCP/app-server isolados e gates documentais CSTK.
+**Testing**: sh tests/run.sh codex, suite shell completa, dash/ShellCheck, protocolos MCP/app-server e instalações temporárias.
 **Target Platform**: Codex local observado em macOS; App/IDE/cloud precisam de evidência própria.
 **Project Type**: toolkit/CLI, plugin nativo e orquestração supervisionada.
 **Performance Goals**: sem SLA novo; respeitar orçamento/chamadas do runtime. Tempos de testes não são metas de produto.
@@ -32,16 +42,15 @@ existente contra constitution 1.3.0 em 2026-10-02.*
 | Princípio | Status | Notas |
 |-----------|--------|-------|
 | I — SDD recursivo | FAIL histórico; reparação documental realizada | Implementação antecedeu spec.md; padronização não reescreve cronologia. Novos incrementos exigem artefatos upstream. |
-| II — Scripts POSIX/dependências | FAIL | Python obrigatório em hooks/instalador/adaptador está fora dos carve-outs vigentes. FASE 7 exige decisão de redesenho/emenda. |
-| III — Formato de skill | FAIL | Seis SKILL.md do adaptador sem seção Gotchas; reparação na FASE 7. |
+| II — Scripts POSIX/dependências | PASS na revisão POSIX | Incremento Python removido; parser awk sem eval/jq; estado permanece nos helpers canônicos. |
+| III — Formato de skill | PASS na revisão POSIX | As seis entradas têm triggers explícitos, Gotchas e referências compartilhadas. |
 | IV — Zero coleta remota | PASS no escopo inspecionado | Adaptador não adiciona coleta; sessão remove atribuição do exportador Claude. Download de release não é telemetria. |
 | V — Profundidade | PASS | Reutilização, retomada e precedentes atendem direção pedida pelo operador. |
 | VI — Veracidade | PASS na documentação normalizada | Contratos extraídos do código; resultados associados aos logs; nenhum aceite real presumido. |
 
-O pedido de compatibilidade não foi registrado como aprovação de emenda
-específica. A [proposta de governança](contracts/governance-proposal.md)
-apresenta um caminho revisável; nenhuma emenda foi aplicada. Ver
-[review.md](review.md) e o backlog de convergência.
+O mantenedor escolheu redesenho POSIX em 2026-10-03. Nenhuma emenda foi
+aplicada. Ver a [decisão de governança](contracts/governance-proposal.md),
+[review.md](review.md) e [validation-posix.md](validation-posix.md).
 
 ## Project Structure
 
@@ -78,10 +87,10 @@ adapters/codex/mcp.json
 adapters/codex/hooks/
 adapters/codex/skills/
 plugins/cstk/skills/agente-00c-runtime/scripts/
-cli/lib/install-codex.py
+cli/lib/install-codex.sh
 cli/lib/install.sh
 cli/lib/recall.sh
-scripts/build-codex-plugin.py
+scripts/build-codex-plugin.sh
 scripts/build-release.sh
 tests/codex/
 tests/cstk/
@@ -95,7 +104,7 @@ executor. Fork e mudança de layout ficam fora da entrega.
 
 | Camada | Case style | Validação | Fonte da verdade |
 |--------|------------|-----------|------------------|
-| MCP/JSONL | snake_case | schema fechado, lock, identidade, gates | mcp_bridge.py, controller.py no adaptador |
+| MCP/JSONL | snake_case | schema fechado, lock, identidade, gates | mcp-bridge.sh, controller.sh no adaptador |
 | Estado JSON | contrato do runtime | state-validate.sh, integridade | state-rw.sh no runtime |
 | Estado SQLite | SQL + extra_fields | transação/exportação normalizada | _state-rw-db.sh no runtime |
 | Índice derivado | executions.execution_provenance nullable | migração aditiva/upsert por origem | cli/lib/recall.sh |
@@ -120,7 +129,7 @@ standalone não cria estado/onda 00c nem grava no knowledge.db global.
 
 | Violação | Por que surgiu | Alternativa a avaliar |
 |----------|----------------|-----------------------|
-| II: Python obrigatório fora do carve-out | Adaptador usa stdlib para transporte persistente/schema/instalação | Emenda delimitada aprovada ou redesenho POSIX; justificativa técnica não concede exceção. |
+| II: conflito histórico do Python | Resolvido por shell/awk POSIX | Mantenedor escolheu redesenho sem emenda; resultados em validation-posix.md. |
 | III: Gotchas ausentes | Entradas entregues sem seção canônica | Completar seis skills e validar empacotamento. |
 | I: ausência inicial de spec | Plano/backlog tratados como diário | Preservar histórico; próximos incrementos começam pela spec. |
 

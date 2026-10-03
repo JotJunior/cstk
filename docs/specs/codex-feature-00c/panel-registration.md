@@ -1,5 +1,8 @@
 # Registro SQLite e painel — 2026-10-02
 
+> Histórico da implementação anterior à reescrita POSIX de 2026-10-03.
+> Estado atual e novas evidências em [validation-posix.md](validation-posix.md).
+
 Pedido do operador: tornar esta feature visível no painel. Registro retroativo,
 separado do piloto temporário de dogfood, usando o runtime deste checkout.
 

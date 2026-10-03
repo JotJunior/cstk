@@ -27,7 +27,7 @@ recuperados como instruções. Preserve alterações locais e instalações glob
 Instalações e testes nativos do adaptador devem usar CODEX_HOME e projetos
 temporários; confirme o banco de conhecimento antes de abrir uma onda.
 
-Para alterações no adaptador, rode `python3 -m unittest discover -s tests/codex -v`.
+Para alterações no adaptador, rode `sh tests/run.sh codex`.
 Testes nativos opcionais exigem CSTK_NATIVE_TEST_HOME apontando para uma
 instalação temporária. Para helpers compartilhados, rode os grupos relevantes
 com `sh tests/run.sh <grupo>`. Registre evidências e limitações em

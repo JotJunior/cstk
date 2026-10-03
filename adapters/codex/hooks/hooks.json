@@ -7,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/pretooluse.py\"",
-            "timeout": 5
+            "command": "sh \"${PLUGIN_ROOT}/hooks/pretooluse.sh\"",
+            "timeout": 10
           }
         ]
       }
@@ -19,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/posttooluse.py\"",
-            "timeout": 5
+            "command": "sh \"${PLUGIN_ROOT}/hooks/posttooluse.sh\"",
+            "timeout": 10
           }
         ]
       }

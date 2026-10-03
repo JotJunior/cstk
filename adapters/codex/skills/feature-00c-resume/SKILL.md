@@ -1,6 +1,6 @@
 ---
 name: feature-00c-resume
-description: Retomar uma feature CSTK existente no Codex e continuar sua pipeline, responder bloqueios humanos ou recuperar uma interrupção. Use para feature-00c-resume; preserva identidade, opt-ins e auditoria.
+description: Use quando o usuário solicitar explicitamente feature-00c-resume no Codex para retomar a execução da feature pela pipeline CSTK compartilhada.
 ---
 
 # Retomar feature no Codex
@@ -18,3 +18,11 @@ pertencer ao Claude, apresente a origem e faça handoff somente quando
 solicitado pelo operador. Drift exige revisão e reconciliação autorizada,
 com hashes observados, antes de abrir onda. Leia o resultado terminal antes
 de declarar a feature concluída.
+
+## Gotchas
+
+- Use a identidade e o kind do estado existente; não faça bootstrap para retomar.
+- Dono vivo ou desconhecido nunca é roubado; recuperação exige PID registrado comprovadamente morto.
+- Origem Claude/desconhecida exige handoff autorizado com proveniência preservada.
+- Respostas humanas são reais, identificadas e imutáveis; várias pendências exigem block_id.
+- Deriva de governança bloqueia retomada até revisão dos dois hashes atuais.

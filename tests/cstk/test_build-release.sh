@@ -76,7 +76,7 @@ scenario_build_release_estrutura_layout() {
   for _expected in \
     'cstk-0.1.0/cli/cstk' \
     'cstk-0.1.0/cli/lib/install.sh' \
-    'cstk-0.1.0/cli/lib/install-codex.py' \
+    'cstk-0.1.0/cli/lib/install-codex.sh' \
     'cstk-0.1.0/cli/lib/self-update.sh' \
     'cstk-0.1.0/cli/lib/ui.sh' \
     'cstk-0.1.0/catalog/VERSION' \

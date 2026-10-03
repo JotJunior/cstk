@@ -1,6 +1,6 @@
 ---
 name: agente-00c
-description: Conduzir um projeto pela pipeline CSTK desde briefing até review-features com decisões justificadas, estado retomável e execução supervisionada na sessão Codex atual.
+description: Use quando o usuário solicitar explicitamente agente-00c no Codex para conduzir a execução de projeto pela pipeline CSTK compartilhada.
 ---
 
 # Pipeline de projeto no Codex
@@ -11,7 +11,7 @@ de `../feature-00c/scripts/`; não crie um segundo modelo nem scheduler.
 Para continuar ou abortar estado existente, use agente-00c-resume ou
 agente-00c-abort e leia ../feature-00c/references/lifecycle.md.
 
-Use `--kind project` em context.py, session.py, phase.py e controller.py.
+Use `--kind project` em context.sh, session.sh, phase.sh e controller.sh.
 `--short-name` é a identidade canônica kebab-case do projeto e deve coincidir
 com `--canonical-project` no bootstrap. O estado fica em
 `.claude/agente-00c-state`; os artefatos de desenvolvimento ficam em
@@ -47,3 +47,10 @@ As demais chamadas seguem a entrada feature-00c, com os três opt-ins reais.
 O transporte stdio e o lock entre chamadas foram validados pelo app-server;
 isso não certifica cobertura de hooks em um turno de modelo. Mantenha
 `autonomous_ready=false` até a validação real dessas condições.
+
+## Gotchas
+
+- O slug deve corresponder à identidade canônica do projeto existente.
+- Colete os três opt-ins iniciais reais; roadmap seleciona três etapas canônicas.
+- Uma constitution existente pode exigir bloqueio humano antes de continuar.
+- Outra onda Codex no projeto é recusada enquanto o proprietário estiver ativo.

@@ -103,16 +103,16 @@ degraded; o aborto continua efetivo. Não faça push nem abra PR implicitamente.
 Os scripts ficam em feature-00c/scripts no checkout ou pacote. Sem MCP:
 
 ```sh
-python3 lifecycle.py status --project PAP --short-name SLUG
-python3 controller.py resume --project PAP --short-name SLUG
-python3 lifecycle.py abort --project PAP --short-name SLUG --motivo 'Motivo real'
+sh lifecycle.sh status --project PAP --short-name SLUG
+sh controller.sh resume --project PAP --short-name SLUG
+sh lifecycle.sh abort --project PAP --short-name SLUG --motivo 'Motivo real'
 ```
 
-Acrescente --kind project para agente-00c. controller.py resume mantém o
+Acrescente --kind project para agente-00c. controller.sh resume mantém o
 transporte JSONL vivo e abre a onda; aceita --block-id, --resposta-bloqueio e
 --response-source. Sua ação JSONL abort aceita reason e purge_backups.
-lifecycle.py resume prepara/valida e pode aplicar resposta/aspectos, sem abrir
-onda; retorna exit 5 para bloqueios pendentes. lifecycle.py handoff e
+lifecycle.sh resume prepara/valida e pode aplicar resposta/aspectos, sem abrir
+onda; retorna exit 5 para bloqueios pendentes. lifecycle.sh handoff e
 reconcile-governance oferecem os mesmos contratos do MCP. SIGTERM/EOF fecha
 onda sem avançar; SIGKILL exige recuperação explícita. Nenhum scheduler ou
 troca automática de modelo é presumido.

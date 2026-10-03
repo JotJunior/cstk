@@ -18,8 +18,8 @@ Fluxos e cenários em [quickstart.md](quickstart.md); schemas em
 
 ## Definições para revisão
 
-[PreToolUse](../../../adapters/codex/hooks/pretooluse.py),
-[PostToolUse](../../../adapters/codex/hooks/posttooluse.py) e
+[PreToolUse](../../../adapters/codex/hooks/pretooluse.sh),
+[PostToolUse](../../../adapters/codex/hooks/posttooluse.sh) e
 [configuração](../../../adapters/codex/hooks/hooks.json).
 Instalador 0.5.0 registra handlers na camada user com comandos do pacote por
 hash e desativa declarações redundantes no manifest instalado.

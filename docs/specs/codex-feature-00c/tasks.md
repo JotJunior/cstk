@@ -48,7 +48,7 @@ Ref: spec.md FR-017, FR-018; checklists/requirements.md
 
 Ref: spec.md FR-005, FR-006, FR-014
 
-- [x] 2.1.1 Implementar contexto/bootstrap em `adapters/codex/skills/feature-00c/scripts/context.py` e `adapters/codex/skills/feature-00c/scripts/session.py`, sem sobrescrever execução.
+- [x] 2.1.1 Implementar contexto/bootstrap em `adapters/codex/skills/feature-00c/scripts/context.sh` e `adapters/codex/skills/feature-00c/scripts/session.sh`, sem sobrescrever execução.
 - [x] 2.1.2 Preservar identidade/proveniência e suportar feature com governança, projeto novo e modo roadmap.
 - [x] 2.1.3 Validar contexto, sessão e pipelines JSON/SQLite nos testes de fundação/projeto registrados em validation.md.
 
@@ -56,7 +56,7 @@ Ref: spec.md FR-005, FR-006, FR-014
 
 Ref: spec.md FR-007, FR-008, FR-012
 
-- [x] 2.2.1 Implementar `adapters/codex/skills/feature-00c/scripts/controller.py` com proprietário persistente, evidências e avanço de uma etapa.
+- [x] 2.2.1 Implementar `adapters/codex/skills/feature-00c/scripts/controller.sh` com proprietário persistente, evidências e avanço de uma etapa.
 - [x] 2.2.2 Capturar opt-ins explícitos/idempotentes e recusar backlog, bloqueios, drift e evidências inválidas.
 - [x] 2.2.3 Validar oito/onze/três etapas em fixtures e SIGTERM/SIGKILL com recuperação explícita; não chamar isso de teste semântico.
 
@@ -68,7 +68,7 @@ Ref: spec.md FR-007, FR-008, FR-012
 
 Ref: spec.md FR-002, FR-009, FR-010, FR-011
 
-- [x] 3.1.1 Implementar seis entradas em adapters/codex/skills e fluxo resume/abort em `adapters/codex/skills/feature-00c/scripts/lifecycle.py`.
+- [x] 3.1.1 Implementar seis entradas em adapters/codex/skills e fluxo resume/abort em `adapters/codex/skills/feature-00c/scripts/lifecycle.sh`.
 - [x] 3.1.2 Preservar identidade/opt-ins, aplicar resposta por bloqueio e encerrar com backup/relatório/ingestão, incluindo idempotência terminal.
 - [x] 3.1.3 Validar retomada, aborto, lock concorrente, purge explícito e commits condicionados em JSON/SQLite e MCP nativo.
 
@@ -76,7 +76,7 @@ Ref: spec.md FR-002, FR-009, FR-010, FR-011
 
 Ref: spec.md FR-012, FR-015, FR-016
 
-- [x] 3.2.1 Implementar seleção explícita, quinze ferramentas e propriedade entre chamadas em `adapters/codex/skills/feature-00c/scripts/mcp_bridge.py`.
+- [x] 3.2.1 Implementar seleção explícita, quinze ferramentas e propriedade entre chamadas em `adapters/codex/skills/feature-00c/scripts/mcp-bridge.sh`.
 - [x] 3.2.2 Implementar handoff com proveniência anterior, reconciliação por hashes e inicialização única de aspectos legados.
 - [x] 3.2.3 Validar schemas, namespace nativo, isolamento de alvo/banco e respostas reais de fixtures identificadas como contrato.
 
@@ -96,8 +96,8 @@ Ref: spec.md FR-013, FR-014
 
 Ref: spec.md FR-004, FR-007, FR-012, FR-017
 
-- [x] 4.2.1 Implementar `adapters/codex/hooks/pretooluse.py` e `adapters/codex/hooks/posttooluse.py` com política compartilhada, confinamento e sidecar.
-- [x] 4.2.2 Implementar diagnóstico read-only em `adapters/codex/skills/feature-00c/scripts/native_status.py` e `adapters/codex/skills/feature-00c/scripts/native_mcp.py`, sem confiança/bypass automático.
+- [x] 4.2.1 Implementar `adapters/codex/hooks/pretooluse.sh` e `adapters/codex/hooks/posttooluse.sh` com política compartilhada, confinamento e sidecar.
+- [x] 4.2.2 Implementar diagnóstico read-only em `adapters/codex/skills/feature-00c/scripts/native-status.sh` e `adapters/codex/skills/feature-00c/scripts/native-mcp.sh`, sem confiança/bypass automático.
 - [x] 4.2.3 Validar payloads e descoberta real de handlers em CODEX_HOME temporário; manter cobertura de turno real na FASE 6.
 
 ---
@@ -108,7 +108,7 @@ Ref: spec.md FR-004, FR-007, FR-012, FR-017
 
 Ref: spec.md FR-001, FR-003, FR-004
 
-- [x] 5.1.1 Adicionar cstk install --cli=codex em `cli/lib/install.sh` e `cli/lib/install-codex.py`, com dry-run e dependências verificadas.
+- [x] 5.1.1 Adicionar cstk install --cli=codex em `cli/lib/install.sh` e `cli/lib/install-codex.sh`, com dry-run e dependências verificadas.
 - [x] 5.1.2 Preservar configs/plugins/hooks alheios, proteger edits/symlinks/locks e registrar recibo/hash/banco explícito no MCP.
 - [x] 5.1.3 Validar reinstalação, alteração de banco e conflitos nos seis testes de instalação finais registrados.
 
@@ -116,7 +116,7 @@ Ref: spec.md FR-001, FR-003, FR-004
 
 Ref: spec.md FR-002, FR-003, FR-017
 
-- [x] 5.2.1 Construir plugin autocontido em `scripts/build-codex-plugin.py` e distribuir catalog/codex em `scripts/build-release.sh`.
+- [x] 5.2.1 Construir plugin autocontido em `scripts/build-codex-plugin.sh` e distribuir catalog/codex em `scripts/build-release.sh`.
 - [x] 5.2.2 Restringir descoberta bootstrap/self-update à CLI externa e verificar seis skills/quinze ferramentas no pacote instalado.
 - [x] 5.2.3 Validar build-release, install, self-update, bootstrap e cstk-main nos grupos shell e no app-server isolado.
 
@@ -176,13 +176,13 @@ a dependência real F7 -> F6 impede fechar o aceite antes da conformidade.
 | 4 - Conhecimento e guardas | 2 | 6 | A, C |
 | 5 - Instalação | 2 | 6 | A |
 | 6 - Homologação | 2 | 6 | C, A |
-| 7 - Convergência | 2 | 6 | C |
+| 7 - Convergência | 3 | 9 | C |
 | 8 - Registro e painel | 3 | 9 | A |
-| **Total** | **17** | **51** | - |
+| **Total** | **18** | **54** | - |
 
-Métricas extraídas por review-task/metrics.sh: 39 concluídas, 5 pendentes,
-7 bloqueadas; 76% de subtarefas. Percentual de backlog não é percentual de
-compatibilidade nem homologação.
+Métricas atuais são calculadas por review-task/metrics.sh após a revisão
+POSIX; a fase 7 foi resolvida pela decisão do mantenedor. Percentual de
+backlog não é percentual de compatibilidade nem homologação.
 
 ## Escopo Coberto
 
@@ -194,6 +194,7 @@ compatibilidade nem homologação.
 | FR-013..014 | Conhecimento e proveniência | 2, 4, 6 |
 | FR-015..016 | Handoff e reconciliação | 3 |
 | FR-017..018 | Suporte evidenciado e conformidade | 1, 6, 7 |
+| FR-020..023 | POSIX, hooks proprietários, source IDs e skills | 7 |
 
 ## Escopo Excluido
 
@@ -206,17 +207,32 @@ compatibilidade nem homologação.
 
 ## FASE 7 - Convergência
 
+Decisão do mantenedor em 2026-10-03: executar redesenho POSIX. A proposta de
+emenda não foi aprovada. Remediação do PR preserva o histórico dos achados.
+
+### 7.3 Reescrita POSIX e regressões da revisão `[C]`
+
+Ref: FR-020..023; autorização: conversa de revisão PR #223, 2026-10-03.
+
+- [x] 7.3.1 Portar todos os scripts/testes Python adicionados, com parser JSON
+  POSIX, transporte persistente, locks e equivalência de ciclo de vida.
+- [x] 7.3.2 Vincular hooks à onda proprietária, implementar source IDs em
+  precedents e completar Gotchas/triggers nas seis skills.
+- [x] 7.3.3 Validar sh/dash, JSON/SQLite, build sem Python, instalação nativa,
+  regressões compartilhadas e governança; atualizar evidências e PR.
+
 Fase de reparação apendada pela skill converge; os achados não são aceite de risco.
 
 ### 7.1 Governança do adaptador `[C]`
 
 Ref: spec.md FR-018; tipo: `contradicts`; severidade: `CRITICAL`
 
-Achado em `adapters/codex/skills/feature-00c/scripts/controller.py`: Python obrigatório contradiz Constitution II; o mesmo conflito alcança hooks/instalador/build.
+Achado histórico: o controlador Python contrariava Constitution II, assim
+como hooks/instalador/build. Resolvido por redesenho POSIX autorizado, sem emenda.
 
-- [!] 7.1.1 Obter decisão real sobre emenda delimitada ou redesenho POSIX, conforme contracts/governance-proposal.md e CHK016.
-- [!] 7.1.2 Aplicar a solução aprovada pelo processo Governance; declarar versão mínima/dependências e impacto do build de release.
-- [!] 7.1.3 Reexecutar Constitution Check e testes aplicáveis, registrando evidência e propagação exigida.
+- [x] 7.1.1 Obter decisão real sobre emenda delimitada ou redesenho POSIX, conforme contracts/governance-proposal.md e CHK016.
+- [x] 7.1.2 Aplicar a solução aprovada pelo processo Governance; declarar versão mínima/dependências e impacto do build de release.
+- [x] 7.1.3 Reexecutar Constitution Check e testes aplicáveis, registrando evidência e propagação exigida.
 
 <!-- converge-key: b8536358aec0 -->
 
@@ -226,9 +242,9 @@ Ref: spec.md FR-018; tipo: `partial`; severidade: `CRITICAL`
 
 Achado em `adapters/codex/skills/feature-00c/SKILL.md`: seção Gotchas ausente; achado agregado nas seis entradas SKILL.md, contrariando Constitution III.
 
-- [ ] 7.2.1 Completar Gotchas nas seis entradas e usar descriptions como condições de trigger, conforme Constitution III.
-- [ ] 7.2.2 Verificar referências, progressive disclosure e empacotamento das seis skills.
-- [ ] 7.2.3 Validar frontmatter, suite do adaptador e instalação temporária após os ajustes documentais das skills.
+- [x] 7.2.1 Completar Gotchas nas seis entradas e usar descriptions como condições de trigger, conforme Constitution III.
+- [x] 7.2.2 Verificar referências, progressive disclosure e empacotamento das seis skills.
+- [x] 7.2.3 Validar frontmatter, suite do adaptador e instalação temporária após os ajustes documentais das skills.
 
 <!-- converge-key: d9d56a6a51d0 -->
 

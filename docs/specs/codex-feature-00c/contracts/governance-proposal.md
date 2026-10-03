@@ -1,50 +1,24 @@
-# Governance Proposal: Adaptadores de executor
+# Decisão de governança: redesenho POSIX
 
-**Status**: proposta para revisão; não aprovada nem aplicada.
-**Origem**: plan.md Constitution Check II; constitution 1.3.0, Governance.
+**Status**: alternativa POSIX autorizada pelo mantenedor em 2026-10-03,
+na conversa de revisão do PR #223. A emenda para usar Python não foi aprovada.
 
-## Problema observado
+A versão anterior introduzia Python obrigatório no adaptador, hooks,
+instalador e build de release, sem exceção na constitution. O mantenedor
+solicitou a reescrita e a resolução dos três achados da revisão.
 
-O adaptador entregue usa Python obrigatório em controllers, hooks e
-instalador. A constitution exige scripts POSIX e não prevê exceção para
-adaptadores de executor. O carve-out transacional não cobre esses componentes.
-A autorização para desenvolver compatibilidade Codex não é registro de
-ratificação deste texto.
+O incremento foi portado para POSIX sh e awk: transporte MCP/JSONL, parser
+JSON, ciclo de vida, hooks, instalação, empacotamento e testes. A biblioteca
+JSON não usa eval nem jq; jq/sqlite3 permanecem nos helpers transacionais
+canônicos existentes. O builder de release deixa de depender de Python.
 
-## Alternativas concretas
+As seis skills recebem triggers explícitos e Gotchas. A regra constitucional
+permanece vigente, sem alteração de versão, carve-out ou Sync Impact Report
+por emenda. A mudança do pacote experimental para 0.6.0 identifica a troca do
+runtime e dos entrypoints públicos de .py para .sh.
 
-1. **Emenda delimitada**: propor uma subseção do Princípio II para adaptadores
-   de executor, mantendo o núcleo compartilhado POSIX. É o caminho recomendado
-   para revisão porque conserva a implementação já testada e a separação
-   canônica; requer aprovação do mantenedor.
-2. **Redesenho POSIX**: portar controladores, hooks e instalador; manter o
-   processo constitucional atual, com nova estimativa e validação de contratos.
-
-## Texto candidato da emenda
-
-> Adaptadores específicos de executor podem usar um runtime adicional quando
-> a implementação fica confinada ao adaptador e aos seus pontos identificados
-> de empacotamento/instalação; a linguagem, versão mínima e dependências são
-> explicitadas na spec/plan; ausência produz diagnóstico imediato; o núcleo
-> compartilhado e seus scripts permanecem POSIX; os fluxos que não selecionam
-> o adaptador continuam funcionando sem a dependência adicional; os testes
-> comprovam esses limites; nenhuma regra canônica da pipeline é duplicada.
-
-## Superfície que deve ser declarada numa proposta de emenda formal
-
-- adapters/codex (runtime e hooks);
-- cli/lib/install-codex.py (instalação selecionada);
-- scripts/build-codex-plugin.py e integração build-release.sh (distribuição);
-- versão mínima Python e contrato de diagnóstico a definir explicitamente;
-- fallback/preservação do caminho Claude e impacto do build de release.
-
-## Critérios para fechar o bloqueio
-
-Decisão real do mantenedor; emenda em spec própria conforme Governance;
-classificação SemVer pelo efeito da regra; Sync Impact Report e propagação
-exigida às features ativas/CLAUDE.md; testes de limites/dependências e novo
-Constitution Check. Não presumir que ampliar a regra seja MINOR: redefinir
-um MUST pode exigir MAJOR conforme a classificação da emenda.
-
-A padronização atual apenas torna a decisão revisável. Não modifica
-constitution.md nem cria consentimento no estado de execução.
+O histórico do conflito permanece em review.md e
+[evidência histórica](../evidence/implementation-history.md).
+A validação da solução atual está em [validation-posix.md](../validation-posix.md).
+Aceite semântico nativo continua condicionado aos testes reais documentados;
+a escolha POSIX não equivale a certificação desses testes.

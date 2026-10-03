@@ -138,6 +138,7 @@ _find_test_files() {
     {
       find "$TESTS_ROOT" -maxdepth 1 -name 'test_*.sh' -type f 2>/dev/null
       find "$TESTS_ROOT/cstk" -maxdepth 1 -name 'test_*.sh' -type f 2>/dev/null
+      find "$TESTS_ROOT/codex" -maxdepth 1 -name 'test_*.sh' -type f 2>/dev/null
     } | sort
   )
   if [ -z "$_filter" ]; then
@@ -156,6 +157,7 @@ _find_test_files() {
 _find_scripts() {
   {
     find "$REPO_ROOT/plugins/cstk/skills" -type f -path '*/scripts/*.sh' 2>/dev/null
+    find "$REPO_ROOT/adapters/codex" -type f -name '*.sh' 2>/dev/null
     find "$REPO_ROOT/cli/lib" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
     find "$REPO_ROOT/plugins/cstk-jira/scripts" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
   } | sort
@@ -167,6 +169,7 @@ _expected_test_for_script() {
   _ets_script=$1
   _ets_base=$(_script_basename "$_ets_script")
   case "$_ets_script" in
+    */adapters/codex/*) printf '%s\n' "$TESTS_ROOT/codex/test_$_ets_base.sh" ;;
     */plugins/cstk/skills/*/scripts/*) printf '%s\n' "$TESTS_ROOT/test_$_ets_base.sh" ;;
     */cli/lib/*)                 printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
     */plugins/cstk-jira/scripts/*) printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
@@ -194,6 +197,7 @@ _test_basename() {
 _is_internal_test() {
   _name=$(basename "$1")
   case "$_name" in
+    test_project.sh|test_package.sh|test_hooks.sh|test_interruptions.sh|test_knowledge.sh) return 0 ;;
     test_smoke.sh|test_harness.sh) return 0 ;;
     test_run-modes.sh)
       # Exercita o proprio runner (modos --fast/--slow/--stats) — nao mapeia
@@ -732,6 +736,9 @@ mode_stats() {
 _is_covered_by_named_test() {
   _icbnt_base=$(_script_basename "$1")
   case "$_icbnt_base" in
+    _session|_entry|_tools) _icbnt_cover="$TESTS_ROOT/codex/test_controller.sh" ;;
+    _common|pretooluse|posttooluse) _icbnt_cover="$TESTS_ROOT/codex/test_hooks.sh" ;;
+    _native|native-status|native-mcp) _icbnt_cover="$TESTS_ROOT/codex/test_native-mcp.sh" ;;
     # _log.sh (helper de log/redacao, sourced) -> redacao testada aqui.
     _log)       _icbnt_cover="$TESTS_ROOT/test_runtime-log-redaction.sh" ;;
     # _state-dir.sh (resolucao de state dir, sourced) -> parametrizacao testada aqui.

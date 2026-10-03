@@ -209,4 +209,28 @@ feature na API do painel; alterar o estado/WAL e verificar nova ingestão.
 
 ## Delta Requirements
 
+### Revisão solicitada pelo mantenedor — 2026-10-03
+
+Fonte: conversa de revisão do PR #223. O mantenedor escolheu redesenho POSIX,
+sem emenda constitucional e sem preservar Python no adaptador ou em seus testes.
+
+- **FR-020**: Adaptador, transporte MCP/JSONL, hooks, instalador, builder e testes
+  adicionados nesta feature MUST usar POSIX sh e ferramentas POSIX. Parsing JSON
+  MUST preservar Unicode/escaping e rejeitar documentos ou argumentos ambíguos.
+  jq/sqlite3 continuam confinados às primitivas transacionais já autorizadas;
+  build e instalação MUST funcionar sem Python.
+- **FR-021**: Hooks MUST identificar a onda Codex proprietária pelo vínculo de
+  lock validado, sem selecionar outra execução por ordem alfabética ou runtime.
+  Ondas Codex concorrentes no mesmo projeto MUST ser recusadas enquanto o host
+  não fornecer identidade de sessão verificável aos dois transportes.
+- **FR-022**: recall --precedents MUST aceitar --include-source-ids e devolver
+  a mesma chave composta de origem que identifica o registro recuperado.
+- **FR-023**: As seis skills MUST conter Gotchas concretos e triggers canônicos.
+  Remediação MUST manter os contratos de estado, evidência, consentimento,
+  handoff, aborto, recuperação e preservação de personalizações existentes.
+
+Aceite da reescrita: testes em sh/dash, fixtures JSON/SQLite, instalação nativa
+temporária, build sem Python, proteção de múltiplas execuções e nova revisão
+constitucional. Descoberta nativa não substitui homologação em turno de modelo.
+
 **Skip**: integração Codex nova, sem capability própria no corpus vigente; não redefine requisitos ativos de commits, guardas ou roadmap em `docs/specs/current/` — Codex, 2026-10-02.

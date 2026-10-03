@@ -1,5 +1,8 @@
 # Histórico da implementação Codex — antes da padronização
 
+> Histórico da implementação anterior à reescrita POSIX de 2026-10-03.
+> Estado atual e novas evidências em [validation-posix.md](../validation-posix.md).
+
 Snapshot dos documentos anteriores em 2026-10-02. Não é o backlog vigente.
 As afirmações históricas sobre hooks somente pelo manifest foram corrigidas na seção 0.5.0 e não constituem aceite atual.
 
@@ -357,8 +360,8 @@ cobertura em um turno de modelo.
 ## Definições de hooks disponíveis para revisão
 
 Os dois hooks foram encontrados habilitados e untrusted. Revise
-[PreToolUse](../../../../adapters/codex/hooks/pretooluse.py),
-[PostToolUse](../../../../adapters/codex/hooks/posttooluse.py) e
+[PreToolUse](../../../../adapters/codex/hooks/pretooluse.sh),
+[PostToolUse](../../../../adapters/codex/hooks/posttooluse.sh) e
 [a configuração](../../../../adapters/codex/hooks/hooks.json).
 
 PreToolUse reutiliza a política Bash, confina apply_patch e permite apenas

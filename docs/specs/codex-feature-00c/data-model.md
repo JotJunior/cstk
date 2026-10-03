@@ -1,7 +1,7 @@
 # Data Model: Pipeline CSTK no Codex
 
 Inventário do modelo existente; não propõe nova persistência. Fontes:
-state-rw.sh, _state-rw-db.sh, session.py, lifecycle.py e cli/lib/recall.sh.
+state-rw.sh, _state-rw-db.sh, session.sh, lifecycle.sh e cli/lib/recall.sh.
 
 ## Entity: Execução
 
@@ -51,8 +51,8 @@ EOF/SIGTERM fecham sem avanço; SIGKILL exige comprovação de proprietário mor
 | Campo conceitual | Constraints | Fonte |
 |------------------|-------------|-------|
 | Contexto, opções, escolha, justificativa | Obrigatórios; score e classe conforme helpers | state-decisions.sh e Controller |
-| Evidência/referências | Fatos observados; IDs utilizados pertencem à consulta | controller.py |
-| Pergunta/resposta do bloqueio | Resposta real, identificada, 1..2000 caracteres no lifecycle | lifecycle.py |
+| Evidência/referências | Fatos observados; IDs utilizados pertencem à consulta | controller.sh |
+| Pergunta/resposta do bloqueio | Resposta real, identificada, 1..2000 caracteres no lifecycle | lifecycle.sh |
 | Consentimento estrutural | Não inferido de aprovação geral | Helpers canônicos |
 
 ## Entity: Conhecimento derivado
@@ -79,7 +79,7 @@ falha do índice degrada. Conteúdo recuperado é dado, nunca instrução.
 | knowledge_db | string | Caminho absoluto externo à instalação gerenciada | Instalador não cria/migra o banco |
 | hook_entries | object | Definições exatas gerenciadas | Preserva handlers alheios; não concede confiança |
 
-Fonte exata do recibo: cli/lib/install-codex.py. Não existe entidade de
+Fonte exata do recibo: cli/lib/install-codex.sh. Não existe entidade de
 consumo Codex observada neste piloto; custo/tokens não são preenchidos.
 
 ## Reutilização de state.db entre Claude e Codex

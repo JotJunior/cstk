@@ -1,11 +1,11 @@
 ---
 name: feature-00c
-description: Conduzir uma feature pela pipeline SDD compartilhada do cstk no Codex, com ondas supervisionadas, decisões auditáveis e retomada. Use quando o usuário pedir feature-00c; requer briefing e constitution existentes.
+description: Use quando o usuário solicitar explicitamente feature-00c no Codex para conduzir a execução da feature pela pipeline CSTK compartilhada.
 ---
 
 # Feature-00C no Codex
 
-Leia o contexto usando `python3 scripts/context.py --project <raiz>
+Leia o contexto usando `sh scripts/context.sh --project <raiz>
 --short-name <nome>`, relativo a esta skill. Os scripts resolvem o runtime
 versionado pelo próprio caminho, no checkout ou no pacote. O contexto não
 certifica confiança dos hooks. `autonomous_ready=false` permite condução
@@ -13,18 +13,18 @@ supervisionada; não declara execução autônoma validada.
 
 ## Preparação
 
-Crie a execução autorizada com `scripts/session.py bootstrap --project <raiz>
+Crie a execução autorizada com `scripts/session.sh bootstrap --project <raiz>
 --short-name <nome> --description <descrição> --canonical-project <identidade>`.
 Briefing e constitution devem existir; constitution exige `**Version**: X.Y.Z`.
 `--observed-model` só recebe um ID observado; omitido grava null.
 Não reinicialize estado existente. Use a entrada feature-00c-resume para
 continuar uma execução e feature-00c-abort para encerrá-la. Leia
 references/lifecycle.md para os contratos de resposta, recuperação, handoff
-e reconciliação. session.py resume permanece uma validação sem abrir onda.
+e reconciliação. session.sh resume permanece uma validação sem abrir onda.
 
 Antes da primeira onda, pergunte ao operador se deseja commits automáticos
 por etapa. Não transforme autorização geral para desenvolver em opt-in de
-commit. Registre a resposta recebida com `scripts/optins.py --project <raiz>
+commit. Registre a resposta recebida com `scripts/optins.sh --project <raiz>
 --short-name <nome> --atomic-commit true|false --channel structured|prose
 --response-source <referência à resposta real>`. A guarda I-2 permanece ativa.
 O valor false também é uma resposta explícita. Respostas resolvidas não são
@@ -54,7 +54,7 @@ turnos de modelo. Não marque `autonomous_ready=true` por esses testes.
 
 Se o MCP estiver indisponível, use o transporte JSONL abaixo:
 
-Inicie `scripts/controller.py serve --project <raiz> --short-name <nome>`
+Inicie `scripts/controller.sh serve --project <raiz> --short-name <nome>`
 por transporte stdin/stdout JSONL que mantenha o processo vivo. O controlador
 possui o lock durante a onda inteira; não lance outro modelo nem scheduler.
 Leia o primeiro JSON: ele despacha a etapa atual, paths da skill e referência,
@@ -79,7 +79,7 @@ Envie ações JSONL ao controlador (nomes em inglês são contrato dos scripts):
   ticks, o controlador recusa contagem manual para evitar duplicação.
 - `block`: `context`, `question`, `rationale`, `subject` opcional. Registra
   decisão/bloqueio e fecha a onda sem avançar. Respostas são do operador;
-  aplique-as por cstk_resume ou lifecycle.py resume, nunca simule resposta humana.
+  aplique-as por cstk_resume ou lifecycle.sh resume, nunca simule resposta humana.
 - `pause`: `instruction` concreta de retomada; fecha sem avançar.
 - `complete`: `evidence_paths` (arquivos relativos ao projeto), `rationale`
   e `used_sources` opcional (somente IDs devolvidos nesta consulta). Exemplo:
@@ -105,17 +105,24 @@ própria. Não misture alteração de estado/onda com trabalho de especialistas.
 ## Interrupção e diagnóstico nativo
 
 EOF, SIGTERM e exceções fecham a onda sem avançar e liberam o lock. Após
-SIGKILL, use `controller.py recover` deliberadamente. Se houver lock órfão,
+SIGKILL, use `controller.sh recover` deliberadamente. Se houver lock órfão,
 `--abandoned-owner-pid <PID observado>` é a recuperação explícita: exige PID
 igual ao dono registrado e comprovadamente morto; dono vivo/desconhecido é
 recusado. Não use essa opção automaticamente para contornar contenção.
 Uma origem Claude ou desconhecida exige cstk_handoff explícito, conforme
 references/lifecycle.md; compartilhamento de conhecimento não transfere execução.
 
-`native_status.py --project <raiz>` consulta o app-server real sem executar
+`native-status.sh --project <raiz>` consulta o app-server real sem executar
 modelo nem conceder confiança. Os hooks precisam de revisão em `/hooks`;
 instalação não implica confiança. Mesmo confiáveis, são guardrails combinados
 com sandbox: ferramentas hospedadas, write_stdin e erros/timeouts têm limites
 conhecidos. Não certifique cobertura nativa por testes de payload. Leia a
 matriz e as pendências em `source_root/docs/specs/codex-feature-00c`,
 incluídas também no pacote.
+
+## Gotchas
+
+- Briefing e constitution versionada precisam existir; alteração de hash exige reconciliação autorizada.
+- Opt-in false também exige resposta real; autorização geral não substitui commit opt-in.
+- A onda mantém o escritor e o vínculo dos hooks até fechar; outra onda Codex no projeto é recusada.
+- EOF/sinais fecham sem avanço; SIGKILL exige recuperação explícita do PID observado.
