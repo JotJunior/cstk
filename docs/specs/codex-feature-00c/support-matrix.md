@@ -43,9 +43,11 @@ e [pacotes de plugins](https://developers.openai.com/plugins/build/plugins).
 ## Governança e estado compartilhado
 
 A especificação vigente é [spec.md](spec.md); o backlog canônico está em
-[tasks.md](tasks.md). Constitution Check II/III permanece reprovado, com
-reparação na FASE 7 e achados em [review.md](review.md). A normalização dos
-documentos não certifica o uso semântico nem resolve esses gates.
+[tasks.md](tasks.md). Constitution Check II/III foi reprovado na revisão de
+2026-10-02 (D1/D2 em [review.md](review.md)) e passou a PASS após o redesenho
+POSIX de 2026-10-03, conforme [plan.md](plan.md) §Constitution Check. O
+histórico de I permanece como FAIL documental. A normalização dos documentos
+não certifica o uso semântico.
 
 Codex reutiliza o mesmo state.db do projeto, sem cópia em .codex; o layout
 implementado é `.claude/feature-00c-state/<short_name>/state.db`. Origem

@@ -21,7 +21,10 @@ reconciliação explícita.
 Um projeto novo não precisa de briefing nem constitution prévios. O bootstrap
 começa em briefing. Antes da primeira onda, obtenha respostas reais do operador
 para `atomic_commit`, `roadmap_mode` e `delivery_tier` e registre cada resposta
-com `optins.collect(..., field=...)`. Ausência de resposta não autoriza assumir
+com `scripts/optins.sh --project <raiz> --short-name <slug> --kind project
+--field <campo> --value <valor> --channel structured|prose --response-source
+<referência à resposta real>` (ou `cstk_optin` com os mesmos campos no MCP).
+Ausência de resposta não autoriza assumir
 valores. Os helpers canônicos persistem essas escolhas; o gate I-2 exige as
 três respostas. Para delivery_tier use local, internal-network, cloud-internal
 ou cloud-public. Uma escolha explícita inicial permite ajustar o valor restritivo
