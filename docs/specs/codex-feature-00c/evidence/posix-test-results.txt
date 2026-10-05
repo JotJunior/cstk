@@ -1,0 +1,51 @@
+PR #223 — POSIX validation, 2026-10-03
+
+Log: /private/tmp/cstk-posix-codex-tests-final.log
+d1e09e7a532f79f232b205a6a890da2207d56f650c892cad632833bc04d94377  /private/tmp/cstk-posix-codex-tests-final.log
+# PASS: 81  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 513s
+
+Log: /private/tmp/cstk-posix-dash-tests.log
+2bbb5385f1d5d2336b264529c48c082b71c2a95e7c15082363845322e0406695  /private/tmp/cstk-posix-dash-tests.log
+
+Log: /private/tmp/cstk-posix-recall-tests-final.log
+b2a02b5fd9538d41f1029453785cf4f7eb38f87fc58d91dd6612fda8edca6cb4  /private/tmp/cstk-posix-recall-tests-final.log
+# PASS: 195  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 300s
+
+Log: /private/tmp/cstk-posix-state-rw-tests.log
+15d7e7db56a6dcfa89dd30a67fe468984586cdccfcffceb1d1208fd5881eb850  /private/tmp/cstk-posix-state-rw-tests.log
+# PASS: 105  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 20s
+
+Log: /private/tmp/cstk-posix-build-tests-final.log
+47fb630389936f8dadb5967b4306633c3c03b6fb3bdcf595c50352e1cdffaa05  /private/tmp/cstk-posix-build-tests-final.log
+# PASS: 11  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 12s
+
+Log: /private/tmp/cstk-posix-install-tests-final.log
+b4e8cf719e8e8e2206f695b37376b8f944f6957328acf4b351321f2024705ecb  /private/tmp/cstk-posix-install-tests-final.log
+# PASS: 37  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 38s
+
+Log: /private/tmp/cstk-posix-project-tests-final.log
+c8c6b0763b1b3dff6f9c68a560a7917eda91bf239a92c320da733f6ffd402b7c  /private/tmp/cstk-posix-project-tests-final.log
+
+Log: /private/tmp/cstk-posix-panel-tests.log
+ec965500de2f8616a03d92f5dc1a229e90700bff8469bce0f75b6e341b39e56c  /private/tmp/cstk-posix-panel-tests.log
+ Test Files  2 passed (2)
+      Tests  54 passed (54)
+
+Log: /private/tmp/cstk-posix-full-tests.log
+dd434be463a9665da34eeecd10db476478217f721b4083fb8156b93f7ed372e1  /private/tmp/cstk-posix-full-tests.log
+# PASS: 4545  FAIL: 3  ERROR: 0  ORPHANS: 0  TIME: 1879s
+
+New entrypoints: sh/dash syntax and ShellCheck warning level passed.
+Coverage: zero orphans.
+Full suite: original three failures and successful group reruns documented separately.
+Native model turn: not executed; hook trust: not granted.
+
+Installer after legacy hash compatibility fix: six scenarios passed.
+081c74e87265707c9daafeac1643ecd3382cc10b4696ac782346af51860e536e  /private/tmp/cstk-posix-installer-final-hash.log
+
+Native upgrade from Python 0.5 to POSIX 0.6, reinstall, MCP/hooks probes:
+5836ad7b2a35d4fcf4ea561eab6b26fff2bbc9af7ab849dd8cbaf357b5cd3058  /private/tmp/cstk-posix-upgrade-before.json
+4f3c31080348a5675100fbaa99bb8ba46e535d57f59ce150fc891f739e53a815  /private/tmp/cstk-posix-upgrade-after.json
+4f3c31080348a5675100fbaa99bb8ba46e535d57f59ce150fc891f739e53a815  /private/tmp/cstk-posix-upgrade-reinstall.json
+2b2a7693baa314bd433af6e990bad865399b1effb5002bb00d1bdcbedc1231f2  /private/tmp/cstk-posix-upgrade-mcp.json
+779d28251fa05012c47a262b6a1a01d57d9871f787b4e3417ea98e5ea08e7e19  /private/tmp/cstk-posix-upgrade-hooks.json

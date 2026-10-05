@@ -302,6 +302,7 @@ After that, typical commands:
 ```bash
 cstk --version                       # confirms installation
 cstk install                         # installs the 'sdd' profile into ~/.claude/skills/
+cstk install --cli=codex             # installs Codex workflows, MCP and hooks
 cstk install --profile all           # installs ALL 30 skills (includes language-go)
 cstk install advisor bugfix          # cherry-pick by name
 cstk update                          # applies new releases preserving local edits
@@ -311,7 +312,17 @@ cstk doctor                          # detects drift between manifest and disk
 cstk self-update                     # updates the cstk binary itself + cli/lib
 ```
 
-> **`install`/`update` touch only the catalog** (skills/commands/agents in
+For Codex, `cstk install --cli=codex` installs six native workflows:
+`feature-00c`, `feature-00c-resume`, `feature-00c-abort`, and the three
+equivalent `agente-00c` workflows. It configures the shared knowledge database
+and preserves Claude installations. Use `--knowledge-db /path/knowledge.db`
+to select the shared index, or `--dry-run` to inspect the plan. After installing,
+start a new Codex session and review the plugin hooks in `/hooks`.
+See the [Codex adapter](adapters/codex/README.md) for support and validation.
+This command requires a CSTK release containing the adapter; from this
+checkout, run `sh cli/cstk install --cli=codex`.
+
+> **Claude `install`/`update` touch only the catalog** (skills/commands/agents in
 > `~/.claude/`); the runtime (`cli/lib/*.sh` + binary) updates via
 > **`cstk self-update`**.
 

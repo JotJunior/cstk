@@ -67,6 +67,22 @@ function makeValidDb(path: string): void {
 // ─────────────────────────────────────────────────────────
 // Motivo 1: db-missing
 // ─────────────────────────────────────────────────────────
+describe('openDb — Codex schema 16', () => {
+  it('accepts additive provenance with default versions while preserving explicit restrictions', () => {
+    const path = tmpFile();
+    makeValidDb(path);
+    const db = new Database(path);
+    db.exec("UPDATE schema_meta SET value='16' WHERE key='schema_version'; ALTER TABLE executions ADD COLUMN execution_provenance TEXT;");
+    db.close();
+    const result = openDb(path);
+    expect(result.ok).toBe(true);
+    if (result.ok) result.db.close();
+    const restricted = openDb(path, ['15']);
+    expect(restricted.ok).toBe(false);
+    if (!restricted.ok) expect(restricted.reason).toBe('schema-mismatch');
+  });
+});
+
 describe('openDb — db-missing', () => {
   it('retorna { ok: false, reason: um dos motivos de falha } para path inexistente', () => {
     // better-sqlite3 com fileMustExist=false pode criar arquivo vazio

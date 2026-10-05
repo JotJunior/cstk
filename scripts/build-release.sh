@@ -157,6 +157,12 @@ if [ -f "$REPO_ROOT/cli/lib/README.md" ]; then
   cp -- "$REPO_ROOT/cli/lib/README.md" "$STAGE_ROOT/cli/lib/"
 fi
 
+# Self-contained Codex assets are optional for legacy fixture trees and are
+# distributed in real releases for cstk install --cli=codex.
+if [ -f "$REPO_ROOT/adapters/codex/plugin.json" ]; then
+  sh "$REPO_ROOT/scripts/build-codex-plugin.sh" --out "$STAGE_ROOT/catalog/codex" >/dev/null
+fi
+
 # ==== 2. catalog/skills/ (mirror de plugins/cstk/skills/) ====
 mkdir -p -- "$STAGE_ROOT/catalog/skills"
 for _skdir in "$REPO_ROOT/plugins/cstk/skills/"*/; do

@@ -5,6 +5,24 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.14.0] - 2026-10-05
+
+Primeira release do adaptador Codex: os seis workflows supervisionados 00c
+(agente-00c/feature-00c, resume e abort) passam a rodar no Codex CLI sobre a
+MESMA pipeline e o MESMO estado canonico do cstk, com instalacao nativa via
+`cstk install --cli=codex`. Piloto supervisionado/experimental
+(`autonomous_ready=false`); runtime, instalador e testes em POSIX sh/awk.
+
+### Added
+
+- Adaptador Codex com as seis entradas feature-00c/agente-00c, resume e abort,
+  controlador MCP de ondas, decisões e respostas humanas auditáveis,
+  transferência explícita entre runtimes e reconciliação de governança.
+- `cstk install --cli=codex`, com pacote nativo, MCP, hooks e configuração do
+  knowledge.db compartilhado; dry-run, reinstalação com proteção de alterações
+  locais e distribuição do adaptador em releases. Instalação Claude permanece
+  como default. Confiança dos hooks exige revisão do operador no Codex.
+
 ## [10.13.1] - 2026-10-01
 
 ### Fixed
@@ -8640,6 +8658,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.14.0]: https://github.com/JotJunior/cstk/releases/tag/v10.14.0
 [10.13.1]: https://github.com/JotJunior/cstk/releases/tag/v10.13.1
 [10.13.0]: https://github.com/JotJunior/cstk/releases/tag/v10.13.0
 [10.12.0]: https://github.com/JotJunior/cstk/releases/tag/v10.12.0

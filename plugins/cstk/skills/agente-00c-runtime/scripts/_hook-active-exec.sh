@@ -165,6 +165,36 @@ hook_active_exec() {
   fi
   _hae_busy="${HAE_BUSY_TIMEOUT_MS:-200}"
 
+  # Native Codex guard supplies an explicit owned-wave binding. Validate its
+  # project, live owner and canonical layout before overriding legacy search.
+  # Default callers keep the existing G1 precedence. This never trusts a tool
+  # argument or follows a binding/lock symlink.
+  if [ -n "${CSTK_CODEX_HOOK_STATE_DIR:-}" ]; then
+    _hae_bound=$CSTK_CODEX_HOOK_STATE_DIR
+    _hae_binding="$_hae_cwd/.claude/.cstk-codex-wave-lock/owner.json"
+    [ ! -L "$_hae_cwd/.claude" ] && [ ! -L "${_hae_binding%/owner.json}" ] && [ ! -L "$_hae_binding" ] \
+      && [ ! -L "$_hae_bound" ] && [ ! -L "$_hae_bound/.lock" ] && [ ! -L "$_hae_bound/.lock/owner" ] || return 2
+    case "$_hae_bound" in
+      "$_hae_cwd/.claude/agente-00c-state") _hae_bound_kind=agente-00c ;;
+      "$_hae_cwd/.claude/feature-00c-state/"*)
+        _hae_bound_short=${_hae_bound#"$_hae_cwd/.claude/feature-00c-state/"}
+        case "$_hae_bound_short" in ''|*[!a-z0-9-]*) return 2 ;; esac
+        _hae_bound_kind=feature-00c ;;
+      *) return 2 ;;
+    esac
+    command -v jq >/dev/null 2>&1 || return 2
+    _hae_bound_pid=$(jq -er --arg project "$_hae_cwd" --arg state "$_hae_bound" \
+      'select(.project == $project and .state_dir == $state and (.pid | type) == "number") | .pid' "$_hae_binding" 2>/dev/null) || return 2
+    case "$_hae_bound_pid" in ''|*[!0-9]*|0) return 2 ;; esac
+    kill -0 "$_hae_bound_pid" 2>/dev/null || return 2
+    _hae_bound_owner=$(sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' "$_hae_bound/.lock/owner" 2>/dev/null) || return 2
+    [ "$_hae_bound_owner" = "$_hae_bound_pid" ] || return 2
+    _hae_resolve_dir_status "$_hae_bound" "$_hae_busy"
+    [ "$_HAE_WORD" = active ] || return 2
+    printf '%s\t%s\t%s\n' "$_hae_bound_kind" "$_hae_bound" "$_HAE_BACKEND"
+    return 0
+  fi
+
   _hae_had_indet=0
   _hae_probed=0
 

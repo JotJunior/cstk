@@ -1,0 +1,67 @@
+Verification for PR publication — 2026-10-02
+Baseline: 2196abb57bbad8d189a9ea9bba34f45c6d87bbca
+Runtime sources unchanged during these checks.
+Native discovery/semantic pilot/hook acceptance are not certified by this run.
+
+/tmp/cstk-pr-codex-tests.log
+SHA-256: 950ba0e5722b3d6ec98bc1ca8bd938581a00d4f3aa4130a2edc811e60104fe15
+test_installer_mcp_env_reaches_native_server (test_native_mcp.NativeMcpTests.test_installer_mcp_env_reaches_native_server) ... skipped 'requires an isolated installed plugin'
+test_plugin_connection_scope_i2_and_persistent_wave (test_native_mcp.NativeMcpTests.test_plugin_connection_scope_i2_and_persistent_wave) ... skipped 'requires an isolated installed plugin'
+Ran 81 tests in 370.443s
+OK (skipped=2)
+
+/tmp/cstk-pr-shell-tests.log
+SHA-256: b3e8f03212b6fed278b2c7491dc0ad18ab4c64877b1cfd8f88ce67b85e99d43d
+not ok 5 - test_telemetry-env.sh :: scenario_exec_liga_as_quatro_variaveis
+not ok 6 - test_telemetry-env.sh :: scenario_exec_porta_e_endpoint_sao_coerentes
+not ok 10 - test_telemetry-env.sh :: scenario_free_port_retorna_inteiro
+not ok 3 - test_e2e_roadmap_wave.sh :: scenario_tmux_pane_real_e_kill_switch
+not ok 24 - test_otel-usage.sh :: scenario_preflight_ok_dono_ancestral
+not ok 9 - test_parallel-launch.sh :: scenario_emit_composicao_degradada_sem_tmux
+not ok 22 - test_parallel-launch.sh :: scenario_emit_nao_herda_endpoint_da_coordenadora
+not ok 23 - test_parallel-launch.sh :: scenario_emit_porta_distinta_por_filha
+not ok 24 - test_parallel-launch.sh :: scenario_emit_prefixa_telemetria_na_composicao
+# PASS: 4462  FAIL: 9  ERROR: 0  ORPHANS: 0  TIME: 1205s
+
+/tmp/cstk-pr-panel-tests.log
+SHA-256: 0602389b58e1e0571ddb6580335bf39c773bfd8d563af18c66b94e1bb6ad9f50
+Error: listen EPERM: operation not permitted 127.0.0.1
+ Test Files  1 failed | 39 passed | 4 skipped (44)
+      Tests  495 passed | 48 skipped (544)
+   Duration  3.03s (transform 1.24s, setup 13ms, collect 3.67s, tests 7.17s, environment 13ms, prepare 2.74s)
+
+/tmp/cstk-pr-panel-tests-external.log
+SHA-256: d6715c5dcab5b44bb95ef05182d8d336c5c9fa8ad56136238c2fa43a6af698d6
+ Test Files  40 passed | 4 skipped (44)
+      Tests  496 passed | 48 skipped (544)
+   Duration  3.01s (transform 1.14s, setup 4ms, collect 3.19s, tests 7.26s, environment 4ms, prepare 2.66s)
+
+/tmp/cstk-pr-panel-build.log
+SHA-256: cd2701e98e66fd977f492df1766265f757c58f13e171f4cc7933448e25e05d8c
+
+> @cstk-panel/server@10.13.1 build
+> tsc --project tsconfig.json
+
+
+/tmp/cstk-pr-panel-typecheck.log
+SHA-256: 458762c426dcedb5cedad6607a7ddad40e7dcfb55718b61bee10aa3ee6fb19eb
+
+> @cstk-panel/server@10.13.1 typecheck
+> tsc --noEmit
+
+
+/tmp/cstk-pr-telemetry-env-external.log
+SHA-256: 1141880daec661dcab85c73f6bd70330dfea95a85f143a495d735f5050244190
+# PASS: 13  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 3s
+
+/tmp/cstk-pr-roadmap-external.log
+SHA-256: 158d4962bc923e5a5011f9c0fddf04304b16c40d226e438b9b95debb23194221
+# PASS: 3  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 6s
+
+/tmp/cstk-pr-otel-external.log
+SHA-256: b1396058ea2b98ebe492e1dff60630c2209f345b6febb189dbd53652c35dbdee
+# PASS: 38  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 7s
+
+/tmp/cstk-pr-parallel-external.log
+SHA-256: 5688d9c9afdb79eae0c4fc54afe8dee63381a4438b6546f9e82c3271a275e1ea
+# PASS: 96  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 12s

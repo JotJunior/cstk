@@ -1,0 +1,33 @@
+Testes históricos da implementação; não executados novamente na padronização documental.
+
+Source: /tmp/cstk-codex-v05-full-tests.log
+SHA-256: ff5592a2ffab732ca2b3ec4751655f0e320923ae3b9be9bc91d6ca9846f64ba5
+
+----------------------------------------------------------------------
+Ran 74 tests in 358.662s
+
+OK (skipped=1)
+
+Source: /tmp/cstk-codex-v05-lifecycle-final.log
+SHA-256: d97c283dbb3551215b15053e08e5a76a7e0f7163e2eda6385e52688768b6188a
+
+----------------------------------------------------------------------
+Ran 18 tests in 141.313s
+
+OK
+
+Source: /tmp/cstk-codex-v05-installer-hooks-final.log
+SHA-256: 0223fcbd93fbe46f18bc24ad2025f13e451b2444e82f942895b494668a391b48
+
+----------------------------------------------------------------------
+Ran 6 tests in 6.449s
+
+OK
+
+Source: /tmp/cstk-codex-v05-final-native-r2.log
+SHA-256: 658bb89f7c9addaf3ba633d8136a059f860a98b1cdcb49baa7f570f384091f9c
+
+----------------------------------------------------------------------
+Ran 2 tests in 28.270s
+
+OK
