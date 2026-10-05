@@ -23,6 +23,13 @@ MESMA pipeline e o MESMO estado canonico do cstk, com instalacao nativa via
   locais e distribuição do adaptador em releases. Instalação Claude permanece
   como default. Confiança dos hooks exige revisão do operador no Codex.
 
+### Changed
+
+- **`release.yml`: `timeout-minutes` do job de release de 15 para 45.** A suite
+  cresceu de ~3160 para 4554 cenarios com `tests/codex/` e passou a estourar
+  o teto antigo no CI (primeira run da tag v10.14.0 cancelada no step da
+  suite aos 15 min); a tag foi recriada sobre este commit.
+
 ## [10.13.1] - 2026-10-01
 
 ### Fixed
