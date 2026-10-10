@@ -5,6 +5,34 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.14.1] - 2026-10-10
+
+Reposicionamento das superficies publicas: o cstk deixa de se apresentar como
+"Claude Code Toolkit / conjunto de ferramentas de produtividade" (descricao da
+camada de skills, que escondia o orquestrador, o runtime de estado, as ondas,
+a decisao com autoridade limitada e o custo medido) e passa a usar uma unica
+frase em EN/pt-BR: "Engenharia de software autonoma com trilha de auditoria.
+Entra spec, sai codigo verificado: estado persistente, decisoes com autoridade
+limitada, execucao em ondas, custo medido. Roda sobre o Claude Code e o Codex
+CLI." Sem mudanca funcional (PR #226).
+
+### Changed
+
+- **README.md / README.pt-BR.md.** H1 vira `cstk`; frase de posicionamento
+  entra antes dos badges e da historia da formiga; paragrafo de abertura
+  substituido pela lista do que vem no CLI (pipeline SDD em skills,
+  orquestradores `/agente-00c` e `/feature-00c`, runtime de estado com
+  retomada/aborto, memoria entre features, roteamento por onda, hooks de
+  guarda, painel local). Rotulo **Experimental** da trilha avancada trocado
+  por nota de maturidade (em uso de producao pelo mantenedor, interface pode
+  mudar entre versoes major).
+- **docs-site/index.md.** Titulo, H1 e intro alinhados a mesma frase (pt-BR).
+- **Manifestos de plugin.** `.claude-plugin/marketplace.json` e
+  `plugins/cstk/.claude-plugin/plugin.json` com descricoes alinhadas; keywords
+  ganham `autonomous-agents`, `agent-orchestration` e `audit-trail`.
+- **Versoes em lockstep.** Manifestos de plugin (MP-5) e workspace do painel
+  (WL-5) sobem para 10.14.1.
+
 ## [10.14.0] - 2026-10-05
 
 Primeira release do adaptador Codex: os seis workflows supervisionados 00c
@@ -8665,6 +8693,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.14.1]: https://github.com/JotJunior/cstk/releases/tag/v10.14.1
 [10.14.0]: https://github.com/JotJunior/cstk/releases/tag/v10.14.0
 [10.13.1]: https://github.com/JotJunior/cstk/releases/tag/v10.13.1
 [10.13.0]: https://github.com/JotJunior/cstk/releases/tag/v10.13.0
