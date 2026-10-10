@@ -1,6 +1,11 @@
 [English](./README.md) · **Português (pt-BR)**
 
-# Claude Code Toolkit
+# cstk
+
+**Engenharia de software autônoma com trilha de auditoria.** Entra spec, sai
+código verificado: estado persistente, decisões com autoridade limitada,
+execução em ondas, custo medido. Roda sobre o
+[Claude Code](https://claude.ai/code) e sobre o Codex CLI.
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/cstk?label=latest%20release&color=blue)](https://github.com/JotJunior/cstk/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -40,14 +45,19 @@ resposta, sem hesitar:
 
 É por isso que a formiga vive no cabeçalho do CLI `cstk`.
 
-Conjunto de ferramentas para aumentar a produtividade no desenvolvimento do dia a dia com
-o [Claude Code](https://claude.ai/code): **skills** e **hooks** para
-documentação, desenvolvimento, segurança e qualidade de código.
+O que vem no CLI `cstk`: um pipeline de Spec-Driven Development (briefing →
+review-features) em **skills** que também funcionam uma de cada vez;
+**orquestradores autônomos** (`/agente-00c`, `/feature-00c`) que rodam esse
+pipeline de ponta a ponta e só pausam em bloqueio real; um **runtime de estado
+persistente** com retomada/aborto formais; **memória entre features**;
+**roteamento de modelo por onda**; **hooks de guarda enforced**; e um
+**painel local de métricas** onde todo número é medido, nunca estimado.
 
 > **Quem mantém / para quem é.** Mantido por uma pessoa, otimizado primeiro
-> para o fluxo do mantenedor (microserviços em Go). As partes concretas —
-> skills, hooks, CLI — são de uso geral; a **trilha avançada** (orquestrador
-> autônomo) é mais experimental.
+> para o fluxo do mantenedor (microserviços em Go). Skills, hooks e CLI são de
+> uso geral. O orquestrador autônomo está em uso de produção pelo mantenedor
+> (as features deste próprio repositório são construídas com ele); a interface
+> ainda pode mudar entre versões major.
 
 > **Versão atual:** [release mais recente](https://github.com/JotJunior/cstk/releases/latest)
 > · histórico no [CHANGELOG.md](./CHANGELOG.md). Instalação recomendada via
@@ -245,8 +255,9 @@ Detalhes, diagrama do fluxo e atalhos em
 
 ## Trilha avançada (orquestrador autônomo)
 
-> **Experimental** — funcional e em uso pelo mantenedor, sem garantias de
-> suporte para adoção externa.
+> **Maturidade** — em uso de produção pelo mantenedor (as features deste
+> próprio repositório são construídas com ele). Sem garantias de suporte para
+> adoção externa; a interface pode mudar entre versões major.
 
 O `/agente-00c` conduz a pipeline SDD inteira sobre um projeto-alvo, pausando
 apenas em bloqueios reais; o `/feature-00c` faz o mesmo para UMA feature em

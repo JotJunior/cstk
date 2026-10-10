@@ -3,11 +3,11 @@
   "owner": {
     "name": "JotJunior"
   },
-  "description": "Spec-Driven Development toolkit for Claude Code",
+  "description": "Autonomous software engineering with an audit trail for Claude Code: SDD pipeline, 00c orchestrators with persistent state, bounded decisions and measured cost",
   "plugins": [
     {
       "name": "cstk",
-      "description": "Full SDD pipeline (briefing -> review-features), autonomous 00c orchestrators and enforced guard hooks",
+      "description": "Full SDD pipeline (briefing -> review-features), autonomous 00c orchestrators with persistent state, bounded decisions and measured cost, and enforced guard hooks",
       "source": "./plugins/cstk",
       "version": "10.14.0",
       "category": "development"

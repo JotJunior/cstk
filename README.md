@@ -1,6 +1,10 @@
 **English** · [Português (pt-BR)](./README.pt-BR.md)
 
-# Claude Code Toolkit
+# cstk
+
+**Autonomous software engineering with an audit trail.** Specs in, verified
+code out: persistent state, bounded decisions, execution in waves, measured
+cost. Runs on [Claude Code](https://claude.ai/code) and on the Codex CLI.
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/cstk?label=latest%20release&color=blue)](https://github.com/JotJunior/cstk/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -40,14 +44,19 @@ hesitation:
 
 That's why the ant lives in the `cstk` CLI header.
 
-A set of tools to boost day-to-day development productivity with
-[Claude Code](https://claude.ai/code): **skills** and **hooks** for
-documentation, development, security and code quality.
+What ships in the `cstk` CLI: a Spec-Driven Development pipeline (briefing →
+review-features) as **skills** you can also use one at a time; **autonomous
+orchestrators** (`/agente-00c`, `/feature-00c`) that run that pipeline end to
+end and pause only on real blockers; a **persistent state runtime** with
+formal resume/abort; **cross-feature memory**; **per-wave model routing**;
+**enforced guard hooks**; and a **local metrics panel** where every number is
+measured, never estimated.
 
 > **Who maintains it / who it's for.** Maintained by a single person, optimized
-> first for the maintainer's workflow (Go microservices). The concrete parts —
-> skills, hooks, CLI — are general-purpose; the **advanced track** (autonomous
-> orchestrator) is more experimental.
+> first for the maintainer's workflow (Go microservices). Skills, hooks and
+> CLI are general-purpose. The autonomous orchestrator is in production use by
+> the maintainer (this repository's own features are built with it); its
+> interface may still change between major versions.
 
 > **Current version:** [latest release](https://github.com/JotJunior/cstk/releases/latest)
 > · history in [CHANGELOG.md](./CHANGELOG.md). Installation recommended via
@@ -244,8 +253,9 @@ Details, flow diagram and shortcuts in
 
 ## Advanced track (autonomous orchestrator)
 
-> **Experimental** — functional and in use by the maintainer, with no support
-> guarantees for external adoption.
+> **Maturity** — in production use by the maintainer (this repository's own
+> features are built with it). No support guarantees for external adoption;
+> the interface may change between major versions.
 
 `/agente-00c` drives the entire SDD pipeline over a target project, pausing
 only on real blockers; `/feature-00c` does the same for ONE feature in an
