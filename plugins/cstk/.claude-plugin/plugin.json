@@ -1,6 +1,6 @@
 {
   "name": "cstk",
-  "description": "Spec-Driven Development toolkit for Claude Code: full SDD pipeline (briefing -> review-features), autonomous 00c orchestrators with auditable state, enforced guard hooks and cross-feature knowledge base",
+  "description": "Autonomous software engineering with an audit trail for Claude Code: full SDD pipeline (briefing -> review-features), 00c orchestrators with persistent state, bounded decisions and measured cost, enforced guard hooks and cross-feature knowledge base",
   "version": "10.14.0",
   "author": {
     "name": "JotJunior",
@@ -12,6 +12,9 @@
   "keywords": [
     "sdd",
     "spec-driven-development",
+    "autonomous-agents",
+    "agent-orchestration",
+    "audit-trail",
     "documentation",
     "orchestrator",
     "workflow",

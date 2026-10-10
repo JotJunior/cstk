@@ -1,16 +1,23 @@
 ---
-title: Claude Code Toolkit
+title: cstk
 hide:
   - navigation
   - toc
 ---
 
-# Claude Code Toolkit
+# cstk
 
-Conjunto curado de **skills**, **agents** e **slash commands** que estendem o
-[Claude Code](https://claude.ai/code) com pipelines reproduziveis para
-Spec-Driven Development (SDD), revisao de codigo, seguranca e operacao
-autonoma de longo prazo.
+**Engenharia de software autonoma com trilha de auditoria.** Entra spec, sai
+codigo verificado: estado persistente, decisoes com autoridade limitada,
+execucao em ondas, custo medido. Roda sobre o
+[Claude Code](https://claude.ai/code) e sobre o Codex CLI.
+
+Por baixo, um pipeline de Spec-Driven Development em **skills** que tambem
+funcionam uma de cada vez, **orquestradores autonomos** (`/agente-00c`,
+`/feature-00c`) que rodam o pipeline de ponta a ponta e so pausam em bloqueio
+real, runtime de estado persistente com retomada/aborto formais, memoria entre
+features, roteamento de modelo por onda, hooks de guarda enforced e um painel
+local onde todo numero e medido, nunca estimado.
 
 ## Instale em 30 segundos
 
