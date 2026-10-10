@@ -1,7 +1,7 @@
 {
   "name": "cstk",
   "description": "Autonomous software engineering with an audit trail for Claude Code: full SDD pipeline (briefing -> review-features), 00c orchestrators with persistent state, bounded decisions and measured cost, enforced guard hooks and cross-feature knowledge base",
-  "version": "10.14.0",
+  "version": "10.14.1",
   "author": {
     "name": "JotJunior",
     "url": "https://github.com/JotJunior"
