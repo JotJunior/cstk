@@ -339,6 +339,51 @@ _retire_agent_usage_hook() {
   return 0
 }
 
+# _widen_guard_matcher_in <settings_file>
+#
+# Migra o registro do pretooluse-bash-guard.sh de matcher "Bash" para
+# "Bash|PowerShell" (issue #228: os orquestradores ganharam a tool
+# PowerShell). O merge_settings e "target vence" e mantem o array PreToolUse
+# antigo inteiro — sem esta migracao, projetos provisionados antes seguiriam
+# com "Bash" e chamadas PowerShell nao passariam pela guarda. Tira o guard
+# dos grupos "Bash" (grupos que ficam vazios saem; hooks de terceiros no
+# mesmo grupo ficam com "Bash") e o registra num grupo "Bash|PowerShell",
+# preservando timeout. So no arquivo de registro alvo (mesma regra de
+# _retire_agent_usage_in). Best-effort: nunca muda a palavra de estado.
+_widen_guard_matcher_in() {
+  _wgm_settings=$1
+  [ -f "$_wgm_settings" ] || return 0
+  grep -Fq -- 'pretooluse-bash-guard.sh' "$_wgm_settings" 2>/dev/null || return 0
+  if ! detect_jq; then
+    log_warn "hooks: confira em $_wgm_settings se o matcher do pretooluse-bash-guard.sh e \"Bash|PowerShell\" (jq ausente)"
+    return 0
+  fi
+  _wgm_filter='
+    def isguard: ((.command // "") | test($re));
+    if (.hooks.PreToolUse | type) == "array"
+       and any(.hooks.PreToolUse[]; .matcher == "Bash" and any(.hooks[]?; isguard)) then
+      first(.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(isguard)) as $g
+      | .hooks.PreToolUse |= (map(
+            if .matcher == "Bash" then .hooks |= map(select(isguard | not)) else . end
+          ) | map(select((.hooks | length) > 0)))
+      | if any(.hooks.PreToolUse[]; .matcher == "Bash|PowerShell" and any(.hooks[]?; isguard)) then .
+        else .hooks.PreToolUse += [{"matcher": "Bash|PowerShell", "hooks": [$g]}] end
+    else . end'
+  _wgm_re='/\.claude/hooks/pretooluse-bash-guard\.sh"?$'
+  jq -e --arg re "$_wgm_re" 'any(.hooks.PreToolUse[]?; .matcher == "Bash" and any(.hooks[]?; (.command // "") | test($re)))' \
+    -- "$_wgm_settings" >/dev/null 2>&1 || return 0
+  _wgm_tmp=$(mktemp -- "$(dirname -- "$_wgm_settings")/.cstk-matcher.XXXXXX") || return 0
+  if jq --arg re "$_wgm_re" "$_wgm_filter" -- "$_wgm_settings" > "$_wgm_tmp" 2>/dev/null \
+     && cp -- "$_wgm_settings" "${_wgm_settings}.bak" \
+     && mv -f -- "$_wgm_tmp" "$_wgm_settings"; then
+    log_info "hooks: matcher do pretooluse-bash-guard.sh migrado para \"Bash|PowerShell\" em $_wgm_settings (backup em ${_wgm_settings}.bak)"
+  else
+    rm -f -- "$_wgm_tmp"
+    log_warn "hooks: nao consegui migrar o matcher do pretooluse-bash-guard.sh em $_wgm_settings (demais hooks intactos)"
+  fi
+  return 0
+}
+
 # apply_guard_hooks <src_dir> <dest_claude_root> <dry_run>
 #
 # Provisiona os hooks de execucao 00c num projeto-alvo:
@@ -352,6 +397,8 @@ _retire_agent_usage_hook() {
 #   1c. APOSENTA o hook legado posttooluse-agent-usage.sh (ver
 #      _retire_agent_usage_hook): remove o registro e a copia deixados por
 #      provisionamentos anteriores. BEST-EFFORT.
+#   1d. Migra o matcher do guard de "Bash" para "Bash|PowerShell" em
+#      registros anteriores (_widen_guard_matcher_in). BEST-EFFORT.
 #   2. Mescla <src_dir>/settings.snippet.json em
 #      <dest_claude_root>/settings.json via merge_settings (jq) ou
 #      print_paste_block (fallback sem jq) — mesma mecanica ja testada dos
@@ -438,6 +485,9 @@ apply_guard_hooks() {
     fi
     if [ -f "$_agh_hooks_dst/posttooluse-agent-usage.sh" ]; then
       log_info "[dry-run] guard-hooks: removeria o hook aposentado posttooluse-agent-usage.sh (script + registro)"
+    fi
+    if [ -f "$_agh_settings_dst" ] && grep -Fq -- 'pretooluse-bash-guard.sh' "$_agh_settings_dst" 2>/dev/null; then
+      log_info "[dry-run] guard-hooks: migraria o matcher do pretooluse-bash-guard.sh para \"Bash|PowerShell\" se ainda for \"Bash\""
     fi
     if [ "$_agh_with_loose" = 1 ]; then
       if [ -f "$_agh_loose_script" ]; then
@@ -546,6 +596,7 @@ apply_guard_hooks() {
   fi
 
   _retire_agent_usage_hook "$_agh_dest_root" "$_agh_settings_name"
+  _widen_guard_matcher_in "$_agh_dest_root/$_agh_settings_name"
 
   printf '%s' "$_agh_state"
   return 0

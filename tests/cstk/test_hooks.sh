@@ -453,6 +453,68 @@ _assert_retired_in() {
 
 _REAL_HOOKS_SRC="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"
 
+# ==== Migracao do matcher do guard para Bash|PowerShell (issue #228) ====
+#
+# merge_settings e "target vence": sem a migracao, um projeto provisionado
+# com matcher "Bash" seguiria assim e chamadas PowerShell nao passariam pela
+# guarda.
+
+# _legacy_bash_matcher_settings FILE -> guard sozinho num grupo "Bash" +
+# grupo "Bash" com o guard E um hook de terceiro.
+_legacy_bash_matcher_settings() {
+  mkdir -p "$(dirname "$1")"
+  cat > "$1" <<'JSON'
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pretooluse-bash-guard.sh", "timeout": 7}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "/opt/terceiro/bash-audit.sh"}]}
+    ]
+  }
+}
+JSON
+}
+
+_assert_guard_matcher_widened() {
+  _agw_f=$1
+  jq -e '[.hooks.PreToolUse[] | select(any(.hooks[]; .command | endswith("/.claude/hooks/pretooluse-bash-guard.sh")))]
+         | (length == 1) and (.[0].matcher == "Bash|PowerShell") and (.[0].hooks[0].timeout == 7)' "$_agw_f" >/dev/null \
+    || { _fail "matcher do guard" "$(cat "$_agw_f")"; return 1; }
+  jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command] == ["/opt/terceiro/bash-audit.sh"]' "$_agw_f" >/dev/null \
+    || { _fail "hook de terceiro" "$(cat "$_agw_f")"; return 1; }
+  return 0
+}
+
+scenario_apply_guard_hooks_migra_matcher_bash_para_powershell() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _dest="$TMPDIR_TEST/claude-root-matcher"
+  _legacy_bash_matcher_settings "$_dest/settings.json"
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0' _ "$_REAL_HOOKS_SRC" "$_dest"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  _assert_guard_matcher_widened "$_dest/settings.json" || return 1
+  assert_stderr_contains "Bash|PowerShell" || return 1
+  # Idempotente: 2a rodada nao duplica nem altera.
+  cp "$_dest/settings.json" "$TMPDIR_TEST/matcher-1.json"
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0' _ "$_REAL_HOOKS_SRC" "$_dest"
+  _assert_guard_matcher_widened "$_dest/settings.json" || return 1
+  cmp -s "$TMPDIR_TEST/matcher-1.json" "$_dest/settings.json" \
+    || { _fail "idempotencia" "$(cat "$_dest/settings.json")"; return 1; }
+}
+
+scenario_apply_guard_hooks_migra_matcher_local_sem_tocar_settings_json() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _dest="$TMPDIR_TEST/claude-root-matcher-local"
+  _legacy_bash_matcher_settings "$_dest/settings.local.json"
+  _legacy_bash_matcher_settings "$_dest/settings.json"
+  cp "$_dest/settings.json" "$TMPDIR_TEST/team-settings.json"
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0 0 settings.local.json' _ "$_REAL_HOOKS_SRC" "$_dest"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  _assert_guard_matcher_widened "$_dest/settings.local.json" || return 1
+  cmp -s "$TMPDIR_TEST/team-settings.json" "$_dest/settings.json" \
+    || { _fail "settings.json do time tocado" "$(cat "$_dest/settings.json")"; return 1; }
+}
+
 # (a) Projeto legado com o registro em settings.json + copia do script.
 scenario_apply_guard_hooks_aposenta_agent_usage_em_settings_json() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
