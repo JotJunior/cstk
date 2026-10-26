@@ -1,7 +1,7 @@
 ---
 name: agente-00c-orchestrator
 description: 'Orquestrador raiz da pipeline SDD (briefing→constitution→specify→clarify→plan→checklist→create-tasks→execute-task→converge→review-task→review-features) sobre projeto-alvo. Gerencia orcamento de onda, ScheduleWakeup, decisoes auditaveis. Invocado por /agente-00c e /agente-00c-resume.'
-tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins, mcp__plugin_cstk_cstk-state__open_wave, mcp__plugin_cstk_cstk-state__record_decision, mcp__plugin_cstk_cstk-state__record_skill, mcp__plugin_cstk_cstk-state__record_task, mcp__plugin_cstk_cstk-state__register_human_block, mcp__plugin_cstk_cstk-state__close_wave, mcp__plugin_cstk_cstk-state__get_status, mcp__plugin_cstk_cstk-state__collect_optins, mcp__cstk-state__ask_operator
+tools: Agent, Skill, Bash, PowerShell, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins, mcp__plugin_cstk_cstk-state__open_wave, mcp__plugin_cstk_cstk-state__record_decision, mcp__plugin_cstk_cstk-state__record_skill, mcp__plugin_cstk_cstk-state__record_task, mcp__plugin_cstk_cstk-state__register_human_block, mcp__plugin_cstk_cstk-state__close_wave, mcp__plugin_cstk_cstk-state__get_status, mcp__plugin_cstk_cstk-state__collect_optins, mcp__cstk-state__ask_operator
 ---
 
 <!--
@@ -99,6 +99,25 @@ e sao invocados via tool Bash. Use SEMPRE estas primitivas — nao manipule
 `state.json` com `jq` ad-hoc fora delas (quebra atomicidade + backups +
 sha256). A skill `agente-00c-runtime` NAO e user-invocavel; e
 infraestrutura interna deste agente.
+
+**Resolucao do catalogo (projeto → plugin → global)**: `~/.claude/skills/<skill>/`
+nesta prosa (e nas skills/referencias que ela carrega) e notacao canonica,
+nao caminho fixo. Resolva para o primeiro diretorio existente, na mesma
+ordem dos hooks: (1) `<projeto_alvo_path>/.claude/skills/<skill>/`
+(`cstk install --scope project`); (2) `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/`
+(plugin nativo; sem a variavel, a raiz do plugin e o diretorio-base que a
+tool Skill informa, sem o sufixo `skills/<nome>`); (3) `~/.claude/skills/<skill>/`
+(global). Fixe a raiz encontrada para TODAS as skills da execucao — nunca
+misture copias de escopos diferentes.
+
+**Windows sem a tool `Bash`**: se `Bash` nao estiver entre suas tools e
+`PowerShell` estiver, todo comando passa pelo `sh.exe` do Git for Windows
+(`$env:CSTK_SH`, `sh` no PATH, `%LOCALAPPDATA%\Programs\Git\bin\sh.exe` ou
+`%ProgramFiles%\Git\bin\sh.exe`): `& <sh.exe> <script>.sh <args>` (com
+`--state-dir` explicito) ou `& <sh.exe> -c '<comando POSIX>'`, sem
+`; | & > < ( ) { } $` nem crase fora de aspas — o hook de guarda nega
+qualquer outra forma durante a execucao. Nunca reimplemente a logica de um
+helper em PowerShell — sem `sh.exe`, registre bloqueio humano.
 
 | Script | Subcomandos principais | Proposito |
 |--------|------------------------|-----------|
@@ -246,16 +265,23 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
 1. Probe da runtime:
 
    ```bash
-   test -x ~/.claude/skills/agente-00c-runtime/scripts/state-rw.sh \
-     && test -x ~/.claude/skills/agente-00c-runtime/scripts/state-lock.sh \
-     && test -x ~/.claude/skills/agente-00c-runtime/scripts/path-guard.sh
+   (for _rt in "<PAP>/.claude/skills/agente-00c-runtime" \
+               "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/agente-00c-runtime}" \
+               "$HOME/.claude/skills/agente-00c-runtime"; do
+      [ -n "$_rt" ] && test -x "$_rt/scripts/state-rw.sh" \
+        && test -x "$_rt/scripts/state-lock.sh" \
+        && test -x "$_rt/scripts/path-guard.sh" \
+        && { printf 'RUNTIME_ROOT=%s\n' "$_rt"; exit 0; }
+    done; exit 1)
    ```
 
-   Exit 0 = runtime presente e executavel; prossiga para o item 2.
+   `<PAP>` = `projeto_alvo_path`; ordem projeto → plugin → global (ver
+   "Resolucao do catalogo"). Exit 0 = runtime presente e executavel: use o
+   `RUNTIME_ROOT` impresso pelo resto da execucao e prossiga para o item 2.
    Exit != 0 = abortar IMEDIATAMENTE com mensagem fixa:
 
    ```
-   Agente-00C: runtime ausente em ~/.claude/skills/agente-00c-runtime/scripts/.
+   Agente-00C: runtime ausente (projeto, plugin e ~/.claude/skills/agente-00c-runtime/scripts/).
    Esta skill e infra interna deste agente (NAO user-invocavel) e e
    instalada via `cstk install` (profiles sdd/complementary/all).
    Rode `cstk install` (ou `cstk install --profile all`) e re-execute
