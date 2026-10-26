@@ -5,6 +5,42 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.14.3] - 2026-10-26
+
+Duas correcoes na guarda de comandos dos orquestradores (PRs #231 e #232).
+O `bash-guard.sh` passa a enxergar comando escondido dentro de shell aninhado
+e substituicao de comando (#230). Projetos com hooks ja provisionados passam a
+receber o matcher `Bash|PowerShell` introduzido na 10.14.2, que antes nao
+chegava a eles (#228).
+
+### Fixed
+
+- **Comando aninhado passava pelo guard (#230).** As regras de
+  `bash-guard.sh` ancoram em `(^|[[:space:];|&])` e deixavam passar
+  `sh -c 'git push'`, `bash -c "..."`, `eval '...'`, `printf '...' | sh`,
+  `$(git push)`, `<(...)`, `(git push)` e `curl` para host fora da whitelist
+  dentro de `sh -c`. Blocklist e whitelist rodam uma segunda vez sobre a forma
+  exposta do comando (`_bg_expose_nested`): `$(`, `<(`, `>(` e `(` de subshell
+  viram separador de segmento; com shell aninhado
+  (`sh|bash|zsh|dash|ksh[.exe] ... -c`, `eval`, pipe para shell) a invocacao
+  vira separador e as aspas viram espaco. Crase, script em arquivo, ssh e
+  indirecao por variavel seguem fora (documentado no cabecalho). 7 cenarios
+  novos em `tests/test_bash-guard.sh`.
+- **Matcher do guard nao migrava em projetos ja provisionados (#228).**
+  `merge_settings` mantem o array `PreToolUse` que ja existe no alvo, entao
+  `cstk hooks install`/`update` deixavam o `pretooluse-bash-guard.sh` com
+  matcher `"Bash"`, e chamadas `PowerShell` do orquestrador nao passavam pela
+  guarda no Windows. `apply_guard_hooks` passa a chamar
+  `_widen_guard_matcher_in`, que move o guard para um grupo `"Bash|PowerShell"`
+  (preserva `timeout` e hooks de terceiros, idempotente, so no arquivo de
+  registro alvo). 2 cenarios novos em `tests/cstk/test_hooks.sh`. Projetos
+  provisionados antes: rodar `cstk hooks install` apos atualizar.
+
+### Changed
+
+- **Versoes em lockstep.** Manifestos de plugin (MP-5) e workspace do painel
+  (WL-5) sobem para 10.14.3.
+
 ## [10.14.2] - 2026-10-26
 
 Tres correcoes de issues (PR #229). Execucao Codex com dono de onda morto
@@ -8741,6 +8777,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.14.3]: https://github.com/JotJunior/cstk/releases/tag/v10.14.3
 [10.14.2]: https://github.com/JotJunior/cstk/releases/tag/v10.14.2
 [10.14.1]: https://github.com/JotJunior/cstk/releases/tag/v10.14.1
 [10.14.0]: https://github.com/JotJunior/cstk/releases/tag/v10.14.0
