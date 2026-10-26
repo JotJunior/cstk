@@ -14,6 +14,8 @@
 //      docs/specs/state-mcp-server/plan.md §Seguranca (SEC-H1)
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
 /** Teto de stdout/stderr por chamada de helper (defesa contra output descontrolado). */
 const MAX_BUFFER_BYTES = 4 * 1024 * 1024; // 4 MiB
@@ -152,6 +154,64 @@ function redact(text: string, sensitiveValues: readonly string[]): string {
   return result;
 }
 
+export interface HelperInvocation {
+  readonly file: string;
+  readonly argv: readonly string[];
+}
+
+/**
+ * Resolve o `sh` usado para rodar helpers `.sh` no Windows (issue #228):
+ * `CSTK_SH` > `sh.exe` no PATH > Git for Windows (`%LOCALAPPDATA%\Programs\Git`,
+ * `%ProgramFiles%\Git`). Sem candidato existente, devolve `sh` e deixa o
+ * spawn falhar com erro explicito.
+ */
+export function resolveWindowsShell(
+  env: NodeJS.ProcessEnv = process.env,
+  exists: (path: string) => boolean = existsSync,
+): string {
+  const override = env.CSTK_SH;
+  if (override && override.length > 0) return override;
+  // Windows trata nomes de variavel sem distinguir caixa; o objeto do Node
+  // tambem, mas um env montado a mao (testes) pode trazer so `Path`.
+  const pathValue = env.PATH ?? env.Path ?? "";
+  for (const dir of pathValue.split(delimiter)) {
+    if (dir.length === 0) continue;
+    const candidate = join(dir, "sh.exe");
+    if (exists(candidate)) return candidate;
+  }
+  const roots = [
+    env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "Programs", "Git") : "",
+    env.ProgramFiles ? join(env.ProgramFiles, "Git") : "",
+  ];
+  for (const root of roots) {
+    if (root.length === 0) continue;
+    const candidate = join(root, "bin", "sh.exe");
+    if (exists(candidate)) return candidate;
+  }
+  return "sh";
+}
+
+/**
+ * Decide executavel + argv de um helper. No Windows o Node nao executa `.sh`
+ * direto (`spawn EFTYPE`, issue #228): o helper vira o 1o argumento de um
+ * `sh` resolvido. So o executavel muda — o argv continua um array puro e
+ * `shell: false` continua valendo (SEC-H1).
+ */
+export function resolveHelperInvocation(
+  helperPath: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  exists: (path: string) => boolean = existsSync,
+): HelperInvocation {
+  if (platform === "win32" && helperPath.toLowerCase().endsWith(".sh")) {
+    return { file: resolveWindowsShell(env, exists), argv: [helperPath, ...args] };
+  }
+  // Copia defensiva: garante um array literal na fronteira do child_process,
+  // nunca uma string montada por concatenacao (SEC-H1).
+  return { file: helperPath, argv: [...args] };
+}
+
 /**
  * Invoca um helper POSIX por argv puro. `args` MUST ser um array literal —
  * nunca uma string interpolada. Rejeita a Promise em qualquer saida !== 0.
@@ -162,37 +222,51 @@ export function runHelper(
   options: RunHelperOptions = {},
 ): Promise<HelperResult> {
   return new Promise((resolve, reject) => {
-    const child = execFile(
-      helperPath,
-      // Copia defensiva: garante um array literal na fronteira do child_process,
-      // nunca uma string montada por concatenacao (SEC-H1).
-      [...args],
-      { shell: false, maxBuffer: MAX_BUFFER_BYTES, encoding: "utf8" },
-      (error, stdout, stderr) => {
-        if (error) {
-          const exitCode =
-            typeof error.code === "number" ? error.code : null;
-          // dec-087: `args.join(" ")` e `error.message` (o Node reconstroi a
-          // linha de comando internamente em execFile) MUST nunca ecoar um
-          // valor sensivel (ex.: `--token <valor>`) em texto plano — a
-          // mensagem chega a log/transcript/bug report exatamente quando ha
-          // token real invalido ou de execucao terminal.
-          const sensitiveValues = extractSensitiveValues(args);
-          const safeArgs = redactArgs(args).join(" ");
-          const safeErrorMessage = redact(error.message, sensitiveValues);
-          reject(
-            new HelperExecutionError(
-              `runHelper: ${helperPath} ${safeArgs} falhou: ${safeErrorMessage}`,
-              exitCode,
-              stderr,
-              parseDiagnosticEnvelope(stderr),
-            ),
-          );
-          return;
-        }
-        resolve({ stdout, stderr });
-      },
-    );
+    // dec-087: `args.join(" ")` e `error.message` (o Node reconstroi a
+    // linha de comando internamente em execFile) MUST nunca ecoar um
+    // valor sensivel (ex.: `--token <valor>`) em texto plano — a
+    // mensagem chega a log/transcript/bug report exatamente quando ha
+    // token real invalido ou de execucao terminal.
+    const failure = (
+      error: Error,
+      exitCode: number | null,
+      stderr: string,
+    ): HelperExecutionError => {
+      const sensitiveValues = extractSensitiveValues(args);
+      const safeArgs = redactArgs(args).join(" ");
+      const safeErrorMessage = redact(error.message, sensitiveValues);
+      return new HelperExecutionError(
+        `runHelper: ${helperPath} ${safeArgs} falhou: ${safeErrorMessage}`,
+        exitCode,
+        stderr,
+        parseDiagnosticEnvelope(stderr),
+      );
+    };
+    const invocation = resolveHelperInvocation(helperPath, args);
+    let child: ReturnType<typeof execFile>;
+    try {
+      child = execFile(
+        invocation.file,
+        [...invocation.argv],
+        { shell: false, maxBuffer: MAX_BUFFER_BYTES, encoding: "utf8" },
+        (error, stdout, stderr) => {
+          if (error) {
+            const exitCode =
+              typeof error.code === "number" ? error.code : null;
+            reject(failure(error, exitCode, stderr));
+            return;
+          }
+          resolve({ stdout, stderr });
+        },
+      );
+    } catch (err) {
+      // O spawn lanca SINCRONO para erros fora de ENOENT/EACCES/EAGAIN/
+      // EMFILE/ENFILE (ex.: `spawn EFTYPE` no Windows, issue #228). Sem este
+      // catch o erro cru escapava do HelperExecutionError e a causa sumia
+      // da mensagem de SESSION_MISMATCH.
+      reject(failure(err instanceof Error ? err : new Error(String(err)), null, ""));
+      return;
+    }
     if (options.stdin !== undefined) {
       // EPIPE e possivel se o helper sair antes de consumir o stdin (ex.:
       // erro precoce de flags) — nao e um erro do CHAMADOR, o callback do

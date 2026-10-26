@@ -16,7 +16,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { runHelper, HelperExecutionError } from "../src/runtime/exec.js";
+import {
+  runHelper,
+  HelperExecutionError,
+  resolveHelperInvocation,
+  resolveWindowsShell,
+} from "../src/runtime/exec.js";
 import {
   resolveActiveSession,
   SessionMismatchError,
@@ -103,6 +108,61 @@ test("resolveActiveSession: SESSION_MISMATCH com token real invalido nao vaza o 
       // resolveActiveSession encadeia `cause.message` (o HelperExecutionError
       // vindo de runHelper) na propria mensagem — se runHelper vazasse, este
       // seria o ponto de saida real ate o transcript/log do orquestrador.
+      assert.doesNotMatch(err.message, new RegExp(SENSITIVE_TOKEN));
+      return true;
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Issue #228: Windows nao executa `.sh` direto (spawn EFTYPE)
+// ---------------------------------------------------------------------------
+
+test("resolveHelperInvocation: fora do Windows o helper e o executavel (argv inalterado)", () => {
+  const inv = resolveHelperInvocation("/s/mcp-session.sh", ["resolve", "--token", "t"], "linux", {});
+  assert.equal(inv.file, "/s/mcp-session.sh");
+  assert.deepEqual(inv.argv, ["resolve", "--token", "t"]);
+});
+
+test("resolveHelperInvocation: win32 + .sh roda via sh com o helper como 1o argumento", () => {
+  const inv = resolveHelperInvocation(
+    "C:\\cstk\\mcp-session.sh",
+    ["resolve", "--token", "t"],
+    "win32",
+    { CSTK_SH: "C:\\Git\\bin\\sh.exe" },
+    () => false,
+  );
+  assert.equal(inv.file, "C:\\Git\\bin\\sh.exe");
+  assert.deepEqual(inv.argv, ["C:\\cstk\\mcp-session.sh", "resolve", "--token", "t"]);
+});
+
+test("resolveHelperInvocation: win32 sem .sh nao troca o executavel", () => {
+  const inv = resolveHelperInvocation("C:\\bin\\tool.exe", ["x"], "win32", {}, () => true);
+  assert.equal(inv.file, "C:\\bin\\tool.exe");
+});
+
+test("resolveWindowsShell: CSTK_SH > sh.exe no PATH > Git for Windows > sh", () => {
+  const pathDir = join("p1");
+  const gitLocal = join("la", "Programs", "Git", "bin", "sh.exe");
+  const gitPf = join("pf", "Git", "bin", "sh.exe");
+  const env = { PATH: pathDir, LOCALAPPDATA: "la", ProgramFiles: "pf" };
+  const only = (...hits: string[]) => (p: string) => hits.includes(p);
+  assert.equal(resolveWindowsShell({ ...env, CSTK_SH: "custom-sh" }, only()), "custom-sh");
+  assert.equal(resolveWindowsShell(env, only(join(pathDir, "sh.exe"), gitLocal)), join(pathDir, "sh.exe"));
+  assert.equal(resolveWindowsShell(env, only(gitLocal, gitPf)), gitLocal);
+  assert.equal(resolveWindowsShell(env, only(gitPf)), gitPf);
+  assert.equal(resolveWindowsShell(env, only()), "sh");
+});
+
+test("runHelper: erro SINCRONO do spawn vira HelperExecutionError com a causa (issue #228)", async () => {
+  // Byte nulo no caminho faz o execFile lancar sincrono (mesmo caminho do
+  // `spawn EFTYPE` do Windows, que nao e emitido como evento 'error').
+  await assert.rejects(
+    () => runHelper("helper\u0000.sh", ["resolve", "--token", SENSITIVE_TOKEN]),
+    (err: unknown) => {
+      assert.ok(err instanceof HelperExecutionError);
+      assert.equal(err.exitCode, null);
+      assert.match(err.message, /falhou: /);
       assert.doesNotMatch(err.message, new RegExp(SENSITIVE_TOKEN));
       return true;
     },

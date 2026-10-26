@@ -26,6 +26,12 @@ Execute estes passos em ordem. Use os scripts em
 `~/.claude/skills/agente-00c-runtime/scripts/` para todas as operacoes
 de estado — nao manipule `state.json` diretamente com jq.
 
+> **Resolucao do catalogo (issue #213)**: `~/.claude/skills/<skill>/` neste
+> command e notacao canonica, nao caminho fixo. Resolva para o primeiro
+> diretorio existente, na ordem dos hooks: `<projeto-alvo>/.claude/skills/<skill>/`
+> (`--scope project`) → `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/` (plugin) →
+> `~/.claude/skills/<skill>/` (global), e use a mesma raiz em toda a execucao.
+
 ### 1. Parse de argumentos
 
 Extrair:

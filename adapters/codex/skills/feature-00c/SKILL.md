@@ -109,6 +109,9 @@ SIGKILL, use `controller.sh recover` deliberadamente. Se houver lock órfão,
 `--abandoned-owner-pid <PID observado>` é a recuperação explícita: exige PID
 igual ao dono registrado e comprovadamente morto; dono vivo/desconhecido é
 recusado. Não use essa opção automaticamente para contornar contenção.
+Com o dono morto, o hook PreToolUse nega toda ferramenta do projeto exceto
+cstk_select_execution, cstk_status, cstk_recover e cstk_abort; a mensagem de
+negação traz o PID morto e o comando de recuperação por terminal externo.
 Uma origem Claude ou desconhecida exige cstk_handoff explícito, conforme
 references/lifecycle.md; compartilhamento de conhecimento não transfere execução.
 
@@ -126,3 +129,4 @@ incluídas também no pacote.
 - Opt-in false também exige resposta real; autorização geral não substitui commit opt-in.
 - A onda mantém o escritor e o vínculo dos hooks até fechar; outra onda Codex no projeto é recusada.
 - EOF/sinais fecham sem avanço; SIGKILL exige recuperação explícita do PID observado.
+- Durante a onda o hook só libera Bash, apply_patch e as tools `cstk_*` do MCP; `update_plan`, `view_image` e demais ferramentas do Codex são negadas (piloto supervisionado).

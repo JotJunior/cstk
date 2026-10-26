@@ -652,5 +652,52 @@ scenario_whitelist_da_raiz_respeitada_com_cwd_em_subdiretorio() {
   esac
 }
 
+# ==== Issue #228: PowerShell so na forma `& <sh> ...` durante execucao ativa ====
+
+# _ps_json CMD -> payload PowerShell (jq escapa barras invertidas e aspas).
+_ps_json() {
+  jq -nc --arg cwd "$TMPDIR_TEST" --arg c "$1" \
+    '{cwd:$cwd,tool_name:"PowerShell",tool_input:{command:$c}}'
+}
+
+scenario_powershell_invocando_sh_passa() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  _run_hook "$(_ps_json "& 'C:\\Program Files\\Git\\bin\\sh.exe' 'C:\\cstk\\state-rw.sh' get --state-dir 'C:\\p' --field .status")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio (permitido), obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_powershell_cmdlet_nativo_negado() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  _run_hook "$(_ps_json 'Remove-Item -Recurse -Force C:\')"
+  assert_stdout_contains '"permissionDecision": "deny"' || return 1
+  assert_stdout_contains "REGRA_VIOLADA" || return 1
+  case "$(_enforcement_log "$TMPDIR_TEST")" in
+    *'"category":"powershell-form"'*) : ;;
+    *) _fail "log category" "esperado powershell-form"; return 1 ;;
+  esac
+}
+
+scenario_powershell_encadeamento_apos_sh_negado() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  _run_hook "$(_ps_json "& sh.exe x.sh; Remove-Item -Recurse C:\\")"
+  assert_stdout_contains '"permissionDecision": "deny"' || return 1
+  _run_hook "$(_ps_json '& sh.exe -c "$(Get-Content x)"')"
+  assert_stdout_contains '"permissionDecision": "deny"' || return 1
+}
+
+scenario_powershell_conteudo_passa_pelas_regras_do_bash_guard() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  _run_hook "$(_ps_json "& sh.exe -c 'git push origin main'")"
+  assert_stdout_contains '"permissionDecision": "deny"' || return 1
+  assert_stdout_contains "git-push" || return 1
+}
+
+scenario_powershell_fora_de_execucao_ativa_zero_interferencia() {
+  _run_hook "$(_ps_json 'Remove-Item -Recurse -Force C:\')"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio (fora de escopo)"; return 1; }
+}
+
 run_all_scenarios
 exit $?

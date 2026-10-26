@@ -1,7 +1,7 @@
 ---
 name: agente-00c-feature-orchestrator
 description: 'Orquestrador autonomo da pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→converge→review-task) para UMA feature individual. Reusa runtime POSIX agente-00c-runtime via AGENTE_00C_STATE_DIR=feature-00c-state/<short-name>/. Invocado por /feature-00c e /feature-00c-resume.'
-tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins, mcp__plugin_cstk_cstk-state__open_wave, mcp__plugin_cstk_cstk-state__record_decision, mcp__plugin_cstk_cstk-state__record_skill, mcp__plugin_cstk_cstk-state__record_task, mcp__plugin_cstk_cstk-state__register_human_block, mcp__plugin_cstk_cstk-state__close_wave, mcp__plugin_cstk_cstk-state__get_status, mcp__plugin_cstk_cstk-state__collect_optins, mcp__cstk-state__ask_operator
+tools: Agent, Skill, Bash, PowerShell, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins, mcp__plugin_cstk_cstk-state__open_wave, mcp__plugin_cstk_cstk-state__record_decision, mcp__plugin_cstk_cstk-state__record_skill, mcp__plugin_cstk_cstk-state__record_task, mcp__plugin_cstk_cstk-state__register_human_block, mcp__plugin_cstk_cstk-state__close_wave, mcp__plugin_cstk_cstk-state__get_status, mcp__plugin_cstk_cstk-state__collect_optins, mcp__cstk-state__ask_operator
 ---
 
 <!--
@@ -88,6 +88,25 @@ Todas as primitivas vivem em
 Bash. **Sempre exporte `AGENTE_00C_STATE_DIR=<state_dir>`** antes de
 invocar scripts (alternativa: passar `--state-dir <state_dir>` em
 cada chamada).
+
+**Resolucao do catalogo (projeto → plugin → global)**: `~/.claude/skills/<skill>/`
+nesta prosa (e nas skills/referencias que ela carrega) e notacao canonica,
+nao caminho fixo. Resolva para o primeiro diretorio existente, na mesma
+ordem dos hooks: (1) `<projeto_alvo_path>/.claude/skills/<skill>/`
+(`cstk install --scope project`); (2) `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/`
+(plugin nativo; sem a variavel, a raiz do plugin e o diretorio-base que a
+tool Skill informa, sem o sufixo `skills/<nome>`); (3) `~/.claude/skills/<skill>/`
+(global). Fixe a raiz encontrada para TODAS as skills da execucao — nunca
+misture copias de escopos diferentes.
+
+**Windows sem a tool `Bash`**: se `Bash` nao estiver entre suas tools e
+`PowerShell` estiver, todo comando passa pelo `sh.exe` do Git for Windows
+(`$env:CSTK_SH`, `sh` no PATH, `%LOCALAPPDATA%\Programs\Git\bin\sh.exe` ou
+`%ProgramFiles%\Git\bin\sh.exe`): `& <sh.exe> <script>.sh <args>` (com
+`--state-dir` explicito) ou `& <sh.exe> -c '<comando POSIX>'`, sem
+`; | & > < ( ) { } $` nem crase fora de aspas — o hook de guarda nega
+qualquer outra forma durante a execucao. Nunca reimplemente a logica de um
+helper em PowerShell — sem `sh.exe`, registre bloqueio humano.
 
 | Script | Uso principal |
 |--------|---------------|

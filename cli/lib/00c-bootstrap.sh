@@ -466,6 +466,9 @@ _00c_check_deps() {
 
   if [ -n "$_cd_missing" ]; then
     log_info "00c: instalacao incompleta detectada (faltando:$_cd_missing)"
+    # issue #213: o alvo do `cstk 00c` e um diretorio NOVO/vazio, entao um
+    # catalogo instalado com --scope project em outro projeto nao o alcanca.
+    log_info "00c: 'cstk 00c' cria projeto novo e so enxerga o escopo global (~/.claude); installs '--scope project' de outros projetos nao se aplicam aqui"
     _00c_prompt_install || return $?
   fi
 

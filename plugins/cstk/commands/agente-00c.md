@@ -29,6 +29,12 @@ $ARGUMENTS
 
 ## Comportamento esperado
 
+> **Resolucao do catalogo (issue #213)**: `~/.claude/skills/<skill>/` neste
+> command e notacao canonica, nao caminho fixo. Resolva para o primeiro
+> diretorio existente, na ordem dos hooks: `<projeto-alvo>/.claude/skills/<skill>/`
+> (`--scope project`) → `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/` (plugin) →
+> `~/.claude/skills/<skill>/` (global), e use a mesma raiz em toda a execucao.
+
 ### 0. Warm-up de permissoes (CRITICO — antes de qualquer outra coisa)
 
 A pipeline 00C invoca dezenas de skills/tools ao longo de horas/ondas.

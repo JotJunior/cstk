@@ -18,5 +18,8 @@ cx_hook_scope() {
   [ "$(cj_type "$CX_HOOK_INPUT")" = object ] && [ "$(cj_type "$CX_HOOK_INPUT" /cwd)" = string ] || return 2
   CX_HOOK_PROJECT=$(cx_path "$(cj_get "$CX_HOOK_INPUT" /cwd)") || return 2
   [ -d "$CX_HOOK_PROJECT" ] || return 2
-  CX_HOOK_STATE=$(cx_binding "$CX_HOOK_PROJECT") || return $?
+  CX_HOOK_DEAD_PID=
+  _chs_rc=0; CX_HOOK_STATE=$(cx_binding "$CX_HOOK_PROJECT") || _chs_rc=$?
+  if [ "$_chs_rc" = 3 ]; then CX_HOOK_DEAD_PID=$CX_HOOK_STATE; CX_HOOK_STATE=; fi
+  return "$_chs_rc"
 }

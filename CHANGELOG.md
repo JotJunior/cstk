@@ -5,6 +5,54 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.14.2] - 2026-10-26
+
+Tres correcoes de issues (PR #229). Execucao Codex com dono de onda morto
+deixa de travar as tools de recuperacao (#224). Orquestradores no Windows
+passam a rodar os helpers `.sh` do MCP e a ter um caminho de shell via
+PowerShell sob a guarda (#228). O runtime 00c deixa de assumir
+`~/.claude/skills` fixo em instalacoes `--scope project` ou via plugin (#213).
+
+### Fixed
+
+- **Codex: dono de onda morto (#224).** `cx_binding` (`cli/lib/codex-common.sh`)
+  retorna 3 quando o PID dono do binding morreu (`kill -0` falha e `cx_dead`
+  confirma). Nesse caso o hook `adapters/codex/hooks/pretooluse.sh` libera so
+  `cstk_select_execution`, `cstk_status`, `cstk_recover` e `cstk_abort`; o deny
+  das demais tools informa o PID morto e o comando
+  `controller.sh recover ... --abandoned-owner-pid <PID>`. Cenario novo
+  `scenario_sigkill_hook_keeps_recovery_tools_reachable` em
+  `tests/codex/test_interruptions.sh`.
+- **MCP no Windows: `spawn EFTYPE` (#228).** `runtime/exec.ts` do state-server
+  executa helper `.sh` via `sh` em win32 (`resolveWindowsShell`: `CSTK_SH` >
+  `sh.exe` no PATH > Git for Windows em `LOCALAPPDATA`/`ProgramFiles`), com
+  argv e `shell:false` preservados (SEC-H1). Erro de spawn lancado de forma
+  sincrona passa a virar `HelperExecutionError`, entao a causa aparece no
+  `SESSION_MISMATCH` em vez de sumir.
+- **Orquestradores no Windows sem a tool `Bash` (#228).** `PowerShell` entra nas
+  tools de `agente-00c-orchestrator` e `agente-00c-feature-orchestrator`, e o
+  matcher do hook de guarda passa a `Bash|PowerShell` (`plugins/cstk/hooks/hooks.json`
+  e `settings.snippet.json`). Durante execucao ativa, `pretooluse-bash-guard.sh`
+  so aceita PowerShell na forma `& <sh|bash>[.exe] ...` sem metacaracteres fora
+  de aspas (deny `REGRA_VIOLADA`, categoria `powershell-form`); o conteudo passa
+  pelo `bash-guard.sh check` com as aspas neutralizadas. 5 cenarios novos em
+  `tests/test_pretooluse-bash-guard.sh`.
+- **Runtime resolvido por escopo (#213).** O pre-flight do orquestrador raiz
+  procura `agente-00c-runtime` no projeto, depois em `${CLAUDE_PLUGIN_ROOT}`,
+  depois em `~/.claude/skills` (antes abortava em instalacao so de projeto ou
+  so de plugin). Orquestradores e os commands `/agente-00c`,
+  `/agente-00c-resume`, `/agente-00c-abort` e `/roadmap-wave` documentam a mesma
+  ordem.
+- **CLI e escopo (#213).** `cstk install --scope project` avisa quando ja existe
+  uma copia global de `agente-00c-runtime` que pode divergir; o help de
+  `--scope` documenta a ordem de resolucao; `cstk 00c` explica que so enxerga a
+  instalacao global (cria projeto novo).
+
+### Changed
+
+- **Versoes em lockstep.** Manifestos de plugin (MP-5) e workspace do painel
+  (WL-5) sobem para 10.14.2.
+
 ## [10.14.1] - 2026-10-10
 
 Reposicionamento das superficies publicas: o cstk deixa de se apresentar como
@@ -8693,6 +8741,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.14.2]: https://github.com/JotJunior/cstk/releases/tag/v10.14.2
 [10.14.1]: https://github.com/JotJunior/cstk/releases/tag/v10.14.1
 [10.14.0]: https://github.com/JotJunior/cstk/releases/tag/v10.14.0
 [10.13.1]: https://github.com/JotJunior/cstk/releases/tag/v10.13.1

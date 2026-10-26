@@ -77,7 +77,9 @@ ARGS:
 OPCOES:
   --profile N    Perfil declarado no catalog. Default: sdd.
   --scope S      global (~/.claude/skills/) ou project (./.claude/skills/).
-                 Default: global.
+                 Default: global. Em project, orquestradores 00c e hooks
+                 resolvem o runtime na ordem projeto -> plugin -> global;
+                 `cstk 00c` (cria projeto NOVO) continua exigindo global.
   --from URL     URL do tarball (.tar.gz). Default: $CSTK_RELEASE_URL ou,
                  se ausente, consulta GitHub API /releases/latest. $CSTK_REPO
                  override aponta para um fork (default JotJunior/cstk).
@@ -739,6 +741,11 @@ _install_apply_hooks_if_needed() {
   esac
 
   if printf '%s\n' "$_install_selection" | grep -Fxq -- "agente-00c-runtime"; then
+    # issue #213: o escopo project funciona para /agente-00c e /feature-00c
+    # neste projeto, mas uma copia antiga no global NAO e removida por isto.
+    if [ -d "${HOME:?}/.claude/skills/agente-00c-runtime" ]; then
+      log_warn "install: agente-00c-runtime tambem existe em ~/.claude/skills — scripts e hooks deste projeto resolvem a copia do projeto, mas skills/agents podem carregar de qualquer escopo; mantenha as duas na mesma versao (cstk update --scope global) ou remova a global"
+    fi
     _agh_claude_root="${_install_scope_dir%/skills}"
     _agh_src_dir="$_install_catalog_dir/skills/agente-00c-runtime/hooks"
     _install_guard_hook_state=$(apply_guard_hooks "$_agh_src_dir" "$_agh_claude_root" "$_install_dry_run")

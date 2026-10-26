@@ -47,6 +47,12 @@ da saida do helper, ou qualquer outro texto). Ver §5.2 (F3) abaixo.
 
 ### 2. Resolver a decisao de leva via `resolve-offer` (ANTES de qualquer efeito colateral)
 
+> **Resolucao do catalogo (issue #213)**: `~/.claude/skills/<skill>/` neste
+> command e notacao canonica, nao caminho fixo. Resolva para o primeiro
+> diretorio existente, na ordem dos hooks: `<projeto-alvo>/.claude/skills/<skill>/`
+> (`--scope project`) → `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/` (plugin) →
+> `~/.claude/skills/<skill>/` (global), e use a mesma raiz em toda a execucao.
+
 A decisao final de `launch`/`max` desta invocacao **sempre** passa por
 `parallel-launch.sh resolve-offer` (helper testavel, contract §3) — nunca
 e inferida ad-hoc pela prosa deste command. `--source` e obrigatorio e
