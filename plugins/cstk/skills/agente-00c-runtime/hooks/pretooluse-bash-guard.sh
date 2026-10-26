@@ -267,6 +267,50 @@ _pbg_emit_deny() {
   exit 0
 }
 
+# _pbg_powershell_form_ok CMD -> exit 0 se CMD e `& <exe> <args>` com <exe>
+# terminando em sh/sh.exe/bash/bash.exe e sem metacaractere PowerShell fora
+# de aspas (fora: ; | & > < ` ( ) { } $ e quebra de linha; dentro de aspas
+# duplas: `$(` e crase). Aspas simples sao literais (`''` = aspa escapada).
+_pbg_powershell_form_ok() {
+  printf '%s' "$1" | awk '
+    BEGIN { RS = "\001" }
+    END { if (!seen) exit 1 }
+    {
+      seen = 1
+      s = $0
+      sub(/^[ \t]+/, "", s); sub(/[ \t\r\n]+$/, "", s)
+      if (substr(s, 1, 1) != "&") exit 1
+      s = substr(s, 2); sub(/^[ \t]+/, "", s)
+      q = substr(s, 1, 1)
+      if (q == "\047" || q == "\"") {
+        end = index(substr(s, 2), q); if (end == 0) exit 1
+        exe = substr(s, 2, end - 1); rest = substr(s, end + 2)
+      } else {
+        n = match(s, /[ \t]/)
+        if (n == 0) { exe = s; rest = "" } else { exe = substr(s, 1, n - 1); rest = substr(s, n) }
+      }
+      base = tolower(exe); sub(/^.*[\\\/]/, "", base)
+      if (base != "sh" && base != "sh.exe" && base != "bash" && base != "bash.exe") exit 1
+      state = 0  # 0 fora, 1 aspas simples, 2 aspas duplas
+      len = length(rest)
+      for (i = 1; i <= len; i++) {
+        c = substr(rest, i, 1); nx = substr(rest, i + 1, 1)
+        if (state == 1) {
+          if (c == "\047") { if (nx == "\047") i++; else state = 0 }
+        } else if (state == 2) {
+          if (c == "`" || (c == "$" && nx == "(")) exit 1
+          if (c == "\"") state = 0
+        } else {
+          if (c == "\047") state = 1
+          else if (c == "\"") state = 2
+          else if (index(";|&><`(){}$\n\r", c) > 0) exit 1
+        }
+      }
+      if (state != 0) exit 1
+      exit 0
+    }'
+}
+
 # _pbg_category_from_stderr TEXTO -> extrai a categoria emitida por
 # _bg_emit_block ("categoria=<CAT> —"); fallback para casos de whitelist
 # (sem tag categoria=) ou desconhecido.
@@ -376,9 +420,10 @@ fi
 
 # ---------- 3. Defesa redundante do matcher ("erros do proprio contrato") ----------
 
-if [ "$_PBG_TOOL_NAME" != "Bash" ]; then
-  exit 0
-fi
+case "$_PBG_TOOL_NAME" in
+  Bash | PowerShell) ;;
+  *) exit 0 ;;
+esac
 
 # ---------- 4. Pre-check inline (SEC-H1) + deteccao tri-estado via helper ----------
 
@@ -447,6 +492,18 @@ case "$_PBG_HAE_RC" in
     ;;
 esac
 
+# ---------- 4.bis PowerShell: so a forma `& <sh> ...` (issue #228) ----------
+#
+# As regras do bash-guard.sh sao POSIX: cmdlets nativos (Remove-Item,
+# Invoke-WebRequest...) passariam sem categoria. Durante execucao ativa o
+# PowerShell so pode CHAMAR o sh (ex.: `& 'C:\Git\bin\sh.exe' -c '<cmd>'`),
+# sem encadeamento/subexpressao fora de aspas — o conteudo segue para o
+# bash-guard.sh abaixo como qualquer comando Bash.
+if [ "$_PBG_TOOL_NAME" = "PowerShell" ] && ! _pbg_powershell_form_ok "$_PBG_CMD"; then
+  _pbg_write_log "blocked-by-rule" "$_PBG_CMD" "PowerShell fora da forma & <sh> ..." "powershell-form"
+  _pbg_emit_deny "REGRA_VIOLADA" "durante execucao 00c ativa o PowerShell so pode invocar o sh do Git (& <sh.exe> <script>.sh <args> ou & <sh.exe> -c '<comando>'), sem ; | & > < \` ( ) { } \$ fora de aspas"
+fi
+
 # ---------- 5. Delegar a bash-guard.sh (task 2.1.2 — nunca reimplementar) ----------
 
 if ! _PBG_BASH_GUARD=$(_pbg_resolve_dep "scripts/bash-guard.sh"); then
@@ -468,7 +525,15 @@ if ! _pbg_bg_stderr=$(mktemp 2>/dev/null); then
   _pbg_emit_deny "MECANISMO_FALHOU" "mktemp indisponivel para capturar diagnostico do bash-guard.sh"
 fi
 
-if "$_PBG_BASH_GUARD" check --command "$_PBG_CMD" --whitelist-file "$_pbg_wl" 2>"$_pbg_bg_stderr"; then
+# PowerShell: a forma exigida (4.bis) poe o comando real entre aspas
+# (`& sh.exe -c 'git push ...'`), e as regras do bash-guard.sh ancoram em
+# inicio/espaco/;|& — aspas viram espaco para o conteudo ser avaliado.
+_pbg_guard_cmd=$_PBG_CMD
+if [ "$_PBG_TOOL_NAME" = "PowerShell" ]; then
+  _pbg_guard_cmd=$(printf '%s' "$_PBG_CMD" | tr "'\"" '  ')
+fi
+
+if "$_PBG_BASH_GUARD" check --command "$_pbg_guard_cmd" --whitelist-file "$_pbg_wl" 2>"$_pbg_bg_stderr"; then
   _pbg_bg_exit=0
 else
   _pbg_bg_exit=$?
