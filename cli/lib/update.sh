@@ -71,7 +71,7 @@ USO:
 ARGS:
   SKILL...       Restringe update de skills a este subset (default: tudo no
                  manifest). Commands/agents sao sempre processados (sao
-                 infraestrutura global do toolkit, sem cherry-pick).
+                 infraestrutura do toolkit, sem cherry-pick), no --scope dado.
 
 OPCOES:
   --scope S      global ou project (default: global).
