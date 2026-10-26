@@ -29,6 +29,18 @@
 # caminhos via variavel ($VAR/...) passam — o guard e defesa em
 # profundidade, nao sandbox.
 #
+# Comando aninhado (issue #230): as regras ancoram em `(^|[[:space:];|&])`
+# e nao enxergavam comando entre aspas ou atras de `(`. Blocklist e whitelist
+# rodam uma 2a vez sobre a forma EXPOSTA do comando (_bg_expose_nested):
+# `$(`, `<(`, `>(` e `(` de subshell viram separador de segmento; quando ha
+# shell aninhado (`sh|bash|zsh|dash|ksh[.exe] ... -c`, `eval`, pipe para
+# shell), a invocacao vira separador e as aspas viram espaco. Aspas so sao
+# neutralizadas nesse caso: `git commit -m "nao rodar git push"` segue
+# passando. Falso positivo aceito (fail-closed): texto literal com comando
+# bloqueado DENTRO de shell aninhado. Fora do alcance: crase (texto literal
+# comum em mensagem de commit via heredoc), script em arquivo (`sh x.sh`),
+# comando remoto via ssh e indirecao por variavel.
+#
 # Subcomandos:
 #   bash-guard.sh check-blocklist --command "CMD"
 #       — Exit 0 se OK; exit 1 com motivo + padrao matched se bloqueado.
@@ -62,10 +74,43 @@ _bg_die_usage() { printf '%s: %s\n' "$_BG_NAME" "$1" >&2; exit 2; }
 
 # ---------- Blocklist ----------
 #
+# _bg_expose_nested CMD -> imprime a forma exposta de CMD (ver cabecalho,
+# issue #230). Sem construcao aninhada, imprime CMD inalterado.
+_bg_expose_nested() {
+  _en=$1
+  _en=$(printf '%s' "$_en" | sed -E \
+    -e 's#[$<>]\(# ; #g' \
+    -e 's#(^|[;|&])[[:space:]]*\(#\1 ; #g')
+  if printf '%s' "$_en" | grep -E '(^|[[:space:];|&(/\\])(sh|bash|zsh|dash|ksh)(\.exe)?[[:space:]][^;|&]*-[A-Za-z]*c' >/dev/null 2>&1 \
+     || printf '%s' "$_en" | grep -E '(^|[[:space:];|&])eval[[:space:]]' >/dev/null 2>&1 \
+     || printf '%s' "$_en" | grep -E '\|[[:space:]]*(sh|bash|zsh|dash|ksh)(\.exe)?([[:space:]]|$)' >/dev/null 2>&1; then
+    _en=$(printf '%s' "$_en" | sed -E \
+      -e 's#(^|[[:space:];|&(/\\])(sh|bash|zsh|dash|ksh)(\.exe)?([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*c[A-Za-z]*([[:space:]]|$)#\1 ; #g' \
+      -e 's#(^|[[:space:];|&])eval[[:space:]]#\1 ; #g' \
+      | tr "'\"" '  ')
+  fi
+  printf '%s' "$_en"
+}
+
+# _bg_check_blocklist_cmd CMD -> regras sobre CMD e, se diferente, sobre a
+# forma exposta (issue #230).
+_bg_check_blocklist_cmd() {
+  _bg_bl_raw=$1
+  _bg_check_blocklist_rules "$_bg_bl_raw" || return 1
+  _bg_bl_exp=$(_bg_expose_nested "$_bg_bl_raw")
+  if [ "$_bg_bl_exp" != "$_bg_bl_raw" ]; then
+    if ! _bg_check_blocklist_rules "$_bg_bl_exp"; then
+      printf '%s: (comando encontrado dentro de shell aninhado, eval ou substituicao de comando)\n' "$_BG_NAME" >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
 # Regex aplicadas em sequencia. Cada padrao matched = bloqueio com motivo.
 # Padroes empilhados em case statement para evitar dependencia em grep -E
 # em todos os subcomandos.
-_bg_check_blocklist_cmd() {
+_bg_check_blocklist_rules() {
   _cmd=$1
 
   # Helper: testa regex via grep -E sobre o comando
@@ -314,7 +359,19 @@ _bg_is_network_command() {
   return 1
 }
 
+# _bg_check_whitelist_cmd CMD FILE -> whitelist sobre CMD e, se diferente,
+# sobre a forma exposta (issue #230: `sh -c 'curl URL'` escapava).
 _bg_check_whitelist_cmd() {
+  _bg_wl_raw=$1
+  _bg_check_whitelist_rules "$_bg_wl_raw" "$2" || return 1
+  _bg_wl_exp=$(_bg_expose_nested "$_bg_wl_raw")
+  if [ "$_bg_wl_exp" != "$_bg_wl_raw" ]; then
+    _bg_check_whitelist_rules "$_bg_wl_exp" "$2" || return 1
+  fi
+  return 0
+}
+
+_bg_check_whitelist_rules() {
   _cmd=$1
   _wl=$2
 
