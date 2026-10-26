@@ -74,6 +74,8 @@ cx_dead() {
   printf '%s\n' "$_cd_pids" | awk -v pid="$1" '$1==pid {found=1} END {exit found?1:0}'
 }
 # Binding is a project-wide owned wave, never an alphabetical execution search.
+# Exit 1 = no binding; 2 = invalid/unverified; 3 = structurally valid binding
+# whose owner is proven dead (stdout = that PID). Liveness is checked last.
 cx_binding() {
   _cb_project=$1
   _cb_dir=$_cb_project/.claude/.cstk-codex-wave-lock
@@ -86,11 +88,15 @@ cx_binding() {
   case "$_cb_wave" in onda-[0-9]*) ;; *) return 2 ;; esac
   [ "$(cj_get "$_cb_doc" /project)" = "$_cb_project" ] || return 2
   case "$_cb_pid" in ''|*[!0-9]*|0) return 2 ;; esac
-  kill -0 "$_cb_pid" 2>/dev/null || return 2
   cx_within "$_cb_project/.claude" "$_cb_state" || return 2
   [ "$(cx_path "$_cb_state")" = "$_cb_state" ] || return 2
   [ ! -L "$_cb_state" ] && [ ! -L "$_cb_state/.lock" ] && [ ! -L "$_cb_state/.lock/owner" ] || return 2
   _cb_recorded=$(sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' "$_cb_state/.lock/owner") || return 2
   [ "$_cb_recorded" = "$_cb_pid" ] || return 2
+  if ! kill -0 "$_cb_pid" 2>/dev/null; then
+    cx_dead "$_cb_pid" || return 2
+    printf '%s\n' "$_cb_pid"
+    return 3
+  fi
   printf '%s\n' "$_cb_state"
 }

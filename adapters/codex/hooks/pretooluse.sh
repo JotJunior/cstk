@@ -2,10 +2,17 @@
 set -eu
 . "$(dirname -- "$0")/_common.sh"
 _pre_rc=0; cx_hook_scope || _pre_rc=$?
-case "$_pre_rc" in 1) printf '{}\n'; exit 0 ;; 0) ;; *) cx_hook_deny 'CSTK: invalid envelope or unverified owned wave'; exit 0 ;; esac
+case "$_pre_rc" in 1) printf '{}\n'; exit 0 ;; 0|3) ;; *) cx_hook_deny 'CSTK: invalid envelope or unverified owned wave'; exit 0 ;; esac
 _pre_tool=$(cx_default "$CX_HOOK_INPUT" /tool_name '')
 CX_ARGS=$(cx_json_default "$CX_HOOK_INPUT" /tool_input null)
 if [ "$(cj_type "$CX_ARGS")" != object ]; then cx_hook_deny 'CSTK: invalid tool input'; exit 0; fi
+# Dead owner: only the recovery path stays reachable; the helpers re-prove death.
+if [ "$_pre_rc" = 3 ]; then
+  case "$_pre_tool" in
+    mcp__cstk_pipeline__cstk_select_execution|mcp__cstk_pipeline__cstk_status|mcp__cstk_pipeline__cstk_recover|mcp__cstk_pipeline__cstk_abort) ;;
+    *) cx_hook_deny "CSTK: wave owner PID $CX_HOOK_DEAD_PID is dead; only cstk_select_execution/cstk_status/cstk_recover/cstk_abort are allowed. Recover with cstk_recover {\"abandoned_owner_pid\":$CX_HOOK_DEAD_PID} or in an external terminal: sh $(cx_quote_shell "$CX_ENTRY_DIR/controller.sh") recover --project $(cx_quote_shell "$CX_HOOK_PROJECT") --short-name <short-name> --abandoned-owner-pid $CX_HOOK_DEAD_PID"; exit 0 ;;
+  esac
+fi
 case "$_pre_tool" in
   mcp__cstk_pipeline__cstk_*)
     _pre_action=${_pre_tool#mcp__cstk_pipeline__cstk_}
