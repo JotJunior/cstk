@@ -44,13 +44,16 @@
 # (feature-00c.md:113-115), com o short-name POSICIONAL pinando a feature.
 # INALTERADO por este script: cli/lib/session.sh.
 #
-# --coordinator-name NAME: aceito e validado por allowlist
-# (^cstk-coord/[A-Za-z0-9._-]{1,64}$, <=64 chars) como defesa em
-# profundidade (contract §4.1), mas NAO e injetado na composicao emitida —
-# a composicao literal do contrato §4.1 nao referencia a coordenadora; o
-# encaminhamento do nome da coordenadora ate a sessao-filha para fins de
-# notificacao (contract §6) e escopo da prosa de /feature-00c (fase
-# posterior desta feature), nao deste helper.
+# --coordinator-name NAME: validado por allowlist
+# (^cstk-coord/[A-Za-z0-9._-]{1,64}$, <=64 chars) e PROPAGADO a cada filha
+# como `CSTK_COORDINATOR_NAME=<NAME>` no prefixo `env` da composicao
+# (issue #236). Antes era validado e descartado, e a filha enderecava a
+# notificacao por convencao fixa (`cstk-coord/<nome-do-repo>`): uma
+# coordenadora com nome valido mas diferente aceitava o emit e nunca
+# recebia aviso. A filha usa o valor recebido e so cai na convencao quando
+# ele falta (/feature-00c §5.quater). O nome nao e segredo e o charset da
+# allowlist nao tem metacaractere — seguro sem aspas no prefixo. Sem
+# --coordinator-name, o emit avisa (stderr) qual nome a convencao exige.
 #
 # Guarda anti-duplicidade (FR-011): NAO vive aqui — `roadmap-frontier.sh
 # --exclude-active-from-repo PATH` (contract roadmap-frontier.md §5) e a
@@ -106,8 +109,10 @@ Opcoes de `emit`:
                            (exit 2 se nao casar).
   --description TEXT      Descricao da feature imediatamente anterior
                            (opcional). Vence o roadmap. Sanitizada
-                           (sem aspas nem metacaractere de shell) e
-                           truncada a 300 chars. Exit 2 se vier sem um
+                           (sem aspas nem metacaractere de shell). Acima
+                           de 1200 bytes, cortada em fronteira de palavra
+                           com marcador `[...]` apontando a fonte completa
+                           (aviso em stderr). Exit 2 se vier sem um
                            --feature antes.
   --roadmap PATH          Roadmap de onde extrair `**Descricao**:` quando
                            --description nao foi informado. Default:
@@ -116,8 +121,9 @@ Opcoes de `emit`:
                            short-name (aviso em stderr), NUNCA erro.
   --coordinator-name NAME Nome da sessao coordenadora (opcional), validado
                            contra ^cstk-coord/[A-Za-z0-9._-]{1,64}$ se
-                           informado (exit 2 se mal-formado). Nao altera a
-                           composicao emitida (ver cabecalho do script).
+                           informado (exit 2 se mal-formado). Propagado a
+                           filha como CSTK_COORDINATOR_NAME no prefixo env
+                           (destino da notificacao de conclusao).
 
 Guarda anti-duplicidade (FR-011): `emit` recomputa `git -C PATH worktree
 list --porcelain` sobre --repo IMEDIATAMENTE antes de compor (janela
@@ -321,9 +327,10 @@ _pl_write_log() {
 # passa sempre por _pl_sanitize_desc.
 
 # _pl_sanitize_desc TEXT -> texto de uma linha, sem metacaractere de shell
-# nem aspa (de qualquer especie), colapsado e truncado a 300 chars.
-# A remocao de `'` e `"` e o que torna seguro o envelope
-# `'/feature-00c "<DESC>" <SHORT>'` da composicao (§4.1).
+# nem aspa (de qualquer especie), colapsado. NAO trunca (ver
+# _pl_truncate_desc). A remocao de `'` e `"` e o que torna seguro o
+# envelope `'/feature-00c "<DESC>" <SHORT>'` da composicao (§4.1) —
+# independente do tamanho.
 _pl_sanitize_desc() {
   printf '%s' "$1" \
     | tr '\n\r\t' '   ' \
@@ -331,8 +338,39 @@ _pl_sanitize_desc() {
     | tr -d "\"\`\\\\\$;&|<>!#" \
     | tr -d "'" \
     | tr -s ' ' \
-    | sed 's/^ *//; s/ *$//' \
-    | cut -c1-300
+    | sed 's/^ *//; s/ *$//'
+}
+
+# Teto da descricao inline, em bytes (issue #235). Era 300 — e 10 de 12 descricoes
+# reais de um roadmap passavam disso: a filha recebia a frase cortada no
+# meio da palavra, sem sinal do corte. O envelope e seguro em qualquer
+# tamanho; o teto so evita um comando tmux desmedido.
+_PL_DESC_MAX=1200
+
+# _pl_desc_len TEXT -> tamanho em BYTES (o teto e em bytes: cut/sed abaixo
+# rodam com LC_ALL=C para nunca falhar com "illegal byte sequence" no sed
+# BSD diante de UTF-8 partido).
+_pl_desc_len() {
+  printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '
+}
+
+# _pl_truncate_desc TEXT SOURCE_HINT -> TEXT se couber no teto; senao corta
+# na ultima fronteira de palavra antes do teto e acrescenta
+# ` [...] (<SOURCE_HINT>)`. SOURCE_HINT ja vem sanitizado pelo chamador.
+# Recuar ate o ultimo espaco tambem descarta um caractere multibyte que o
+# corte por byte tenha partido (bytes de continuacao UTF-8 nunca sao espaco).
+_pl_truncate_desc() {
+  _pl_td_text=$1
+  [ "$(_pl_desc_len "$_pl_td_text")" -gt "$_PL_DESC_MAX" ] || { printf '%s' "$_pl_td_text"; return 0; }
+  _pl_td_cut=$(printf '%s' "$_pl_td_text" | LC_ALL=C cut -b1-"$_PL_DESC_MAX")
+  # Proximo byte apos o corte e espaco => o corte ja caiu em fronteira.
+  _pl_td_next=$(printf '%s' "$_pl_td_text" | LC_ALL=C cut -b"$((_PL_DESC_MAX + 1))")
+  if [ "$_pl_td_next" != " " ]; then
+    _pl_td_word=$(printf '%s' "$_pl_td_cut" | LC_ALL=C sed 's/ [^ ]*$//')
+    # Palavra unica maior que o teto: mantem o corte cru.
+    [ "$_pl_td_word" = "$_pl_td_cut" ] || _pl_td_cut=$_pl_td_word
+  fi
+  printf '%s [...] (%s)' "${_pl_td_cut% }" "$2"
 }
 
 # _pl_desc_from_roadmap ROADMAP SHORT -> texto do paragrafo
@@ -377,13 +415,29 @@ _pl_resolve_desc() {
   _pl_rd_explicit=$2
 
   _pl_rd_out=$(_pl_sanitize_desc "$_pl_rd_explicit")
-  if [ -z "$_pl_rd_out" ] && [ -n "$_pl_roadmap" ]; then
+  _pl_rd_hint=""
+  if [ -n "$_pl_rd_out" ]; then
+    _pl_rd_hint="descricao truncada de $(_pl_desc_len "$_pl_rd_out") bytes"
+  elif [ -n "$_pl_roadmap" ]; then
     _pl_rd_out=$(_pl_sanitize_desc "$(_pl_desc_from_roadmap "$_pl_roadmap" "$_pl_rd_short")")
+    # Path do roadmap relativo ao repo quando possivel: a worktree da filha
+    # tem o mesmo layout. Sanitizado — entra no prompt.
+    case "$_pl_roadmap" in
+      "$_pl_repo"/*) _pl_rd_src=${_pl_roadmap#"$_pl_repo"/} ;;
+      *) _pl_rd_src=$_pl_roadmap ;;
+    esac
+    _pl_rd_hint="descricao completa em $(_pl_sanitize_desc "$_pl_rd_src"), entrada $_pl_rd_short"
   fi
   if [ -z "$_pl_rd_out" ]; then
     _pl_rd_out=$_pl_rd_short
     printf '%s: descricao ausente para %s (nem --description nem **Descricao**: em %s) — usando o short-name como descricao\n' \
       "$_PL_NAME" "$_pl_rd_short" "${_pl_roadmap:-<sem roadmap>}" >&2
+  fi
+  _pl_rd_len=$(_pl_desc_len "$_pl_rd_out")
+  if [ "$_pl_rd_len" -gt "$_PL_DESC_MAX" ]; then
+    printf '%s: descricao de %s tem %s bytes — cortada em fronteira de palavra antes de %s, com marcador [...] (%s)\n' \
+      "$_PL_NAME" "$_pl_rd_short" "$_pl_rd_len" "$_PL_DESC_MAX" "$_pl_rd_hint" >&2
+    _pl_rd_out=$(_pl_truncate_desc "$_pl_rd_out" "$_pl_rd_hint")
   fi
   printf '%s' "$_pl_rd_out"
 }
@@ -446,8 +500,9 @@ _pl_otel_check() {
   _PL_OTEL_OK=1
 }
 
-# _pl_otel_prefix -> imprime `env VAR=... ` (com espaco final) ou nada.
-# Uma porta NOVA por chamada (uma por filha).
+# _pl_otel_prefix -> imprime `VAR=... ` (com espaco final) ou nada.
+# Uma porta NOVA por chamada (uma por filha). O `env` e posto por
+# _pl_env_prefix.
 _pl_otel_prefix() {
   [ "$_PL_OTEL_OK" = 1 ] || return 0
   _plop_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null) || _plop_port=""
@@ -461,8 +516,21 @@ _pl_otel_prefix() {
       "$_PL_NAME" >&2
     return 0
   fi
-  printf 'env CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=prometheus OTEL_EXPORTER_PROMETHEUS_PORT=%s CSTK_OTEL_ENDPOINT=http://127.0.0.1:%s/metrics ' \
+  printf 'CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=prometheus OTEL_EXPORTER_PROMETHEUS_PORT=%s CSTK_OTEL_ENDPOINT=http://127.0.0.1:%s/metrics ' \
     "$_plop_port" "$_plop_port"
+}
+
+# _pl_env_prefix -> `env <telemetria> [CSTK_COORDINATOR_NAME=<nome>] ` ou
+# nada. O nome da coordenadora (issue #236) ja passou pela allowlist
+# _PL_COORD_RE — sem metacaractere, seguro sem aspas.
+_pl_env_prefix() {
+  _plep_vars=$(_pl_otel_prefix)
+  if [ -n "$_pl_coordinator" ]; then
+    _plep_vars="${_plep_vars}CSTK_COORDINATOR_NAME=$_pl_coordinator "
+  fi
+  if [ -n "$_plep_vars" ]; then
+    printf 'env %s' "$_plep_vars"
+  fi
 }
 
 # ==== emit ====
@@ -540,6 +608,14 @@ _pl_cmd_emit() {
   _pl_parent=$(dirname -- "$_pl_repo")
   _pl_repo_name=$(basename -- "$_pl_repo")
 
+  # Sem --coordinator-name a filha enderecara a notificacao pela convencao
+  # (issue #236) — dizer ao operador, AGORA, qual nome a coordenadora
+  # precisa ter, em vez de a filha descobrir "sessao inexistente" no fim.
+  if [ -z "$_pl_coordinator" ]; then
+    printf '%s: sem --coordinator-name — as filhas notificarao a sessao cstk-coord/%s (convencao); se esta coordenadora tiver outro nome, rode /rename cstk-coord/%s ou relance com --coordinator-name\n' \
+      "$_PL_NAME" "$_pl_repo_name" "$_pl_repo_name" >&2
+  fi
+
   _pl_have_tmux=false
   if command -v tmux >/dev/null 2>&1; then
     _pl_have_tmux=true
@@ -607,7 +683,7 @@ _pl_cmd_emit() {
     # comeca em `claude --name`), justamente porque a porta e por-filha e
     # nao poderia ser identica entre duas invocacoes.
     _pl_claude_argv=$(printf '%sclaude --name "%s" %s' \
-      "$(_pl_otel_prefix)" "$_pl_child" "$_pl_prompt")
+      "$(_pl_env_prefix)" "$_pl_child" "$_pl_prompt")
 
     _pl_line1=$(printf 'cstk session start %s' "$_pl_short")
     if $_pl_have_tmux; then

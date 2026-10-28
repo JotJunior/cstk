@@ -188,42 +188,49 @@ scenario_resume_feat_nao_para_em_aguardando_humano() {
   assert_exit 0 grep -Eiq 'processo.*coextensivo.*sessao do harness|processo.*e coextensivo com a.*sessao do harness' "$CMD_RES_FEAT" || return 1
 }
 
-# ==== dec-043 (consumada): injecao do token de capacidade no spawn ====
-# A coordenacao cross-feature da task 1.2 foi CONSUMADA pos-v6.1.0: os 4
-# commands leem o descritor mcp-server.json e injetam o session_id no
-# contexto do spawn do orquestrador (SEC-H3: capacidade, nunca precedencia).
+# ==== issue #234 (substitui dec-043): injecao do SELETOR no spawn ====
+# Os 4 commands injetam um seletor NAO-secreto da execucao
+# (`agente-00c` | `feature-00c:<short>`) no contexto do spawn. O token de
+# capacidade nunca e lido pelo command (o auto mode nega a leitura do
+# descritor como Credential Materialization) — o servidor resolve o seletor.
 
-scenario_init_agente_injeta_token_no_spawn() {
-  assert_exit 0 grep -Eiq 'token de capacidade' "$CMD_INIT_AGENTE" || return 1
+scenario_init_agente_injeta_seletor_no_spawn() {
+  assert_exit 0 grep -Eiq 'seletor' "$CMD_INIT_AGENTE" || return 1
   assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_INIT_AGENTE" || return 1
-  assert_exit 0 grep -Eq '\.session_id' "$CMD_INIT_AGENTE" || return 1
+  assert_exit 0 grep -Eq '_mcp_selector="agente-00c"' "$CMD_INIT_AGENTE" || return 1
   assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_INIT_AGENTE" || return 1
 }
 
-scenario_init_feat_injeta_token_no_spawn() {
-  assert_exit 0 grep -Eiq 'token de capacidade' "$CMD_INIT_FEAT" || return 1
+scenario_init_feat_injeta_seletor_no_spawn() {
+  assert_exit 0 grep -Eiq 'seletor' "$CMD_INIT_FEAT" || return 1
   assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_INIT_FEAT" || return 1
-  assert_exit 0 grep -Eq '\.session_id' "$CMD_INIT_FEAT" || return 1
+  assert_exit 0 grep -Eq '_mcp_selector="feature-00c:' "$CMD_INIT_FEAT" || return 1
   assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_INIT_FEAT" || return 1
 }
 
-scenario_resume_agente_injeta_token_no_spawn() {
+scenario_resume_agente_injeta_seletor_no_spawn() {
   assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_RES_AGENTE" || return 1
-  assert_exit 0 grep -Eq '\.session_id' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eq '_mcp_selector="agente-00c"' "$CMD_RES_AGENTE" || return 1
   assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_RES_AGENTE" || return 1
 }
 
-scenario_resume_feat_injeta_token_no_spawn() {
+scenario_resume_feat_injeta_seletor_no_spawn() {
   assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_RES_FEAT" || return 1
-  assert_exit 0 grep -Eq '\.session_id' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eq '_mcp_selector="feature-00c:' "$CMD_RES_FEAT" || return 1
   assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_RES_FEAT" || return 1
 }
 
-scenario_token_nunca_ecoado_em_logs() {
-  # Os 4 arquivos declaram explicitamente que o token nao vai a stdout/logs.
+scenario_token_nunca_lido_nem_ecoado() {
+  # Regressao da issue #234: nenhum dos 4 commands le o session_id do
+  # descritor (jq/cat/python) e todos declaram que o token fica fora do
+  # prompt.
   for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
-    grep -Eiq 'token NUNCA e? ?ecoado' "$_f" \
-      || { _fail "declaracao de nao-eco do token ausente" "$_f"; return 1; }
+    if grep -Eq "jq -r '\.session_id" "$_f"; then
+      _fail "command ainda le o session_id do descritor" "$_f"
+      return 1
+    fi
+    grep -Eiq 'token de capacidade (nunca entra|fica so no descritor)' "$_f" \
+      || { _fail "declaracao de token fora do prompt ausente" "$_f"; return 1; }
   done
 }
 
@@ -252,11 +259,11 @@ scenario_token_injecao_nao_condicionada_a_mode_nos_4_commands() {
   done
 }
 
-scenario_token_le_session_id_sem_guard_de_mode() {
-  # Leitura de _mcp_token deve ser incondicional (nao dentro de um
+scenario_seletor_sem_guard_de_mode() {
+  # Derivacao de _mcp_selector deve ser incondicional (nao dentro de um
   # `if [ ... = "docker" ]`) nos 4 commands.
   for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
-    assert_exit 0 grep -Eq '_mcp_token=\$\(jq -r .\.session_id' "$_f" || return 1
+    assert_exit 0 grep -Eq '_mcp_selector=""' "$_f" || return 1
   done
 }
 

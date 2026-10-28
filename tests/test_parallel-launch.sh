@@ -9,7 +9,8 @@
 #         byte-comparabilidade do trecho `claude --name ... "..."` entre
 #         os dois caminhos (contract §4, decisao de desenho)
 #   emit: revalidacao de --feature (defesa em profundidade, contract §4.2)
-#   emit: validacao de --coordinator-name (allowlist, nao afeta composicao)
+#   emit: validacao de --coordinator-name (allowlist) + propagacao como
+#         CSTK_COORDINATOR_NAME no prefixo env (issue #236)
 #   emit: uso incorreto (--repo/--feature ausentes, flag desconhecida,
 #         subcomando desconhecido)
 #   guarda anti-duplicidade (TOCTOU-recompute, contract §4.2/2.6.4):
@@ -200,13 +201,25 @@ scenario_emit_feature_maior_que_64_chars_rejeitada() {
 
 # ==== emit: --coordinator-name ====
 
-scenario_emit_coordinator_name_valido_nao_altera_composicao() {
-  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+scenario_emit_coordinator_name_valido_propagado_no_env() {
+  # issue #236: o nome validado chega a filha (antes era descartado e a
+  # filha notificava a convencao cstk-coord/<repo>, mesmo com outro nome).
   _repo="$TMPDIR_TEST/repo-coord-ok"
   mkdir -p "$_repo"
-  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --coordinator-name "cstk-coord/meu-repo"
+  CSTK_TELEMETRY_AUTO=0 capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --coordinator-name "cstk-coord/main"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
-  assert_stdout_not_contains "cstk-coord/meu-repo" || return 1
+  # sem telemetria o prefixo env existe so por causa da coordenadora
+  assert_stdout_contains 'env CSTK_COORDINATOR_NAME=cstk-coord/main claude --name "cstk-feature/auth-basica"' || return 1
+  case "$_CAPTURED_STDERR" in *"sem --coordinator-name"*) _fail "stderr nao deveria conter" "sem --coordinator-name"; return 1 ;; esac
+}
+
+scenario_emit_sem_coordinator_name_avisa_convencao() {
+  _repo="$TMPDIR_TEST/organizer"
+  mkdir -p "$_repo"
+  CSTK_TELEMETRY_AUTO=0 capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "/rename cstk-coord/organizer" || return 1
+  assert_stdout_not_contains "CSTK_COORDINATOR_NAME" || return 1
 }
 
 scenario_emit_coordinator_name_invalido_rejeitado() {
@@ -465,16 +478,67 @@ scenario_adversarial_descricao_explicita_com_injecao_sanitizada() {
   assert_stdout_match "claude --name \"cstk-feature/auth-basica\" '/feature-00c \"[^']*\" auth-basica'" || return 1
 }
 
-scenario_emit_descricao_truncada_em_300_chars() {
-  _repo="$TMPDIR_TEST/repo-desc-longa"
-  mkdir -p "$_repo"
-  _longa=$(printf 'a%.0s' $(seq 1 400))
+# _pl_prompt_of SHORT -> descricao dentro do envelope '/feature-00c "<D>" SHORT'
+_pl_prompt_of() {
+  printf '%s' "$_CAPTURED_STDOUT" | sed -n "s/.*'\\/feature-00c \"\\(.*\\)\" $1'.*/\\1/p"
+}
 
-  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "$_longa"
+scenario_emit_descricao_de_360_chars_passa_inteira() {
+  # issue #235: o caso real (360 chars) era cortado em 300 no meio da palavra.
+  _repo="$TMPDIR_TEST/repo-desc-360"
+  mkdir -p "$_repo"
+  _desc=$(printf 'palavra %.0s' $(seq 1 45))
+  _desc="${_desc}fim-da-frase"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "$_desc"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
-  _prompt=$(printf '%s' "$_CAPTURED_STDOUT" | sed -n "s/.*'\\/feature-00c \"\\(.*\\)\" auth-basica'.*/\\1/p")
-  _len=$(printf '%s' "$_prompt" | wc -c | tr -d ' ')
-  [ "$_len" = 300 ] || { _fail "descricao deveria ser truncada a 300 chars" "obtido $_len"; return 1; }
+  _prompt=$(_pl_prompt_of auth-basica)
+  [ "$_prompt" = "$_desc" ] || { _fail "descricao deveria passar inteira" "[$_prompt]"; return 1; }
+  case "$_CAPTURED_STDERR" in *"cortada"*) _fail "stderr nao deveria conter" "cortada"; return 1 ;; esac
+}
+
+scenario_emit_descricao_longa_cortada_em_palavra_com_marcador_e_aviso() {
+  _repo="$TMPDIR_TEST/repo-desc-longa"
+  mkdir -p "$_repo/docs"
+  _desc=$(printf 'abcdefghi %.0s' $(seq 1 200))
+  printf '# Roadmap\n\n### 1. auth-basica\n\n**Descricao**: %s\n' "$_desc" > "$_repo/docs/roadmap.md"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  _prompt=$(_pl_prompt_of auth-basica)
+  case "$_prompt" in
+    *" abcdefghi [...] (descricao completa em docs/roadmap.md, entrada auth-basica)") : ;;
+    *) _fail "corte deveria cair em fronteira de palavra, com marcador apontando o roadmap" "[$_prompt]"; return 1 ;;
+  esac
+  _body=${_prompt%% \[...\]*}
+  _len=$(printf '%s' "$_body" | wc -c | tr -d ' ')
+  [ "$_len" -le 1200 ] || { _fail "corpo acima do teto de 1200" "obtido $_len"; return 1; }
+  assert_stderr_contains "descricao de auth-basica tem 1999 bytes" || return 1
+}
+
+scenario_emit_descricao_explicita_longa_marca_tamanho_original() {
+  _repo="$TMPDIR_TEST/repo-desc-longa-explicita"
+  mkdir -p "$_repo"
+  _desc=$(printf 'xy %.0s' $(seq 1 500))
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "$_desc"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "[...] (descricao truncada de 1499 bytes)\" auth-basica'" || return 1
+}
+
+scenario_emit_descricao_longa_utf8_nao_quebra() {
+  # Corte por byte nunca pode deixar caractere multibyte partido nem
+  # derrubar o sed BSD com "illegal byte sequence".
+  _repo="$TMPDIR_TEST/repo-desc-utf8"
+  mkdir -p "$_repo"
+  _desc=$(printf 'decisao %.0s' $(seq 1 100) | sed 's/decisao/decisão/g')
+  _desc="${_desc}$(printf 'ação %.0s' $(seq 1 300))"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "$_desc"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in *"illegal byte"*) _fail "stderr nao deveria conter" "illegal byte"; return 1 ;; esac
+  _prompt=$(_pl_prompt_of auth-basica)
+  case "$_prompt" in
+    *" ação [...] ("*) : ;;
+    *) _fail "corte deveria terminar em palavra inteira" "[$(printf '%s' "$_prompt" | tail -c 80)]"; return 1 ;;
+  esac
 }
 
 # ==== testes adversariais de injecao (2.7) ====

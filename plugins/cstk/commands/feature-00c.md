@@ -774,8 +774,11 @@ if [ -n "$_optin_mcpjson_pre" ] && cstk mcp status --state-dir "$AGENTE_00C_STAT
   cstk mcp start --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; _optin_probe_rc=$? || :
 fi
 if [ "$_optin_probe_rc" -eq 0 ]; then
-  _optin_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _optin_token=""
-  [ -n "$_optin_token" ] && _optin_branch="candidato"
+  # Presenca do descritor, SEM ler o token (issue #234 — ler o session_id
+  # e negado pelo auto mode como Credential Materialization).
+  [ -s "$AGENTE_00C_STATE_DIR/mcp-server.json" ] \
+    && _optin_selector="feature-00c:$(basename -- "$AGENTE_00C_STATE_DIR")" \
+    && _optin_branch="candidato"
 fi
 # Bugfix 8.3.1 — o token cunhado por `cstk mcp start` NAO prova que a tool
 # existe no harness DESTA sessao (caso real no /agente-00c: `/mcp` mostrava
@@ -802,9 +805,12 @@ if [ "$_optin_branch" = "candidato" ]; then
   esac
 fi
 # Se _optin_branch = "candidato" apos o preflight, aplique a confirmacao (c)
-# VOCE MESMO, sem script: mcp__cstk-state__collect_optins consta entre as
-# tools desta sessao (carregada ou deferred)? Em duvida, ToolSearch com
-# `select:mcp__cstk-state__collect_optins` — resultado sem a tool = ausente.
+# VOCE MESMO, sem script: mcp__cstk-state__collect_optins (servidor de
+# projeto) ou mcp__plugin_cstk_cstk-state__collect_optins (servidor do
+# plugin — equivalentes) consta entre as tools desta sessao (carregada ou
+# deferred)? Em duvida, ToolSearch com
+# `select:mcp__cstk-state__collect_optins,mcp__plugin_cstk_cstk-state__collect_optins`
+# — resultado sem nenhuma das duas = ausente.
 # Presente => _optin_branch="estruturado". Ausente => _optin_branch="legado".
 # .mcp.json presente, `cstk mcp status`/`start` OK e ate preflight=ready NAO
 # substituem esta checagem (o .mcp.json e lido no boot da sessao; a
@@ -813,7 +819,7 @@ fi
 #
 # _optin_branch = "legado": siga o prompt de prosa abaixo exatamente como
 #   hoje (byte-a-byte, FR-005) — nenhuma mencao ao MCP.
-#   Excecao unica (bugfix 8.3.1): se o token FOI cunhado (_optin_token
+#   Excecao unica (bugfix 8.3.1): se o token FOI cunhado (_optin_selector
 #   nao-vazio) e o ramo caiu para legado por (b) ou (c), imprima ANTES do
 #   prompt UMA linha de diagnostico ao operador — ele registrou o .mcp.json
 #   de proposito e precisa saber por que o formulario nao vem:
@@ -949,8 +955,8 @@ if cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; then
   # CORRECAO (dec-034): `start` grava SEMPRE `mode=direct` — nao ha
   # caminho de codigo que produza `mode=bash-fallback` (mcp.sh:100-107,
   # :708-709 VERIFICADO; o valor e reservado pelo contrato, nunca emitido
-  # de fato). O discriminador real de indisponibilidade e token vazio /
-  # descritor ausente (`_mcp_token`, mais abaixo), nunca o literal
+  # de fato). O discriminador real de indisponibilidade e descritor
+  # ausente (`_mcp_selector`, mais abaixo), nunca o literal
   # `mode=bash-fallback`.
   cstk mcp start --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1 || :
 else
@@ -960,26 +966,31 @@ else
 fi
 ```
 
-> **Injecao do token de capacidade (dec-043 / SEC-H3, generalizada FR-013)**
-> — consumacao da coordenacao cross-feature da task 1.2. Apos o `start`,
-> leia o descritor e injete o token no CONTEXTO do spawn do orquestrador
-> SEMPRE que o descritor existir e `session_id` for nao-vazio,
-> **independentemente do valor de `mode`** (contracts/cli-mcp-lifecycle.md
-> §7, P-1/P-2 — a condicao antiga restrita a `mode == "docker"` foi
-> removida: apos o cutover desta feature nenhuma sessao nova grava
-> `mode=docker`):
+> **Injecao do seletor da execucao (issue #234; antes dec-043 / SEC-H3,
+> generalizada FR-013)** — apos o `start`, injete no CONTEXTO do spawn do
+> orquestrador o SELETOR nao-secreto da execucao
+> (`feature-00c:<short-name>`) SEMPRE que o descritor existir,
+> **independentemente do valor de `mode`**. O token de capacidade NUNCA e
+> lido pelo command nem pelo orquestrador: ler o `session_id` do descritor
+> (`chmod 600`) e negado pelo auto mode como Credential Materialization, e
+> o servidor MCP aceita o seletor no lugar do token (resolve contra o
+> descritor no disco, fail-closed — `mcp-session.sh resolve --selector`).
+> Injete UMA vez, aqui — nunca instrua o orquestrador a ler o descritor:
 >
 > ```bash
-> _mcp_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_token=""
+> _mcp_selector=""
+> [ -s "$AGENTE_00C_STATE_DIR/mcp-server.json" ] \
+>   && _mcp_selector="feature-00c:$(basename -- "$AGENTE_00C_STATE_DIR")"
 > ```
 >
-> - `_mcp_token` NAO-vazio ⇒ inclua no prompt do orquestrador a linha:
->   `MCP: servidor de estado ativo; session_id=<token>. Prefira as tools
->   mcp__cstk-state__* (open_wave, record_decision, record_skill,
->   record_task, register_human_block, close_wave, get_status)
->   apresentando ESTE session_id em cada chamada; em erro de transporte,
->   contrato de queda mid-onda (0 retries + 1 confirmacao via cstk mcp
->   status --live) e comutacao para Bash no resto da onda.`
+> - `_mcp_selector` NAO-vazio ⇒ inclua no prompt do orquestrador a linha:
+>   `MCP: servidor de estado ativo; session_id=<_mcp_selector>. Prefira as
+>   tools mcp__cstk-state__* ou mcp__plugin_cstk_cstk-state__* (open_wave,
+>   record_decision, record_skill, record_task, register_human_block,
+>   close_wave, get_status) apresentando ESTE session_id em cada chamada
+>   (nunca leia mcp-server.json); em erro de transporte, contrato de queda
+>   mid-onda (0 retries + 1 confirmacao via cstk mcp status --live) e
+>   comutacao para Bash no resto da onda.`
 > - **Ramo `_optin_branch = "estruturado"` (decisao de ramo acima, task
 >   5.3.1/5.5.1 — mcp-elicitation-optins) E `_optin_inherited` vazio**
 >   (reabertura ja gravou `channel: "inherited"` em 3'.bis — issue #192 —
@@ -989,20 +1000,20 @@ fi
 >   execucao, ANTES de qualquer state-ondas.sh start/open_wave da
 >   onda-001 (FR-012, Invariante O-1 — nenhuma onda pode abrir com campo
 >   aplicavel sem registro em .optin_responses[]).`
-> - `_mcp_token` vazio (`bash-fallback` / sem descritor) ⇒ NAO mencione MCP
+> - `_mcp_selector` vazio (sem descritor) ⇒ NAO mencione MCP
 >   no prompt; o orquestrador segue o caminho Bash (zero regressao, SC-004).
 >   Neste caso `_optin_branch` ja e `"legado"` por construcao (mesmo
->   `_mcp_token` testado na decisao de ramo acima) — o opt-in ja foi
+>   descritor testado na decisao de ramo acima) — o opt-in ja foi
 >   capturado por prosa ANTES do init; nada pendente para o orquestrador.
-> - `_mcp_token` NAO-vazio **com** `_optin_branch = "legado"` (bugfix 8.3.1:
+> - `_mcp_selector` NAO-vazio **com** `_optin_branch = "legado"` (bugfix 8.3.1:
 >   token cunhado, mas preflight `idle` ou tool ausente no toolset) ⇒ injete
->   a linha do token normalmente (o orquestrador decide MCP-vs-Bash tool a
+>   a linha do seletor normalmente (o orquestrador decide MCP-vs-Bash tool a
 >   tool) e **NAO** injete a linha do ramo estruturado — o opt-in ja foi
 >   capturado por prosa e persistido em 3.ter. O discriminador do
->   orquestrador (3.bis) e a PRESENCA dessa linha, nunca o token.
-> - O token NUNCA e ecoado em stdout/stderr/logs do command — vive apenas
->   no descritor (`chmod 600`) e no prompt do spawn (SEC-H3: roteamento por
->   capacidade, nunca por precedencia).
+>   orquestrador (3.bis) e a PRESENCA dessa linha.
+> - O token de capacidade fica so no descritor (`chmod 600`) e no servidor;
+>   nunca entra em prompt, stdout ou log. O seletor nomeia a execucao
+>   explicitamente (nunca precedencia — SEC-H3 continua coberto).
 
 ### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent
 
@@ -1242,21 +1253,19 @@ terminal notificavel — as mesmas 3 transicoes cobertas pelo enum de
 `plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh:250`):
 `concluida`, `abortada`, `aguardando_humano`. `em_andamento` NUNCA notifica.
 
-**Achado grounded (nao redundante com §6.ter do `agente-00c.md`)**: o
-`parallel-launch.sh emit --coordinator-name` (contract §4) valida o nome
-mas **deliberadamente nunca o injeta** na composicao do comando emitido —
-confirmado por `tests/test_parallel-launch.sh::
-scenario_emit_coordinator_name_valido_nao_altera_composicao`
-(`assert_stdout_not_contains "cstk-coord/..."`). Esta sessao-filha, portanto,
-**nao recebe** o nome da coordenadora via prompt de lancamento. O
-endereçamento e por **CONVENCAO**: a coordenadora que lanca uma leva so
-recebe notificacoes se tiver sido nomeada `cstk-coord/<nome-do-repo>` (o
-operador ja e avisado disso em `agente-00c.md` §6.ter passo 7). A
-sessao-filha deriva o MESMO `<nome-do-repo>` que a coordenadora usaria,
-pela mesma tecnica de `cli/lib/session.sh::_session_resolve_repo`
-(linhas 181-193): resolver `git rev-parse --git-common-dir` para o path
-absoluto do repositorio principal (funciona de qualquer worktree, inclusive
-a worktree isolada desta sessao-filha) e tomar o `basename`.
+**Destino da notificacao (issue #236)**: `parallel-launch.sh emit
+--coordinator-name <NOME>` propaga o nome validado a esta sessao-filha como
+a variavel de ambiente `CSTK_COORDINATOR_NAME` (prefixo `env` da composicao
+de lancamento — `tests/test_parallel-launch.sh::
+scenario_emit_coordinator_name_valido_propagado_no_env`). Presente e casando
+`^cstk-coord/[A-Za-z0-9._-]{1,64}$` ⇒ e o destino. Ausente ou fora do padrao
+⇒ **convencao** `cstk-coord/<nome-do-repo>`, com `<nome-do-repo>` derivado
+pela mesma tecnica de `cli/lib/session.sh::_session_resolve_repo` (linhas
+181-193): resolver `git rev-parse --git-common-dir` para o path absoluto
+do repositorio principal (funciona de qualquer worktree, inclusive a
+worktree isolada desta sessao-filha) e tomar o `basename`. O `repo=` do
+payload e SEMPRE o `<nome-do-repo>` derivado (contrato do parser da
+coordenadora), independente do destino.
 
 ```bash
 case "$_status_final" in
@@ -1270,6 +1279,9 @@ case "$_status_final" in
     if [ -n "$_repo_name" ]; then
       _notify_payload="[cstk-parallel] feature=$SHORT outcome=$_status_final repo=$_repo_name"
       _notify_target="cstk-coord/$_repo_name"
+      if printf '%s' "${CSTK_COORDINATOR_NAME:-}" | grep -Eq '^cstk-coord/[A-Za-z0-9._-]{1,64}$'; then
+        _notify_target=$CSTK_COORDINATOR_NAME
+      fi
       # invoque a tool SendMessage enderecada a $_notify_target com o
       # payload $_notify_payload — BEST-EFFORT (FR-015): sessao
       # coordenadora inexistente, sem nome conhecido, ou qualquer erro da
@@ -1288,6 +1300,11 @@ Regras duras (contract §6):
   de rodar normalmente.
 - Esta sessao-filha **nunca** calcula fronteira, nunca oferece leva, nunca
   lanca outra sessao (FR-012) — a notificacao e puramente informativa.
+- **Entrega falhou ⇒ diga ao operador como corrigir** (issue #236): no
+  resumo final, em vez de so "essa sessao nao existe", escreva o destino
+  usado e a acao: `Notificacao nao entregue: nenhuma sessao chamada
+  <_notify_target>. Na coordenadora, rode /rename <_notify_target> (ou
+  relance a leva com --coordinator-name <nome-atual-da-coordenadora>).`
 
 ### 6. Cleanup
 

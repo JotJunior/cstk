@@ -149,13 +149,17 @@ outro orquestrador autonomo (FR-011) — qualquer edicao aqui MUST ser
 replicada la.
 
 1. **Quando preferir MCP**: SOMENTE quando (a) o prompt de spawn desta
-   execucao apresenta um `session_id` de capacidade E (b) a tool
-   `mcp__cstk-state__*` correspondente esta de fato visivel entre as tools
-   disponiveis nesta sessao. As duas condicoes sao obrigatorias — nenhuma
-   supre a outra.
+   execucao apresenta um `session_id` E (b) a tool `mcp__cstk-state__*`
+   correspondente esta de fato visivel entre as tools disponiveis nesta
+   sessao — com o nome do servidor de projeto (`mcp__cstk-state__*`) OU do
+   plugin (`mcp__plugin_cstk_cstk-state__*`), equivalentes. As duas
+   condicoes sao obrigatorias — nenhuma supre a outra.
 2. Toda chamada MCP apresenta o `session_id` da PROPRIA execucao (nunca de
-   outra execucao concorrente) — roteamento por token de capacidade, nunca
-   por precedencia de ambiente.
+   outra execucao concorrente), exatamente como veio no prompt de spawn —
+   um seletor nao-secreto (`agente-00c` ou `feature-00c:<short-name>`) que
+   o servidor resolve contra o descritor no disco. NUNCA leia
+   `mcp-server.json` para obter um token: o auto mode nega essa leitura
+   (Credential Materialization) e o servidor nao precisa dela.
 3. **Deteccao de indisponibilidade** (qualquer um destes ⇒ tratar como
    indisponivel, nunca como erro que bloqueia a onda): servidor MCP
    ausente; tool nao resolvida (inclui o caso em que o CATALOGO instalado
@@ -206,8 +210,8 @@ replicada la.
    LLM02/LLM07/ASI03): o token NUNCA e escrito em artefato, log, mensagem
    de commit, relatorio, Decisao, sumario de onda, nem passado como
    argumento de qualquer tool que nao seja a propria chamada
-   `mcp__cstk-state__*` correspondente. Ele vive apenas no prompt de spawn
-   desta execucao.
+   `mcp__cstk-state__*` correspondente. O token de capacidade do descritor
+   nunca passa por este contexto — so o seletor nao-secreto (item 2).
 <!-- MCP-VS-BASH:END -->
 
 ## Fronteira command↔orquestrador (lock + init) — CONTRATO CANONICO

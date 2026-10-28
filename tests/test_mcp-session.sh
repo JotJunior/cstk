@@ -315,4 +315,87 @@ scenario_nenhum_locator_exit_2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "nenhum locator exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ---------- issue #234: seletor nao-secreto no lugar do token ----------
+
+scenario_selector_agente00c_resolve() {
+  _proj="$TMPDIR_TEST/sel1"
+  _sd="$_proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-sel-ag" "agente-00c" "" "$_sd" "direct" ""
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --selector "agente-00c"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seletor agente-00c exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "state_dir=$_sd" || return 1
+  # O token nunca sai na resposta.
+  assert_stdout_not_contains "tok-sel-ag" || return 1
+}
+
+scenario_selector_feature00c_escolhe_so_a_nomeada() {
+  _proj="$TMPDIR_TEST/sel2"
+  _sd_a="$_proj/.claude/feature-00c-state/feat-a"
+  _sd_b="$_proj/.claude/feature-00c-state/feat-b"
+  mkdir -p "$_sd_a" "$_sd_b"
+  _write_descriptor "$_sd_a/mcp-server.json" "tok-a" "feature-00c" "feat-a" "$_sd_a" "direct" ""
+  _write_descriptor "$_sd_b/mcp-server.json" "tok-b" "feature-00c" "feat-b" "$_sd_b" "direct" ""
+  _ag="$_proj/.claude/agente-00c-state"
+  mkdir -p "$_ag"
+  _write_descriptor "$_ag/mcp-server.json" "tok-ag" "agente-00c" "" "$_ag" "direct" ""
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --selector "feature-00c:feat-b"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seletor feature exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "state_dir=$_sd_b" || return 1
+  assert_stdout_contains "short_name=feat-b" || return 1
+}
+
+scenario_selector_execucao_terminal_exit_3() {
+  _proj="$TMPDIR_TEST/sel3"
+  _sd="$_proj/.claude/feature-00c-state/feat-t"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-t" "feature-00c" "feat-t" "$_sd" "direct" "" "concluida"
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --selector "feature-00c:feat-t"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "seletor terminal exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "SESSION_MISMATCH" || return 1
+  assert_stdout_not_contains "state_dir=" || return 1
+}
+
+scenario_selector_sem_descritor_ou_sem_token_exit_3() {
+  _proj="$TMPDIR_TEST/sel4"
+  mkdir -p "$_proj/.claude/feature-00c-state/feat-x"
+  capture "$SCRIPT" resolve --project-path "$_proj" --selector "feature-00c:feat-x"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "seletor sem descritor exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+
+  _sd="$_proj/.claude/feature-00c-state/feat-y"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "" "feature-00c" "feat-y" "$_sd" "direct" ""
+  capture "$SCRIPT" resolve --project-path "$_proj" --selector "feature-00c:feat-y"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "seletor descritor sem token exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_selector_descritor_de_outra_execucao_exit_3() {
+  # Descritor copiado para o dir de outra feature: short_name diverge do seletor.
+  _proj="$TMPDIR_TEST/sel5"
+  _sd="$_proj/.claude/feature-00c-state/feat-z"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-z" "feature-00c" "outra" "$_sd" "direct" ""
+  capture "$SCRIPT" resolve --project-path "$_proj" --selector "feature-00c:feat-z"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "seletor descritor divergente exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_selector_invalido_ou_traversal_exit_3() {
+  _proj="$TMPDIR_TEST/sel6"
+  mkdir -p "$_proj/.claude"
+  for _bad in "feature-00c:../agente-00c-state" "feature-00c:a/b" "feature-00c:" "feature-00c:.x" "outro"; do
+    capture "$SCRIPT" resolve --project-path "$_proj" --selector "$_bad"
+    [ "$_CAPTURED_EXIT" = 3 ] || { _fail "seletor invalido '$_bad' exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  done
+}
+
+scenario_selector_com_token_exit_2() {
+  capture "$SCRIPT" resolve --project-path "$TMPDIR_TEST" --selector "agente-00c" --token "tok-x"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "seletor+token exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" resolve --state-dir "$TMPDIR_TEST" --selector "agente-00c"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "seletor sem project-path exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 run_all_scenarios

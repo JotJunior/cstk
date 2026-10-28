@@ -62,6 +62,23 @@
 #     SESSION_MISMATCH (exit 3). Nenhum comportamento do modo
 #     `--project-path` existente muda.
 #
+#   mcp-session.sh resolve --project-path PATH --selector SELETOR
+#     Modo SELETOR (issue #234) — mutuamente exclusivo com --token/
+#     --token-file/env. SELETOR e um nome NAO-secreto da execucao:
+#     `agente-00c` ou `feature-00c:<short-name>`. Motivo: o token de
+#     capacidade tinha de passar pelo contexto do LLM (arquivo -> prompt ->
+#     argumento de tool), e o auto mode do Claude Code nega essa leitura
+#     como "Credential Materialization" — o caminho MCP morria em silencio.
+#     O seletor aponta para UM descritor fixo (sem tree-walk, sem
+#     precedencia — o confused deputy de SEC-H3 continua impossivel: quem
+#     chama nomeia a execucao explicitamente) e a mesma revalidacao
+#     fail-closed se aplica: descritor presente com `session_id` cunhado
+#     por `cstk mcp start`, `stopped_at` nulo, status REAL ativo e
+#     `execution_kind`/`short_name` do descritor iguais ao seletor.
+#     O que se perde e so a autorizacao por POSSE do token — que nunca foi
+#     barreira contra o proprio modelo, ja que o caminho Bash muta o mesmo
+#     state-dir por `--state-dir`.
+#
 # Saida (stdout, uma chave por linha — mesmo estilo de `state-backend.sh
 # resolve` / `cstk mcp status`):
 #   state_dir=<path>
@@ -215,17 +232,60 @@ _ms_print_descriptor() {
   ' "$_desc"
 }
 
+# _ms_resolve_selector PROJECT_PATH SELECTOR -> modo seletor (issue #234).
+# Mapeia o seletor para o UNICO descritor possivel e revalida fail-closed;
+# imprime o descritor ou sai via _ms_mismatch (exit 3).
+_ms_resolve_selector() {
+  _sel_project=$1
+  _sel=$2
+  case "$_sel" in
+    agente-00c)
+      _sel_kind="agente-00c"; _sel_short=""
+      _sel_desc="$_sel_project/.claude/agente-00c-state/mcp-server.json"
+      ;;
+    feature-00c:*)
+      _sel_kind="feature-00c"; _sel_short=${_sel#feature-00c:}
+      # short-name sem `/` nem prefixo `.` — impossivel escapar de
+      # feature-00c-state/ por traversal.
+      case "$_sel_short" in
+        '' | .* | -* | */* | *[!A-Za-z0-9._-]*)
+          _ms_mismatch "seletor invalido: short-name fora de [A-Za-z0-9._-]" ;;
+      esac
+      _sel_desc="$_sel_project/.claude/feature-00c-state/$_sel_short/mcp-server.json"
+      ;;
+    *)
+      _ms_mismatch "seletor invalido (esperado agente-00c ou feature-00c:<short-name>)" ;;
+  esac
+
+  [ -f "$_sel_desc" ] || _ms_mismatch "seletor sem descritor ativo (cstk mcp start nao rodou para $_sel)"
+  _sel_sid=$(jq -r '.session_id // ""' "$_sel_desc" 2>/dev/null) || _sel_sid=""
+  [ -n "$_sel_sid" ] || _ms_mismatch "descritor sem session_id cunhado para $_sel"
+  _sel_dkind=$(jq -r '.execution_kind // ""' "$_sel_desc" 2>/dev/null) || _sel_dkind=""
+  _sel_dshort=$(jq -r '.short_name // ""' "$_sel_desc" 2>/dev/null) || _sel_dshort=""
+  if [ "$_sel_dkind" != "$_sel_kind" ] || [ "$_sel_dshort" != "$_sel_short" ]; then
+    _ms_mismatch "descritor nao corresponde ao seletor $_sel"
+  fi
+  # Mesma checagem de token/terminal do modo por token, com o proprio
+  # session_id do descritor (nunca impresso).
+  if ! _ms_check_descriptor "$_sel_desc" "$_sel_sid"; then
+    _ms_mismatch "execucao do seletor $_sel ja terminal ou inativa"
+  fi
+  _ms_print_descriptor "$_sel_desc"
+}
+
 _ms_cmd_resolve() {
   _project_path=""
   _state_dir=""
   _token_explicit=""
   _token_file=""
+  _selector=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --project-path) _project_path=$2; shift 2 ;;
       --state-dir) _state_dir=$2; shift 2 ;;
       --token) _token_explicit=$2; shift 2 ;;
       --token-file) _token_file=$2; shift 2 ;;
+      --selector) _selector=$2; shift 2 ;;
       *) _ms_die_usage "resolve: flag desconhecida: $1" ;;
     esac
   done
@@ -237,6 +297,17 @@ _ms_cmd_resolve() {
     _ms_die_usage "resolve: forneca --project-path PATH ou --state-dir DIR"
   fi
   _ms_require_jq
+
+  if [ -n "$_selector" ]; then
+    if [ -n "$_token_explicit" ] || [ -n "$_token_file" ]; then
+      _ms_die_usage "resolve: --selector e --token/--token-file sao mutuamente exclusivos"
+    fi
+    [ -n "$_project_path" ] || _ms_die_usage "resolve: --selector exige --project-path"
+    [ -d "$_project_path" ] \
+      || _ms_die "resolve: --project-path nao existe ou nao e diretorio: $_project_path" 1
+    _ms_resolve_selector "$_project_path" "$_selector"
+    return 0
+  fi
 
   _token=$(_ms_resolve_token "$_token_explicit" "$_token_file")
   if [ -z "$_token" ]; then
@@ -302,6 +373,11 @@ USO:
       [--token TOKEN | --token-file FILE]
   mcp-session.sh resolve --state-dir DIR \
       [--token TOKEN | --token-file FILE]
+  mcp-session.sh resolve --project-path PATH \
+      --selector <agente-00c|feature-00c:SHORT>
+
+  --selector (issue #234) nomeia a execucao sem token: o servidor MCP o
+  aceita no lugar do session_id para o token nunca passar pelo LLM.
 
   --project-path e --state-dir sao mutuamente exclusivos. --state-dir e o
   modo direto usado DENTRO do container do servidor MCP (dec-081): sem

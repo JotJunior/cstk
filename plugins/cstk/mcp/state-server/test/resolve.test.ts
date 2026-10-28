@@ -33,6 +33,7 @@ import {
   resolveSessionForCall,
   createSessionCache,
   matchesResolvedSession,
+  isExecutionSelector,
   SessionMismatchError,
 } from "../src/session/resolve.js";
 
@@ -509,4 +510,81 @@ test("resolveSessionForCall (task 6.2.1, FR-011): duas execucoes ativas simultan
   // state-dir de B, e vice-versa.
   assert.notEqual(sessionA2.stateDir, sdB);
   assert.notEqual(sessionB2.stateDir, sdA);
+});
+
+// ---------------------------------------------------------------------------
+// issue #234: `session_id` como seletor NAO-secreto da execucao. O token de
+// capacidade nao passa mais pelo contexto do LLM (o auto mode nega a leitura
+// do descritor como Credential Materialization); o servidor resolve o
+// seletor contra o descritor no disco, com a mesma revalidacao fail-closed.
+// ---------------------------------------------------------------------------
+
+test("isExecutionSelector (issue #234): reconhece agente-00c e feature-00c:<short>, nunca um token hex", () => {
+  assert.equal(isExecutionSelector("agente-00c"), true);
+  assert.equal(isExecutionSelector("feature-00c:minha-feature"), true);
+  assert.equal(isExecutionSelector("a".repeat(64)), false);
+  assert.equal(isExecutionSelector("synthetic-token-abc123"), false);
+});
+
+test("resolveSessionForCall (issue #234, mcp-session.sh REAL): seletor feature-00c resolve so a execucao nomeada, sem tocar o cache", async () => {
+  const { projectPath } = await makeProjectWithExecution("agente-00c", "tok-sel-ag");
+  const featDir = join(projectPath, ".claude", "feature-00c-state", "feat-b");
+  await mkdir(featDir, { recursive: true });
+  await writeFile(
+    join(featDir, "mcp-server.json"),
+    JSON.stringify({
+      session_id: "tok-sel-feat-b",
+      state_dir: featDir,
+      execution_kind: "feature-00c",
+      short_name: "feat-b",
+      target_project_path: projectPath,
+      mode: "direct",
+      container_name: null,
+      stopped_at: null,
+    }),
+    "utf8",
+  );
+  await writeActiveState(featDir);
+
+  const cache = createSessionCache();
+  const session = await resolveSessionForCall(cache, {
+    projectPath,
+    token: "feature-00c:feat-b",
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+
+  assert.equal(session.stateDir, featDir);
+  assert.equal(session.shortName, "feat-b");
+  // O token real nunca vira o "token" da sessao — so o seletor apresentado.
+  assert.equal(session.token, "feature-00c:feat-b");
+  assert.equal(matchesResolvedSession(session, "feature-00c:feat-b"), true);
+  assert.equal(cache.get("feature-00c:feat-b"), undefined);
+});
+
+test("resolveSessionForCall (issue #234, mcp-session.sh REAL): seletor de execucao terminal -> SessionMismatchError", async () => {
+  const { projectPath, stateDir } = await makeProjectWithExecution("agente-00c", "tok-sel-term");
+  await writeActiveState(stateDir, "concluida");
+
+  await assert.rejects(
+    () =>
+      resolveSessionForCall(createSessionCache(), {
+        projectPath,
+        token: "agente-00c",
+        helperPath: REAL_MCP_SESSION_SH,
+      }),
+    SessionMismatchError,
+  );
+});
+
+test("resolveActiveSession (issue #234): seletor sem projectPath falha SEM invocar o helper", async () => {
+  await assert.rejects(
+    () =>
+      resolveActiveSession({
+        projectPath: "",
+        token: "agente-00c",
+        stateDir: "/data/state",
+        helperPath: join(FIXTURES_DIR, "fake-mcp-session-ok.sh"),
+      }),
+    SessionMismatchError,
+  );
 });
