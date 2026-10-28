@@ -269,25 +269,26 @@ _mcp_live=$(cstk mcp status --state-dir <SD> --live 2>/dev/null | sed -n 's/^sta
   etapa cobre so a verificacao de saude, nao a comutacao mid-onda
   (protocolo da task 5.5).
 
-**Injecao do token de capacidade (dec-043 / SEC-H3, generalizada FR-013)**:
-apos a sonda, leia o descritor e injete o token no contexto do spawn
-(mesmo protocolo do /agente-00c inicial) SEMPRE que `session_id` for
-nao-vazio, **independentemente do valor de `mode`** (contracts/
-cli-mcp-lifecycle.md §7, P-1/P-2 — a condicao antiga restrita a
-`mode == "docker"` foi removida: apos o cutover desta feature nenhuma
-sessao nova grava `mode=docker`):
+**Injecao do seletor da execucao (issue #234; antes dec-043 / SEC-H3,
+generalizada FR-013)**: apos a sonda, injete o SELETOR nao-secreto
+(`agente-00c`) no contexto do spawn (mesmo protocolo do /agente-00c
+inicial) SEMPRE que o descritor existir,
+**independentemente do valor de `mode`**. Nunca leia o `session_id` do
+descritor — o auto mode nega a leitura como Credential Materialization; o
+servidor MCP aceita o seletor no lugar do token:
 
 ```bash
-_mcp_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_token=""
+_mcp_selector=""; [ -s "<SD>/mcp-server.json" ] && _mcp_selector="agente-00c"
 ```
 
-- Token NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
-  `MCP: servidor de estado ativo; session_id=<token>. Prefira as tools
-  mcp__cstk-state__* apresentando ESTE session_id; em erro de transporte,
-  contrato de queda mid-onda e comutacao para Bash.`
-- Token vazio ou sonda NAO saudavel (`_mcp_live` != `active`) ⇒
+- Seletor NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
+  `MCP: servidor de estado ativo; session_id=agente-00c. Prefira as tools
+  mcp__cstk-state__* ou mcp__plugin_cstk_cstk-state__* apresentando ESTE
+  session_id (nunca leia mcp-server.json); em erro de transporte, contrato
+  de queda mid-onda e comutacao para Bash.`
+- Seletor vazio ou sonda NAO saudavel (`_mcp_live` != `active`) ⇒
   NAO mencione MCP no prompt (caminho Bash, zero regressao).
-  Token NUNCA ecoado em stdout/logs.
+  O token de capacidade nunca entra em prompt, stdout ou log.
 
 **Idempotencia dos opt-ins em retomada (task 5.2.1 — mcp-elicitation-optins,
 FR-008/FR-011)**: este resume NUNCA re-pergunta opt-ins por prosa (ja

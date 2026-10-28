@@ -176,7 +176,7 @@ scenario_resume_nunca_reintroduziu_init_nem_prompt() {
 # feature-00c.md cita o literal deliberadamente, dentro de uma negacao
 # ("nao ha caminho de codigo que produza..."), e essa citacao e o
 # PRECEDENTE textual que a propria task 5.3.2 instrui preservar
-# (`_mcp_token` vazio "bash-fallback" / sem descritor). Testar ausencia
+# (`_mcp_selector` vazio / sem descritor). Testar ausencia
 # total apagaria esse precedente sem ganho (net negative) — o invariante
 # real e "nenhum command trata bash-fallback como desfecho alcancavel",
 # nao "a substring nunca aparece".
@@ -206,11 +206,11 @@ scenario_stale_claim_ausente_nos_resumes() {
 # scenario_seis_valores_outcome_preservados ja cobre a leitura do enum de
 # outcome em collect_optins.ts (test_command-spawn-optin-degradation.sh);
 # aqui so confirmamos que o precedente textual da linha ~558/795
-# (`_mcp_token` vazio) continua intacto nos 2 commands de init — e ele quem
+# (`_mcp_selector` vazio) continua intacto nos 2 commands de init — e ele quem
 # justifica a nao-exigencia de ausencia total do literal.
 scenario_precedente_mcp_token_vazio_intacto() {
   for _f in "$CMD_AGENTE" "$CMD_FEATURE"; do
-    assert_exit 0 grep -Fq '`_mcp_token` vazio (`bash-fallback` / sem descritor)' "$_f" || return 1
+    assert_exit 0 grep -Fq '`_mcp_selector` vazio (sem descritor)' "$_f" || return 1
   done
   return 0
 }
@@ -405,7 +405,7 @@ _scenario_gate_toolset_cmd() {
   [ "$_l_cand" -lt "$_l_pf" ] && [ "$_l_pf" -lt "$_l_ts" ] && [ "$_l_ts" -lt "$_l_prompt" ] \
     || { _fail "ordem" "esperado candidato($_l_cand) < preflight($_l_pf) < toolset($_l_ts) < prompt de prosa($_l_prompt)"; return 1; }
   # o token sozinho NUNCA mais promove a estruturado
-  if grep -Fq '[ -n "$_optin_token" ] && _optin_branch="estruturado"' "$1"; then
+  if grep -Fq '[ -n "$_optin_selector" ] && _optin_branch="estruturado"' "$1"; then
     _fail "token promove estruturado" "$1 ainda promove _optin_branch=estruturado so pelo token"; return 1
   fi
   # ready gate literal + linha unica de diagnostico ao operador

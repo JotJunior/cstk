@@ -129,20 +129,34 @@ export async function resolveActiveSession(
     );
   }
 
+  // Seletor nao-secreto (issue #234): `session_id` pode nomear a execucao
+  // (`agente-00c` | `feature-00c:<short>`) em vez de carregar o token — o
+  // token nao precisa mais passar pelo contexto do LLM (o auto mode nega a
+  // leitura do descritor como Credential Materialization). O helper mapeia
+  // o seletor para UM descritor fixo e revalida fail-closed; `token` da
+  // sessao resolvida passa a ser o proprio seletor, entao
+  // `matchesResolvedSession` segue comparando contra o valor apresentado.
+  const selectorMode = isExecutionSelector(token);
+  if (selectorMode && !projectPath) {
+    throw new SessionMismatchError(
+      "resolveActiveSession: seletor exige projectPath (env CSTK_MCP_PROJECT_PATH nao definida)",
+    );
+  }
+
   try {
     // Modo direto (stateDir explicito, ex.: cache hit em resolveSessionForCall):
     // sem tree-walk, revalida so o descritor daquele state-dir. Modo
     // tree-walk (projectPath, cache miss): varre TODAS as execucoes ativas
     // sob o projeto e popula o cache do chamador em caso de sucesso.
-    const locatorArgs = stateDir
-      ? ["--state-dir", stateDir]
-      : ["--project-path", projectPath];
-    const { stdout } = await runHelper(helperPath, [
-      "resolve",
-      ...locatorArgs,
-      "--token",
-      token,
-    ]);
+    const args = selectorMode
+      ? ["resolve", "--project-path", projectPath, "--selector", token]
+      : [
+          "resolve",
+          ...(stateDir ? ["--state-dir", stateDir] : ["--project-path", projectPath]),
+          "--token",
+          token,
+        ];
+    const { stdout } = await runHelper(helperPath, args);
     const fields = requireFields(parseDescriptorLines(stdout));
     return {
       token,
@@ -212,6 +226,11 @@ export async function resolveSessionForCall(
   cache: SessionCache,
   options: ResolveSessionForCallOptions,
 ): Promise<ResolvedSession> {
+  // Seletor ja aponta para um unico descritor — nada a cachear.
+  if (isExecutionSelector(options.token)) {
+    return resolveActiveSession(options);
+  }
+
   const cachedStateDir = options.token ? cache.get(options.token) : undefined;
 
   if (cachedStateDir) {
@@ -223,6 +242,15 @@ export async function resolveSessionForCall(
     cache.set(options.token, session.stateDir);
   }
   return session;
+}
+
+/**
+ * `session_id` no formato de seletor nao-secreto (issue #234)? A validacao
+ * fina do short-name (charset, traversal) e do helper `mcp-session.sh`;
+ * aqui so se decide o MODO. Um token de capacidade (hex) nunca casa.
+ */
+export function isExecutionSelector(sessionId: string): boolean {
+  return sessionId === "agente-00c" || sessionId.startsWith("feature-00c:");
 }
 
 /**

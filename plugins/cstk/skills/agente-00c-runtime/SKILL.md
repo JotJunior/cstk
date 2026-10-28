@@ -243,7 +243,9 @@ nem notifica (nao tem `SendMessage`/`ListAgents`; FR-012).
   coordenadora), nunca `new-window`. A `<DESCRICAO>` vem de
   `--description`, senao do `**Descricao**:` do roadmap, senao do proprio
   short-name (aviso em stderr); e sempre sanitizada (sem aspas nem
-  metacaractere de shell) e truncada a 300 chars. NUNCA executa nada e NUNCA toca
+  metacaractere de shell); acima de 1200 bytes e cortada em fronteira de
+  palavra com marcador `[...] (<fonte completa>)` e aviso em stderr
+  (issue #235). NUNCA executa nada e NUNCA toca
   `cli/lib/session.sh` (que faz `exec claude` sem argumentos — por isso a
   composicao e externa). Revalida o short-name (`^[a-z][a-z0-9-]*$`,
   <=64), quoting + allowlist de `<WORKTREE>`/`<CHILD_NAME>`, recomputa a
@@ -252,8 +254,9 @@ nem notifica (nao tem `SendMessage`/`ListAgents`; FR-012).
   registra linha em `<repo>/.claude/enforcement-log.jsonl`
   (`source: "parallel-launch"`, `command` via `secrets-filter.sh scrub`,
   best-effort). `--coordinator-name` e validado
-  (`^cstk-coord/[A-Za-z0-9._-]{1,64}$`) mas NAO entra na composicao (dec-052:
-  o endereco da coordenadora e resolvido por convencao via git-common-dir).
+  (`^cstk-coord/[A-Za-z0-9._-]{1,64}$`) e propagado a filha como
+  `CSTK_COORDINATOR_NAME` no prefixo `env` (issue #236); sem ele, a filha
+  notifica a convencao `cstk-coord/<nome-do-repo>` e o emit avisa em stderr.
 - **`parallel-notification-parse.sh check "<msg>"`** casa a mensagem
   INTEIRA contra a regex ancorada do contrato
   (`^\[cstk-parallel\] feature=([a-z][a-z0-9-]{0,63}) outcome=(concluida|abortada|aguardando_humano) repo=([A-Za-z0-9._-]{1,64})$`);

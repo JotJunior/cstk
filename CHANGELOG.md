@@ -5,6 +5,64 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.15.0] - 2026-10-28
+
+Tres issues dos orquestradores 00c. O caminho MCP deixa de cair para Bash em
+silencio no auto mode: os commands passam um seletor nao-secreto no lugar do
+token de capacidade (#234). A descricao da filha do `/roadmap-wave` deixa de
+ser cortada no meio da palavra em 300 caracteres (#235). O
+`--coordinator-name` do `emit` chega de fato a filha (#236).
+
+### Added
+
+- **Seletor de execucao no `session_id` das tools MCP (#234).** Alem do token
+  hex, toda tool do `cstk-state` aceita `agente-00c` ou
+  `feature-00c:<short-name>`. O servidor resolve o seletor contra um unico
+  descritor fixo, via `mcp-session.sh resolve --project-path P --selector S`
+  (sem cache, sem precedencia), e revalida tudo fail-closed: token cunhado,
+  `stopped_at` nulo, status real ativo e `execution_kind`/`short_name` iguais
+  ao seletor. Short-name com `/`, prefixo `.`/`-` ou caractere fora de
+  `[A-Za-z0-9._-]` e recusado (exit 3). `--selector` e mutuamente exclusivo
+  com `--token`/`--token-file` e exige `--project-path` (exit 2).
+  `isExecutionSelector` em `session/resolve.ts`; o token hex continua aceito.
+
+### Fixed
+
+- **Auto mode negava o caminho MCP como "Credential Materialization" (#234).**
+  Os 4 commands pai liam `.session_id` de `mcp-server.json` e o injetavam no
+  spawn, o que exigia passar o token pelo contexto do modelo. Agora eles so
+  testam se o descritor existe e injetam o seletor (`_mcp_selector`,
+  `_optin_selector`). Os dois orquestradores instruem "nunca leia
+  `mcp-server.json`" e citam os dois prefixos de tool
+  (`mcp__cstk-state__*` e `mcp__plugin_cstk_cstk-state__*`), e a ancora de
+  ToolSearch do opt-in seleciona os dois. Trade-off declarado: perde-se a
+  autorizacao por posse do token, que nunca barrou o proprio modelo (o
+  caminho Bash muta o mesmo state-dir). `scenario_token_nunca_lido_nem_ecoado`
+  (`tests/test_command-spawn-mcp-lifecycle.sh`) falha se a leitura voltar.
+  Testes: 7 cenarios `scenario_selector_*` em `tests/test_mcp-session.sh`,
+  4 testes novos em `state-server/test/resolve.test.ts`.
+- **Descricao da filha cortada em 300 caracteres (#235).**
+  `parallel-launch.sh emit` cortava com `cut -c1-300`, no meio da palavra e
+  sem aviso. O teto passa a 1200 bytes (`_PL_DESC_MAX`); acima disso o corte
+  recua ate a ultima palavra (`LC_ALL=C`, seguro para UTF-8) e anexa
+  `[...] (<fonte completa>)`: o caminho do roadmap e a entrada, ou o tamanho
+  original quando a descricao veio de `--description`. Tambem avisa em
+  stderr. 4 cenarios novos em `tests/test_parallel-launch.sh` substituem o
+  de 300 chars.
+- **`--coordinator-name` validado e descartado (#236).** O `emit` agora
+  propaga o nome como `CSTK_COORDINATOR_NAME` no prefixo `env` do comando da
+  filha (`_pl_env_prefix`, junto das variaveis de telemetria). Sem a flag, ele
+  avisa em stderr que as filhas notificarao `cstk-coord/<repo>` e qual
+  `/rename` fazer. Em `feature-00c.md` §5.quater e no resume, a filha
+  notifica `$CSTK_COORDINATOR_NAME` quando ele casa
+  `^cstk-coord/[A-Za-z0-9._-]{1,64}$`, senao usa a convencao. Se a entrega
+  falha, o resumo cita o alvo e o `/rename` necessario.
+
+### Changed
+
+- **Versoes em lockstep.** Manifestos de plugin (MP-5) e workspace do painel
+  (WL-5) sobem para 10.15.0.
+
 ## [10.14.3] - 2026-10-26
 
 Duas correcoes na guarda de comandos dos orquestradores (PRs #231 e #232).
@@ -8777,6 +8835,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.15.0]: https://github.com/JotJunior/cstk/releases/tag/v10.15.0
 [10.14.3]: https://github.com/JotJunior/cstk/releases/tag/v10.14.3
 [10.14.2]: https://github.com/JotJunior/cstk/releases/tag/v10.14.2
 [10.14.1]: https://github.com/JotJunior/cstk/releases/tag/v10.14.1

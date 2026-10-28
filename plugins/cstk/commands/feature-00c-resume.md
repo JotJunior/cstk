@@ -203,23 +203,24 @@ fi
      100% das vezes. Esta etapa cobre so a verificacao de saude, nao a
      comutacao mid-onda (essa e o protocolo da task 5.5).
 
-   **Injecao do token de capacidade (dec-043 / SEC-H3, generalizada
-   FR-013)**: apos a sonda, leia o descritor e injete o token no contexto
-   do spawn (mesmo protocolo do /feature-00c inicial) SEMPRE que
-   `session_id` for nao-vazio, **independentemente do valor de `mode`**
-   (contracts/cli-mcp-lifecycle.md §7, P-1/P-2 — a condicao antiga
-   restrita a `mode == "docker"` foi removida: apos o cutover desta
-   feature nenhuma sessao nova grava `mode=docker`):
+   **Injecao do seletor da execucao (issue #234; antes dec-043 / SEC-H3,
+   generalizada FR-013)**: apos a sonda, injete o SELETOR nao-secreto no
+   contexto do spawn (mesmo protocolo do /feature-00c inicial) SEMPRE que
+   o descritor existir, **independentemente do valor de `mode`**. Nunca
+   leia o `session_id` do descritor — o auto mode nega a leitura como
+   Credential Materialization; o servidor MCP aceita o seletor no lugar do
+   token:
 
-     _mcp_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_token=""
+     _mcp_selector=""; [ -s "$AGENTE_00C_STATE_DIR/mcp-server.json" ] && _mcp_selector="feature-00c:$(basename -- "$AGENTE_00C_STATE_DIR")"
 
-   - Token NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
-     `MCP: servidor de estado ativo; session_id=<token>. Prefira as tools
-     mcp__cstk-state__* apresentando ESTE session_id; em erro de
+   - Seletor NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
+     `MCP: servidor de estado ativo; session_id=<_mcp_selector>. Prefira
+     as tools mcp__cstk-state__* ou mcp__plugin_cstk_cstk-state__*
+     apresentando ESTE session_id (nunca leia mcp-server.json); em erro de
      transporte, contrato de queda mid-onda e comutacao para Bash.`
-   - Token vazio ou sonda NAO saudavel (`_mcp_live` != `active`) ⇒
+   - Seletor vazio ou sonda NAO saudavel (`_mcp_live` != `active`) ⇒
      NAO mencione MCP no prompt (caminho Bash, zero regressao).
-     Token NUNCA ecoado em stdout/logs.
+     O token de capacidade nunca entra em prompt, stdout ou log.
 
    **Idempotencia dos opt-ins em retomada (task 5.4.1 — mcp-elicitation-optins,
    FR-008/FR-011)**: este resume NUNCA re-pergunta o opt-in de atomic-commit
@@ -413,13 +414,14 @@ alcanca um dos 3 estados terminais notificaveis (`concluida`, `abortada`,
 `plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh:250`).
 `em_andamento` NUNCA notifica.
 
-`--coordinator-name` de `parallel-launch.sh emit` **nunca** e injetado no
-comando de lancamento (confirmado em
-`tests/test_parallel-launch.sh::scenario_emit_coordinator_name_valido_nao_altera_composicao`)
-— o endereçamento e por CONVENCAO, `cstk-coord/<nome-do-repo>`, com
-`<nome-do-repo>` derivado da MESMA tecnica de
-`cli/lib/session.sh::_session_resolve_repo` (git-common-dir ->
-path absoluto do repo principal -> `basename`), reusando `$_proj`.
+Destino (issue #236): `CSTK_COORDINATOR_NAME`, propagado por
+`parallel-launch.sh emit --coordinator-name` no prefixo `env` do
+lancamento (o processo e o mesmo entre ondas, entao a variavel continua no
+ambiente), quando casa `^cstk-coord/[A-Za-z0-9._-]{1,64}$`; senao a
+CONVENCAO `cstk-coord/<nome-do-repo>`, com `<nome-do-repo>` derivado da
+MESMA tecnica de `cli/lib/session.sh::_session_resolve_repo`
+(git-common-dir -> path absoluto do repo principal -> `basename`),
+reusando `$_proj`. O `repo=` do payload e sempre o nome derivado.
 
 ```bash
 case "$_status_final" in
@@ -433,6 +435,9 @@ case "$_status_final" in
     if [ -n "$_repo_name" ]; then
       _notify_payload="[cstk-parallel] feature=$SHORT outcome=$_status_final repo=$_repo_name"
       _notify_target="cstk-coord/$_repo_name"
+      if printf '%s' "${CSTK_COORDINATOR_NAME:-}" | grep -Eq '^cstk-coord/[A-Za-z0-9._-]{1,64}$'; then
+        _notify_target=$CSTK_COORDINATOR_NAME
+      fi
       # invoque a tool SendMessage enderecada a $_notify_target com o
       # payload $_notify_payload — BEST-EFFORT (FR-015): qualquer falha
       # (sessao coordenadora inexistente, sem nome conhecido, erro da
@@ -445,7 +450,9 @@ esac
 
 Regras duras: imediato (sem intervalo/timeout configuravel); best-effort
 (FR-015); esta sessao-filha nunca calcula fronteira nem lanca outra sessao
-(FR-012).
+(FR-012). Entrega falhou ⇒ no resumo, o destino usado e a correcao
+(`/rename <_notify_target>` na coordenadora, ou relancar com
+`--coordinator-name`) — mesma regra do `/feature-00c` §5.quater.
 
 ### 5. Cleanup
 
