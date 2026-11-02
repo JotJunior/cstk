@@ -5,7 +5,12 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [Unreleased]
+## [10.16.0] - 2026-11-02
+
+A skill `/presentation` passa a entregar, junto do deck completo, uma
+versão resumida de até 4 slides para a diretoria, com o problema, o valor
+entregue e o horizonte do projeto, validada pelas mesmas regras de
+veracidade do deck completo.
 
 ### Added
 
@@ -8860,6 +8865,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.16.0]: https://github.com/JotJunior/cstk/releases/tag/v10.16.0
 [10.15.0]: https://github.com/JotJunior/cstk/releases/tag/v10.15.0
 [10.14.3]: https://github.com/JotJunior/cstk/releases/tag/v10.14.3
 [10.14.2]: https://github.com/JotJunior/cstk/releases/tag/v10.14.2
