@@ -240,6 +240,27 @@ commits.
 | Tests | `tests/test_commit-mode.sh` |
 | Spec | [`specs/_archived/atomic-commit-pr/`](./specs/_archived/atomic-commit-pr/) |
 
+## Test gate (opt-in)
+
+The runtime, not the subagent's report, decides whether a wave
+may leave `execute-task` or `converge`. At the start of a run the operator may
+declare the target project's gate command (`--gate-command "make check"` or the
+interactive question; resume never asks again). `gate-verify.sh run` executes
+it at the project root and records the real exit code plus the runner's summary
+line for the open wave; `state-ondas.sh end --advance` out of those two phases
+refuses (exit 3) without a green run in that wave. A red gate closes the wave
+**without** advancing, so the next wave redoes the same phase with the failure
+in its instruction. With no command declared the pipeline advances as before,
+with a `gate=nao-declarado` warning. The command is checked against
+`bash-guard.sh` blocklist both when declared and before each run (it executes
+outside the PreToolUse hook). One run per wave; there is no flaky re-run yet.
+
+| Component | Location |
+|-----------|----------|
+| POSIX helper (`set-command`, `get-command`, `run`, `check`) | `plugins/cstk/skills/agente-00c-runtime/scripts/gate-verify.sh` |
+| Per-wave record | `<state-dir>/gate-verify.tsv` + `<state-dir>/gate-verify/<wave>.log` |
+| Tests | `tests/test_gate-verify.sh`, `tests/test_state-ondas.sh` (`*_gate_*`), `tests/test_command-gate-verify.sh` |
+
 ## Roadmap mode and parallel feature waves
 
 Roadmap mode (opt-in at `/agente-00c` start) shortens the chain to
@@ -266,7 +287,10 @@ from a `status` field in the roadmap — and offers a **parallel wave**:
    `tmux split-window ... claude --name ... '/feature-00c "<description>"
    <short>'`, or the degraded `cd ... && claude ...` form when `check-tmux`
    says tmux is absent (exit 3). Children always open as sibling **panes**
-   in the coordinator's window (`split-window`, never `new-window`), and
+   in the coordinator's window (`split-window -t <pane>`, never
+   `new-window`; the parent first runs `parallel-launch.sh resolve-tmux-pane`
+   and passes the result as `--tmux-target`, since a bare `split-window`
+   lands in the tmux client's *active* window — issue #238), and
    the prompt always carries the description as the first positional
    argument and the short-name as the second — the exact `/feature-00c`
    contract. The parent runs them; the script never executes anything and

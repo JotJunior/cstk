@@ -241,6 +241,27 @@ commits automáticos.
 | Testes | `tests/test_commit-mode.sh` |
 | Spec | [`specs/_archived/atomic-commit-pr/`](./specs/_archived/atomic-commit-pr/) |
 
+## Gate de testes (opt-in)
+
+Quem decide se uma onda pode sair de `execute-task` ou `converge` é o
+runtime, não o relato do subagente. No início da execução o
+operador pode declarar o comando de gate do projeto-alvo (`--gate-command
+"make check"` ou a pergunta interativa; o resume não pergunta de novo).
+`gate-verify.sh run` o executa na raiz do projeto e grava o exit code real e a
+linha de sumário do runner na onda aberta; `state-ondas.sh end --advance`
+saindo dessas duas fases recusa (exit 3) sem um run verde naquela onda. Gate
+vermelho fecha a onda **sem** avançar: a próxima onda refaz a mesma fase com a
+falha na instrução. Sem comando declarado a pipeline avança como antes, com o
+aviso `gate=nao-declarado`. O comando passa pela blocklist do `bash-guard.sh`
+ao ser declarado e antes de cada run (ele roda fora do hook PreToolUse). Um run
+por onda; ainda não há re-run para teste flaky.
+
+| Componente | Localização |
+|------------|-------------|
+| Helper POSIX (`set-command`, `get-command`, `run`, `check`) | `plugins/cstk/skills/agente-00c-runtime/scripts/gate-verify.sh` |
+| Registro por onda | `<state-dir>/gate-verify.tsv` + `<state-dir>/gate-verify/<onda>.log` |
+| Testes | `tests/test_gate-verify.sh`, `tests/test_state-ondas.sh` (`*_gate_*`), `tests/test_command-gate-verify.sh` |
+
 ## Modo roadmap e levas paralelas de features
 
 O modo roadmap (opt-in no início do `/agente-00c`) encurta a cadeia para
@@ -269,7 +290,10 @@ pai (`agente-00c.md` §6.ter / resume §9.ter) computa a *fronteira* — entrada
    '/feature-00c "<descricao>" <short>'`, ou a forma degradada
    `cd ... && claude ...` quando `check-tmux` diz que o tmux está ausente
    (exit 3). As filhas abrem sempre como **panes** irmãos no window da
-   coordenadora (`split-window`, nunca `new-window`), e o prompt sempre
+   coordenadora (`split-window -t <pane>`, nunca `new-window`; o pai roda
+   antes `parallel-launch.sh resolve-tmux-pane` e passa o resultado em
+   `--tmux-target`, porque um `split-window` sem `-t` cai na janela *ativa*
+   do cliente tmux — issue #238), e o prompt sempre
    leva a descrição como primeiro posicional e o short-name como segundo —
    o contrato exato de `/feature-00c`. Quem executa é o pai; o script nunca
    executa nada e nunca toca `cli/lib/session.sh`.

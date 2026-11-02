@@ -56,7 +56,10 @@
 #         agente-00c=review-features) faz fase corrente == PHASE falhar
 #         fail-closed ANTES de qualquer write — fechamento terminal usa
 #         --motivo-termino concluido + promocao de status, nunca
-#         --advance. Elimina a classe do meio-avanco (current_stage
+#         --advance. Saindo de execute-task/converge, --advance consulta
+#         `gate-verify.sh check` (issue #242): gate declarado sem run verde
+#         nesta onda => exit 3, nada gravado; nao declarado => avanca com
+#         aviso gate=nao-declarado. Elimina a classe do meio-avanco (current_stage
 #         avancado com next_instruction stale — invisivel ao
 #         reconcile-wave, que da noop em onda fechada). --mode
 #         default|roadmap (feature roadmap-mode, contracts/
@@ -193,6 +196,8 @@
 #   0 sucesso
 #   1 erro generico (state ausente, git falhou)
 #   2 uso incorreto
+#   3 end --advance (e reconcile-wave) recusado pelo gate de testes ao sair
+#     de execute-task/converge (issue #242, gate-verify.sh check)
 #
 # POSIX sh + jq + git (apenas em git-commit).
 
@@ -889,6 +894,27 @@ $2"; shift 2 ;;
     if [ -n "$_adv_terminal" ] && [ "$_adv_cur" = "$_adv_terminal" ]; then
       _so_die_usage "end: --advance em fase terminal '$_adv_cur' — fechamento terminal usa --motivo-termino concluido + promocao de status, nunca --advance"
     fi
+    # Gate de testes (issue #242): SAIR de execute-task/converge exige que o
+    # ultimo `gate-verify.sh run` DESTA onda tenha passado — o runtime
+    # verifica o exit code real, em vez de confiar no relato do subagente.
+    # Sem comando declarado, `check` degrada (exit 0 + aviso
+    # gate=nao-declarado). Checado ANTES de qualquer write (fail-closed).
+    case "$_adv_cur" in
+      execute-task|converge)
+        _adv_gate="$_adv_selfdir/gate-verify.sh"
+        if [ -f "$_adv_gate" ]; then
+          _adv_gate_rc=0
+          _adv_gate_out=$(sh "$_adv_gate" check --state-dir "$_sdir") || _adv_gate_rc=$?
+          case "$_adv_gate_rc" in
+            0) ;;
+            3) _so_die "end: --advance recusado pelo gate de testes ao sair de '$_adv_cur' ($(printf '%s' "$_adv_gate_out" | tr '\n' ' ')) — rode gate-verify.sh run; se seguir vermelho, feche SEM --advance (--motivo-termino threshold_proxy_atingido + --next-instruction de correcao)" 3 ;;
+            *) _so_die "end: gate-verify.sh check falhou (exit $_adv_gate_rc) — avanco recusado (fail-closed)" 1 ;;
+          esac
+        else
+          _so_log "gate-verify.sh ausente em $_adv_selfdir — gate de testes NAO verificado (instalacao incompleta?)"
+        fi
+        ;;
+    esac
     if [ -n "$_adv_mode" ]; then
       _adv_next=$(sh "$_adv_pipeline" next-stage --current "$_adv_cur" --mode "$_adv_mode" 2>/dev/null) || _adv_next=""
     else

@@ -26,12 +26,21 @@
 #         `list --chave-assunto` NAO valida: e query, nao registro.
 #
 #   bloqueios.sh respond --state-dir DIR --block-id ID --resposta TEXT
+#                        [--allow-empty]
 #       — Marca bloqueio como `respondido`, registra human_answer e
 #         answered_at.
+#       — Resposta vazia ou so com espacos e RECUSADA (exit 2) sem
+#         --allow-empty (issue #241): um parse errado do `list` gerava
+#         variavel vazia e o bloqueio ficava "respondido" sem resposta.
+#         Resposta vazia intencional exige o opt-in explicito.
 #       — Se NAO restar nenhum bloqueio com status=aguardando, atualiza
 #         .execution.status para "em_andamento".
 #
 #   bloqueios.sh list --state-dir DIR [--status STATUS] [--chave-assunto TOKEN]
+#                     [--json]
+#       — --json (issue #241): array JSON com os MESMOS campos do TSV
+#         ({id, decision_id, status, triggered_at, question}), nos dois
+#         backends; lista vazia = `[]`. Prefira --json a parsear o TSV.
 #       — TSV: id\tdecision_id\tstatus\ttriggered_at\tpergunta (colunas
 #         inalteradas — --chave-assunto so filtra por igualdade exata,
 #         combinavel com --status; dedup FR-008: lista vazia com
@@ -314,17 +323,26 @@ _bl_cmd_respond() {
   _bid=""
   _resp=""
   _resp_set=0
+  _allow_empty=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir) _sd=$2;  shift 2 ;;
       --block-id)  _bid=$2; shift 2 ;;
       --resposta)  _resp=$2; _resp_set=1; shift 2 ;;
+      --allow-empty) _allow_empty=1; shift ;;
       *) _bl_die_usage "respond: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_sd" ]    || _bl_die_usage "respond: --state-dir obrigatorio"
   [ -n "$_bid" ]   || _bl_die_usage "respond: --block-id obrigatorio"
-  [ "$_resp_set" = 1 ] || _bl_die_usage "respond: --resposta obrigatorio (use '' para resposta vazia explicita)"
+  [ "$_resp_set" = 1 ] || _bl_die_usage "respond: --resposta obrigatorio"
+  # issue #241: resposta vazia (ou so whitespace) e quase sempre um parse
+  # errado do chamador — recusar antes de tocar o state, salvo opt-in.
+  if [ "$_allow_empty" != 1 ]; then
+    case "$(printf '%s' "$_resp" | tr -d ' \t\r\n')" in
+      '') _bl_die_usage "respond: --resposta vazia (ou so espacos) recusada para $_bid — confira o parse do bloqueio; resposta vazia intencional exige --allow-empty" ;;
+    esac
+  fi
   _bl_require_jq
 
   if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
@@ -376,28 +394,33 @@ _bl_cmd_list() {
   _sd=""
   _st=""
   _subj=""
+  _json=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)     _sd=$2;   shift 2 ;;
       --status)        _st=$2;   shift 2 ;;
       --chave-assunto) _subj=$2; shift 2 ;;
+      --json)          _json=1;  shift ;;
       *) _bl_die_usage "list: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_sd" ] || _bl_die_usage "list: --state-dir obrigatorio"
   _bl_require_jq
   if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
-    _bl_db_list "$_sd" "$_st" "$_subj"
+    _bl_db_list "$_sd" "$_st" "$_subj" "$_json"
     return 0
   fi
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "list: state.json ausente" 1
-  jq -r --arg s "$_st" --arg subj "$_subj" '
+  jq -r --arg s "$_st" --arg subj "$_subj" --argjson json "$_json" '
     ((.human_blocks // .bloqueios_humanos) // [])
     | map(select($s == "" or .status == $s))
     | map(select($subj == "" or .subject_key == $subj))
-    | .[]
-    | [.id, (.decision_id // .decisao_id), .status, (.triggered_at // .disparado_em), (.question // .pergunta)] | @tsv
+    | map({id: .id, decision_id: (.decision_id // .decisao_id), status: .status,
+           triggered_at: (.triggered_at // .disparado_em), question: (.question // .pergunta)})
+    | if $json == 1 then tojson
+      else .[] | [.id, .decision_id, .status, .triggered_at, .question] | @tsv
+      end
   ' "$_sf"
 }
 
@@ -483,8 +506,8 @@ USO:
   bloqueios.sh register --state-dir DIR --decisao-id DEC \
     --pergunta TEXT --contexto-para-resposta TEXT [--opcoes-recomendadas JSON-ARR] \
     [--chave-assunto briefing-item:SLUG|axis:EIXO]   # structural-decision-human-gate FR-008
-  bloqueios.sh respond  --state-dir DIR --block-id ID --resposta TEXT
-  bloqueios.sh list     --state-dir DIR [--status STATUS] [--chave-assunto TOKEN]
+  bloqueios.sh respond  --state-dir DIR --block-id ID --resposta TEXT [--allow-empty]
+  bloqueios.sh list     --state-dir DIR [--status STATUS] [--chave-assunto TOKEN] [--json]
   bloqueios.sh count    --state-dir DIR [--pending-only]
   bloqueios.sh next-id  --state-dir DIR
   bloqueios.sh get      --state-dir DIR --block-id ID

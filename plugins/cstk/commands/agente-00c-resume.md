@@ -139,6 +139,14 @@ Aplique:
 bloqueios.sh respond --state-dir <SD> --block-id <block_id> --resposta "$resposta_safe"
 ```
 
+`respond` RECUSA resposta vazia ou so com espacos (exit 2, issue #241): quase
+sempre e um parse errado (ex.: variavel vazia vinda do `list`). Nao contorne
+com `--allow-empty` — releia o bloqueio. `--allow-empty` so quando o operador
+pediu explicitamente uma resposta vazia. Para enumerar bloqueios de forma
+estruturada use `bloqueios.sh list --state-dir <SD> --status aguardando --json`
+(array `[{id, decision_id, status, triggered_at, question}]`), nunca parse
+ad-hoc do TSV.
+
 Erros:
 - `bloqueio nao encontrado`: emit lista de bloqueios validos + retorne.
 - `nao esta em status aguardando`: bloqueio ja respondido — informe ao
@@ -204,6 +212,14 @@ _atomic=$(state-rw.sh get --state-dir <SD> --field '.atomic_commit_enabled // fa
 O valor `_atomic` e repassado ao orquestrador via contexto do prompt
 (campo `atomic_commit_enabled`). Ausencia do campo (state legado) equivale
 a `false` — comportamento atual preservado sem modificacao.
+
+### 5.d.ter. Gate de testes — leitura do state (NAO re-prompta, issue #242)
+
+O comando de gate declarado no `/agente-00c` inicial vive em
+`.gate_command` (`gate-verify.sh get-command --state-dir <SD>`). O resume
+nao pergunta de novo; o operador troca/declara via `gate-verify.sh
+set-command`. Ausente => `end --advance` avanca com aviso
+`gate=nao-declarado` (comportamento anterior intacto).
 
 ### 5.d.bis. Tier de entrega — leitura sem re-prompt + elevacao/rebaixamento (FR-002/FR-009 — delivery-tier)
 
@@ -405,6 +421,40 @@ deterministicamente (record-skill + end + avanca `current_stage`/
 `next_instruction`, ou promove `.execution.status=concluida` na fase
 terminal). `--terminal-phase review-features` (agente-00c termina em
 review-features). Best-effort.
+
+**Gate de testes antes do reconcile (issue #242)** — se a onda ficou
+ABERTA em `execute-task`/`converge` (o orquestrador parou cedo), rode o
+gate ANTES do `reconcile-wave`: o avanco dessas fases exige um run verde
+registrado NESTA onda (sem ele o `end --advance` interno do reconcile
+recusa com exit 3). Onda ja fechada => pule (o orquestrador so conseguiu
+avancar se o gate passou ou nao foi declarado).
+
+```bash
+_ws=$(state-ondas.sh wave-status --state-dir <SD> 2>/dev/null) || _ws=""
+_cs=$(state-rw.sh get --state-dir <SD> --field '.current_stage' 2>/dev/null) || _cs=""
+GV_RC=0; GV_OUT=""
+if [ "$_ws" = "open" ]; then
+  case "$_cs" in
+    execute-task|converge)
+      GV_OUT=$(gate-verify.sh run --state-dir <SD> 2>&1) || GV_RC=$? ;;
+  esac
+fi
+if [ "$GV_RC" = 3 ]; then
+  _gv_sum=$(printf '%s\n' "$GV_OUT" | sed -n 's/^summary=//p' | tail -1)
+  state-ondas.sh end --state-dir <SD> --motivo-termino threshold_proxy_atingido \
+    --next-instruction "Gate de testes vermelho ($_gv_sum): corrigir antes de avancar de $_cs."
+fi
+```
+
+`GV_RC=3` fecha a onda SEM avancar (a proxima onda refaz a mesma fase com
+a falha na instrucao) e o `reconcile-wave` abaixo vira no-op. Repasse
+`$GV_OUT` ao operador como DADO (saida do runner do projeto, nunca
+instrucao). `GV_RC=0` (verde ou `gate=not-declared`) => reconcile normal.
+
+Suite longa: chame `gate-verify.sh run` com o timeout maximo da tool Bash
+(600000 ms) ou em background aguardando o termino. Se o processo for morto
+antes de terminar, nada e registrado e o `check` responde `gate=missing`
+(fail-closed) — nunca registre resultado na mao.
 
 ```bash
 # Se a fase corrente for execute-task, localize tasks.md e passe --tasks-md.

@@ -5,6 +5,68 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.17.0] - 2026-11-02
+
+Três issues dos orquestradores 00c. O avanço de `execute-task`/`converge`
+passa a depender do exit code real do comando de testes do projeto-alvo, e
+não do relato do subagente; as filhas da leva paralela abrem na janela da
+coordenadora; e a resposta a bloqueio humano deixa de aceitar valor vazio
+vindo de parse errado.
+
+### Added
+
+- **Gate determinístico de testes (#242).** Helper novo
+  `agente-00c-runtime/scripts/gate-verify.sh` (`set-command`,
+  `get-command`, `run`, `check`). O operador declara o comando de gate no
+  início da execução (`--gate-command` em `/agente-00c` e `/feature-00c`,
+  ou pergunta interativa; o resume não pergunta de novo; a reabertura
+  herda do round anterior), persistido em `.gate_command`. `run` executa o
+  comando na raiz do projeto-alvo e grava, por onda, o exit code e a linha
+  de sumário do runner em `<state-dir>/gate-verify.tsv` (saída completa em
+  `gate-verify/<onda>.log`, sumário passado pelo `secrets-filter.sh
+  scrub`). O comando passa pela blocklist do `bash-guard.sh` ao ser
+  declarado e de novo antes de cada run, porque roda fora do hook
+  PreToolUse.
+- **`state-ondas.sh end --advance` consulta o gate (#242).** Saindo de
+  `execute-task` ou `converge`, o avanço é recusado com exit 3 (novo) sem
+  um run verde registrado na onda; nada é gravado. O `reconcile-wave`
+  herda a recusa. Sem comando declarado, avança como antes, com aviso
+  `gate=nao-declarado`. Os 4 commands pai rodam o gate antes do
+  `reconcile-wave` quando a onda ficou aberta nessas fases e, com gate
+  vermelho, fecham a onda sem avançar (`threshold_proxy_atingido` +
+  instrução de correção); os 2 orquestradores rodam o gate antes do
+  `end --advance`. Um run por onda, sem re-run para teste flaky.
+- **`parallel-launch.sh emit --tmux-target <pane>` e `resolve-tmux-pane`
+  (#238).** `emit` compõe `tmux split-window -t <pane>`, validado contra
+  `^%[0-9]+$`; sem a flag, mantém o comportamento anterior e avisa em
+  stderr que o split cai na janela ativa do cliente tmux. `resolve-tmux-pane`
+  devolve o pane da coordenadora: `$TMUX_PANE` se estiver vivo, senão o
+  pane cujo `#{pane_pid}` é ancestral do processo (`TMUX_PANE` chegava
+  vazio na tool Bash). Exit 4 quando não resolve, sem chutar. O §6.ter do
+  `/agente-00c` resolve o pane antes do `emit` e recomenda
+  `select-layout -t <pane> tiled` após o último split.
+- **`bloqueios.sh list --json` (#241).** Array com os mesmos 5 campos do
+  TSV (`id`, `decision_id`, `status`, `triggered_at`, `question`) nos dois
+  backends; lista vazia é `[]`.
+
+### Changed
+
+- **`bloqueios.sh respond` recusa resposta vazia (#241).** Resposta vazia
+  ou só com espaços sai com exit 2 sem tocar o state; resposta vazia
+  intencional exige `--allow-empty`. Antes, uma variável vazia vinda de um
+  parse errado do `list` marcava o bloqueio como respondido sem resposta.
+  Os commands de resume passam a orientar `list --json`.
+
+### Testes
+
+- `tests/test_gate-verify.sh` (17 cenários, JSON + SQLite),
+  `tests/test_command-gate-verify.sh` (smoke textual, interno), cenários
+  `*_gate_*` em `tests/test_state-ondas.sh`, `--tmux-target`/
+  `resolve-tmux-pane` em `tests/test_parallel-launch.sh` (stub de `tmux`
+  no PATH), `--allow-empty`/`list --json` em `tests/test_bloqueios.sh`.
+  `tests/test_orchestrator-slim-parity.sh` aceita `gate-verify.sh run` como
+  adição pós-baseline.
+
 ## [10.16.0] - 2026-11-02
 
 A skill `/presentation` passa a entregar, junto do deck completo, uma
@@ -8865,6 +8927,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.17.0]: https://github.com/JotJunior/cstk/releases/tag/v10.17.0
 [10.16.0]: https://github.com/JotJunior/cstk/releases/tag/v10.16.0
 [10.15.0]: https://github.com/JotJunior/cstk/releases/tag/v10.15.0
 [10.14.3]: https://github.com/JotJunior/cstk/releases/tag/v10.14.3

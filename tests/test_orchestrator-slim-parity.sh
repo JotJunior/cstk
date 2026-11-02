@@ -13,7 +13,8 @@
 #      salvo as listadas em rewritten-lines.tsv (referencias internas
 #      reescritas — FR-004 ii);
 #   2. blocos de comando: invocacoes `<script>.sh <subcomando>` do baseline ==
-#      corpus (unica adicao permitida: as do novo helper orchestrator-refs.sh);
+#      corpus (adicoes permitidas: orchestrator-refs.sh e, desde a issue
+#      #242, gate-verify.sh run — ver _check_cmd_blocks);
 #   3. literais contratuais (contract-literals.tsv) casam no baseline e no
 #      corpus; padroes negativos (contract-negatives.tsv) ausentes de ambos;
 #   4. sincronia de blocos FRAGMENT entre as referencias do MESMO orquestrador;
@@ -71,7 +72,13 @@ scenario_preservacao_de_linhas_feature() {
 _check_cmd_blocks() {
   _cb_tmp=$(mktemp -d -t 'orch-cmd.XXXXXX') || return 2
   awk -F '\t' -v o="$1" '$1 == o { print $2 }' "$FIX/command-blocks.baseline.txt" | LC_ALL=C sort -u > "$_cb_tmp/base"
-  orch_corpus "$1" | orch_cmd_blocks | grep -vxE 'orchestrator-refs\.sh (path|list)' > "$_cb_tmp/corpus" || :
+  # Adicoes sancionadas POS-baseline (o inventario do baseline e congelado e
+  # tem cenario proprio de sanidade): orchestrator-refs.sh (o proprio
+  # orchestrator-slim) e gate-verify.sh run (issue #242 — gate de testes
+  # antes do end --advance saindo de execute-task/converge). Adicao nova
+  # entra AQUI, com o motivo, no mesmo commit.
+  orch_corpus "$1" | orch_cmd_blocks \
+    | grep -vxE 'orchestrator-refs\.sh (path|list)|gate-verify\.sh run' > "$_cb_tmp/corpus" || :
   _cb_rc=0
   if ! cmp -s "$_cb_tmp/base" "$_cb_tmp/corpus"; then
     diff "$_cb_tmp/base" "$_cb_tmp/corpus" | head -n 30

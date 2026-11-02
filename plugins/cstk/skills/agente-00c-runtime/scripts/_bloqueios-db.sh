@@ -46,12 +46,15 @@
 #                                                 execution.status para
 #                                                 "em_andamento" — mesma
 #                                                 transacao.
-#   _bl_db_list DIR [STATUS] [SUBJECT_KEY]    -> TSV id/decision_id/status/
+#   _bl_db_list DIR [STATUS] [SUBJECT_KEY] [JSON]
+#                                             -> TSV id/decision_id/status/
 #                                                 triggered_at/question
 #                                                 (paridade com o formato do
 #                                                 path JSON); SUBJECT_KEY
 #                                                 filtra por igualdade exata
-#                                                 quando nao-vazio
+#                                                 quando nao-vazio; JSON="1"
+#                                                 emite array JSON com os
+#                                                 mesmos 5 campos (issue #241)
 #   _bl_db_count DIR [PENDING]                -> imprime o total (inteiro);
 #                                                 PENDING="1" filtra
 #                                                 status='aguardando'
@@ -223,7 +226,7 @@ _bl_db_respond() {
 # ---------- list ----------
 
 _bl_db_list() {
-  _bdl_sdir="$1"; _bdl_status="$2"; _bdl_subj="${3:-}"
+  _bdl_sdir="$1"; _bdl_status="$2"; _bdl_subj="${3:-}"; _bdl_json="${4:-0}"
   _bdl_db=$(_sr_db_file "$_bdl_sdir")
   [ -f "$_bdl_db" ] || _bl_die "list: state.db ausente em $_bdl_sdir" 1
   _bdl_exec_id=$(_sr_exec_id "$_bdl_db")
@@ -248,6 +251,13 @@ _bl_db_list() {
     fi
   fi
 
+  if [ "$_bdl_json" = "1" ]; then
+    # json_group_array sobre subquery ordenada preserva a ordem do TSV;
+    # tabela vazia => '[]' (json_group_array de zero linhas).
+    _state_db_exec "$_bdl_db" \
+      "SELECT json_group_array(json_object('id',id,'decision_id',decision_id,'status',status,'triggered_at',triggered_at,'question',question)) FROM (SELECT id, decision_id, status, triggered_at, question FROM human_block WHERE $_bdl_where ORDER BY rowid);"
+    return 0
+  fi
   _state_db_exec "$_bdl_db" \
     "SELECT id || char(9) || decision_id || char(9) || status || char(9) || triggered_at || char(9) || question FROM human_block WHERE $_bdl_where ORDER BY rowid;"
 }
