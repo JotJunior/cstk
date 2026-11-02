@@ -137,6 +137,25 @@ Ref: spec.md §User Story 4
 - [x] 6.3.3 Reescrever a story do cstk sem tecniques, validar e enviar
       prints ao dono do produto
 
+## FASE 7 - Versao Resumida C-Level (reabertura 2026-11-02)
+
+### 7.1 Validador, render e template `[A]`
+
+Ref: spec.md §FR-023, §FR-024; contracts/slide-grammar.md G-14, G-15, R-09
+
+- [x] 7.1.1 `--summary` no validador: ate 4 slides, cover primeiro,
+      closing ultimo, tipos granulares e `@timeline`/`@sources` proibidos
+- [x] 7.1.2 Tipo `highlights` (1 a 3 cartoes, `@source` obrigatorio) no
+      validador, no render (eyebrow localizado) e no `theme.css`
+- [x] 7.1.3 Fixture `summary.md` e cenarios nos testes 1:1
+
+### 7.2 Redator `[A]`
+
+Ref: spec.md §FR-023
+
+- [x] 7.2.1 `SKILL.md` (ETAPA 4b, modos, validacao, render, Gotcha),
+      `narrative-guide.md`, `slide-grammar.md`, `templates/summary.md`
+
 ---
 
 ## Matriz de Dependencias
@@ -155,6 +174,7 @@ flowchart TD
     F3 --> F5
     F4 --> F5
     F5 --> F6[Fase 6 - Linguagem de produto]
+    F6 --> F7[Fase 7 - Versao resumida C-Level]
 ```
 
 ## Resumo Quantitativo
@@ -167,7 +187,8 @@ flowchart TD
 | FASE 4 - Registro e release | 2 | 5 | A/M |
 | FASE 5 - Dogfooding e verificacao | 1 | 3 | A |
 | FASE 6 - Linguagem de produto | 3 | 11 | A |
-| **Total** | **12** | **35** | A |
+| FASE 7 - Versao resumida C-Level | 2 | 4 | A |
+| **Total** | **14** | **39** | A |
 
 ## Escopo Coberto
 

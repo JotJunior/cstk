@@ -5,6 +5,31 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Added
+
+- **`/presentation`: versão resumida para a diretoria (visão C-Level).**
+  Toda vez que a versão completa é criada ou reescrita, a skill também
+  escreve `summary.md` e renderiza `summary.html`: no máximo 4 slides com
+  a essência do projeto, no arco problema, valor entregue e horizonte
+  (esqueleto em `templates/summary.md`, guia em `narrative-guide.md`,
+  ETAPA 4b no `SKILL.md`). No modo incremental o resumo só é tocado
+  quando o diff tem mudança; `--render-only` renderiza as duas peças.
+- **`validate-presentation.sh --summary`** (G-14): até 4 slides, `cover`
+  primeiro e `closing` por último, sem `spec`, `chapter`, `timeline`,
+  `sources`, `@timeline` ou `@sources`, sem exigência de cobertura por
+  spec; `RESULT|slides=N|variant=summary|...`. Mesmas regras de
+  veracidade (`@metric` só por chave) e de linguagem de produto.
+- **Tipo de slide `highlights`** (G-15): valor entregue agrupado por
+  benefício, de 1 a 3 cartões, `@source` obrigatório; eyebrow
+  "Valor entregue"/"Delivered value" no render e faixa de destaque no
+  `theme.css`. Disponível também no deck completo.
+- Fixture `tests/fixtures/presentation/summary.md` e cenários novos em
+  `tests/test_validate-presentation.sh` e `tests/test_render-presentation.sh`.
+
+Spec: `docs/specs/presentation/` (FR-023, FR-024, Fase 7).
+
 ## [10.15.0] - 2026-10-28
 
 Tres issues dos orquestradores 00c. O caminho MCP deixa de cair para Bash em

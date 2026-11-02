@@ -8,8 +8,12 @@
 #      plugins/cstk/skills/presentation/references/slide-grammar.md
 #
 # Uso:
-#   validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE]
+#   validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE] [--summary]
 #
+#   --summary      valida a versao resumida (summary.md, visao C-Level): no
+#                  maximo 4 slides, cover primeiro e closing por ultimo, sem
+#                  slides spec/chapter/timeline/sources nem @timeline/@sources,
+#                  sem exigencia de cobertura das specs (G-14)
 #   --root DIR     base para resolver os caminhos de @source (default: .)
 #   --jargon FILE  glossario de termos tecnicos, um por linha (default:
 #                  <dir-do-script>/../references/jargon.txt)
@@ -22,6 +26,7 @@
 # Saida: violacoes em stderr ("FILE:LINHA: mensagem"; avisos com prefixo
 # "aviso:"); ultima linha em stdout:
 # RESULT|slides=N|specs=C/T|errors=E|warnings=W
+# (em --summary: RESULT|slides=N|variant=summary|errors=E|warnings=W)
 # Exit: 0 sem violacao | 1 com violacao | 2 uso incorreto.
 #
 # POSIX sh + awk, sem jq. Read-only.
@@ -32,11 +37,12 @@ _VP_NAME="validate-presentation"
 
 _vp_usage() {
   cat <<'USAGE' >&2
-Uso: validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE]
+Uso: validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE] [--summary]
 
 Valida story.md (gramatica, cobertura das specs, @source, @metric,
 placeholders, tecniques) contra o inventario de scan-project-docs.sh.
 Termos do glossario geram aviso (nao bloqueiam).
+--summary valida a versao resumida (ate 4 slides, sem cobertura por spec).
 Exit: 0 valido (pode haver avisos); 1 violacoes (stderr, FILE:LINHA: mensagem); 2 uso.
 USAGE
 }
@@ -52,12 +58,14 @@ STORY=""
 INVENTORY=""
 ROOT="."
 JARGON="$_VP_DIR/../references/jargon.txt"
+SUMMARY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --story) [ $# -ge 2 ] || _vp_die_usage "--story exige valor"; STORY=$2; shift 2 ;;
     --inventory) [ $# -ge 2 ] || _vp_die_usage "--inventory exige valor"; INVENTORY=$2; shift 2 ;;
     --root) [ $# -ge 2 ] || _vp_die_usage "--root exige valor"; ROOT=$2; shift 2 ;;
     --jargon) [ $# -ge 2 ] || _vp_die_usage "--jargon exige valor"; JARGON=$2; shift 2 ;;
+    --summary) SUMMARY=1; shift ;;
     -h|--help) _vp_usage; exit 0 ;;
     *) _vp_die_usage "argumento desconhecido: $1" ;;
   esac
@@ -76,7 +84,7 @@ trap 'rm -f "$_tmp"' EXIT INT TERM
 #   SRC<TAB>linha<TAB>caminho
 #   WRN<TAB>linha<TAB>mensagem
 #   SUM<TAB>slides<TAB>cobertas<TAB>total
-awk -F '\t' -v JARGON="$JARGON" '
+awk -F '\t' -v JARGON="$JARGON" -v SUMMARY="$SUMMARY" '
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function err(ln, msg) { printf "ERR\t%d\t%s\n", ln, msg }
 function wrn(ln, msg) { printf "WRN\t%d\t%s\n", ln, msg }
@@ -123,13 +131,18 @@ function close_slide(   k) {
   if (stype == "spec") {
     if (h3 != 4) err(sline, "spec " skey ": esperado 4 secoes ###, obtido " h3)
   }
-  if ((stype == "spec" || stype == "briefing" || stype == "constitution") && nsrc == 0)
+  if (stype == "highlights" && (h3 < 1 || h3 > 3))
+    err(sline, "highlights: esperado 1 a 3 secoes ###, obtido " h3)
+  if ((stype == "spec" || stype == "briefing" || stype == "constitution" || stype == "highlights") && nsrc == 0)
     err(sline, "slide " stype " sem @source")
   if (ntag > 3) err(sline, "slide com " ntag " @tag (maximo 3)")
 }
 BEGIN {
-  split("cover manifesto briefing constitution chapter spec timeline numbers closing sources", t, " ")
+  split("cover manifesto briefing constitution chapter spec highlights timeline numbers closing sources", t, " ")
   for (i in t) types[t[i]] = 1
+  # G-14: tipos granulares ou de apendice ficam fora da versao resumida
+  split("spec chapter timeline sources", t, " ")
+  for (i in t) nosummary[t[i]] = 1
   split("tasks tasks-done tasks-total clarify-sessions clarify-questions artifacts converge date stage status", t, " ")
   for (i in t) mspec[t[i]] = 1
   split("specs specs-active specs-archived specs-living tasks tasks-done tasks-total clarify-questions principles constitution-version", t, " ")
@@ -189,6 +202,7 @@ fm == 1 {
   order[nslides] = stype
   oline[nslides] = FNR
   if (!(stype in types)) { err(FNR, "tipo de slide desconhecido: " stype) }
+  else if (SUMMARY && (stype in nosummary)) err(FNR, "tipo " stype " nao permitido na versao resumida")
   count[stype]++
   if (stype == "spec") {
     if (skey == "") err(FNR, "slide spec sem key=")
@@ -230,7 +244,7 @@ fm == 1 {
     if (arg == "") err(FNR, "@tag sem texto")
     ntag++
   } else if (name == "timeline" || name == "sources") {
-    # sem argumento
+    if (SUMMARY) err(FNR, "@" name " nao permitido na versao resumida")
   } else {
     err(FNR, "diretiva desconhecida: @" name)
   }
@@ -242,7 +256,14 @@ END {
   if (!("lang" in front)) err(1, "frontmatter: lang obrigatorio")
   else if (front["lang"] != "pt-BR" && front["lang"] != "en") err(1, "frontmatter: lang deve ser pt-BR ou en")
   if (nslides == 0) err(1, "nenhum slide")
-  else {
+  else if (SUMMARY) {
+    # G-14: versao resumida (visao C-Level)
+    if (nslides > 4) err(1, "versao resumida com " nslides " slides (maximo 4)")
+    if (count["cover"] != 1) err(1, "cover deve aparecer exatamente uma vez (obtido " count["cover"] + 0 ")")
+    else if (order[1] != "cover") err(oline[1], "cover deve ser o primeiro slide")
+    if (count["closing"] < 1) err(1, "falta slide closing")
+    else if (order[nslides] != "closing") err(oline[nslides], "closing deve ser o ultimo slide na versao resumida")
+  } else {
     if (count["cover"] != 1) err(1, "cover deve aparecer exatamente uma vez (obtido " count["cover"] + 0 ")")
     else if (order[1] != "cover") err(oline[1], "cover deve ser o primeiro slide")
     if (count["sources"] != 1) err(1, "sources deve aparecer exatamente uma vez (obtido " count["sources"] + 0 ")")
@@ -252,6 +273,7 @@ END {
     if (has_const && count["constitution"] < 1) err(1, "falta slide constitution (inventario tem constitution)")
   }
   nc = 0
+  if (SUMMARY) { printf "SUM\t%d\t%d\t%d\n", nslides, nc, ninv; exit }
   for (k in inv) {
     if (k in covered) nc++
     else missing[k] = 1
@@ -281,7 +303,11 @@ while IFS="	" read -r _kind _a _b _c; do
       fi
       ;;
     SUM)
-      _sum="slides=$_a|specs=$_b/$_c"
+      if [ "$SUMMARY" -eq 1 ]; then
+        _sum="slides=$_a|variant=summary"
+      else
+        _sum="slides=$_a|specs=$_b/$_c"
+      fi
       ;;
   esac
 done < "$_tmp"

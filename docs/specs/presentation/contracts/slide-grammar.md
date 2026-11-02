@@ -22,6 +22,8 @@ dois arquivos e defeito.
 | G-11 | texto narrativo sem tecniques estrutural: crases, URL, endpoint, flag, caminho, arquivo (FR-018) | `tecniques: <tipo> "<trecho>" (...)` |
 | G-12 | termo do glossario `references/jargon.txt` fora de `vocabulary:` gera **aviso**, nao erro (FR-019) | `aviso: termo tecnico "X" (...)` |
 | G-13 | no maximo 3 `@tag` por slide (FR-020) | `slide com N @tag (maximo 3)` |
+| G-14 | com `--summary`: no maximo 4 slides, `cover` primeiro, `closing` ultimo, sem `spec`/`chapter`/`timeline`/`sources` nem `@timeline`/`@sources`, sem cobertura das specs (FR-023) | `versao resumida com N slides (maximo 4)` / `tipo X nao permitido na versao resumida` / `closing deve ser o ultimo slide na versao resumida` |
+| G-15 | `highlights` com 1 a 3 `###` e `@source` obrigatorio (FR-024) | `highlights: esperado 1 a 3 secoes ###, obtido N` / `slide highlights sem @source` |
 
 ## Invariantes do render (`render-presentation.sh`)
 
@@ -35,3 +37,4 @@ dois arquivos e defeito.
 | R-06 | `@tag` vira `<div class="tags">` com rotulo localizado ("Por tras"/"Under the hood") (FR-020) |
 | R-07 | rodape: rotulo amigavel por fonte (briefing, constituicao, titulo narrativo da spec dona do arquivo, "documentacao do projeto"), deduplicado, caminhos em `title=` (FR-021) |
 | R-08 | `@timeline` e `@sources` usam o titulo narrativo da spec quando o slide ja foi visto (FR-022) |
+| R-09 | `highlights` renderiza com eyebrow localizado ("Valor entregue"/"Delivered value") e cartoes `cards--N`; o mesmo render produz `summary.html` a partir de `summary.md` (FR-023, FR-024) |

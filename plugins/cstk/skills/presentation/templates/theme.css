@@ -519,6 +519,15 @@ em { font-style: italic; }
 /* principios */
 .slide--constitution .cards { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 
+/* valor entregue (versao resumida e deck completo) */
+.slide--highlights::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), transparent 70%);
+}
+
 /* numeros */
 .slide--numbers .metrics {
   display: grid;
@@ -852,6 +861,8 @@ em { font-style: italic; }
 .is-slides .slide--spec .slide__title { font-size: calc(var(--fs-title) * 0.88); }
 .is-slides .slide--spec .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .is-slides .slide--constitution .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.is-slides .slide--highlights .cards--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.is-slides .slide--highlights .cards--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .is-slides .card { padding: calc(24px * var(--fit)) calc(26px * var(--fit)); }
 .is-slides .timeline { columns: 4; column-gap: 36px; }
 .is-slides .timeline__specs li { font-size: calc(15px * var(--fit)); }
@@ -923,6 +934,8 @@ em { font-style: italic; }
   .slide--chapter .slide__frame { min-height: 0; }
   .slide--spec .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .slide--constitution .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .slide--highlights .cards--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .slide--highlights .cards--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .timeline { columns: 4; }
   .source-index { columns: 3; }
   .source-index span { display: none; }

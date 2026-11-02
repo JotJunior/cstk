@@ -41,6 +41,7 @@ os rotulos gerados pelo render (estagios, "Capitulo", "nao registrado").
 | `constitution` | principios que governam o projeto | **[V]** ao menos um se o inventario tem `constitution`; `@source` obrigatorio |
 | `chapter` | abertura de capitulo (onda ou periodo) | numerado automaticamente |
 | `spec` | uma spec do inventario | **[V]** um por spec; **[V]** exatamente 4 secoes `###`; `@source` obrigatorio |
+| `highlights` | valor entregue, agrupado por beneficio | opcional no deck completo; **[V]** de 1 a 3 secoes `###`; `@source` obrigatorio |
 | `timeline` | evolucao no tempo | use `@timeline` |
 | `numbers` | o projeto em numeros | so `@metric`; nenhum numero literal |
 | `closing` | visao de futuro e chamada final | **[V]** ao menos um |
@@ -67,6 +68,8 @@ tabelas, listas aninhadas, listas numeradas.
 - `briefing` e `constitution`: cada `###` vira um cartao na grade. Em
   `constitution`, cartao cujo titulo contem `NON-NEGOTIABLE` ou
   `INEGOCIAVEL` ganha destaque.
+- `highlights`: paragrafos antes do primeiro `###` = lead; cada `###` vira
+  um cartao de valor (ate 3, lado a lado); `@metric` vira chip.
 - `spec`: paragrafos antes do primeiro `###` = lead; as 4 secoes `###`
   ocupam os quadrantes na ordem: **o que e**, **como foi pensada**,
   **como foi enriquecida**, **como foi implementada** (os rotulos sao
@@ -77,7 +80,7 @@ tabelas, listas aninhadas, listas numeradas.
 | Diretiva | Onde | Efeito |
 |----------|------|--------|
 | `@metric Rotulo \| chave` | qualquer slide | chip (ou tile em `numbers`) com o valor resolvido do inventario. **[V]** chave valida para o escopo |
-| `@source caminho` | qualquer slide | rodape de fontes com **rotulo amigavel** ("Briefing", "Constituicao", titulo narrativo da spec dona do arquivo, ou "Documentacao do projeto"); o caminho fica no tooltip e no apendice. **[V]** o arquivo existe; **[V]** obrigatorio em `briefing`, `constitution`, `spec` |
+| `@source caminho` | qualquer slide | rodape de fontes com **rotulo amigavel** ("Briefing", "Constituicao", titulo narrativo da spec dona do arquivo, ou "Documentacao do projeto"); o caminho fica no tooltip e no apendice. **[V]** o arquivo existe; **[V]** obrigatorio em `briefing`, `constitution`, `spec`, `highlights` |
 | `@tag Texto` | qualquer slide | selo discreto "Por tras: Texto", unico lugar para nome tecnico sem explicacao. **[V]** no maximo 3 por slide |
 | `@timeline` | `timeline` | cronologia gerada do inventario (arquivadas por data, depois ativas) |
 | `@sources` | `sources` | indice de todas as fontes do inventario |
@@ -93,6 +96,22 @@ tabelas, listas aninhadas, listas numeradas.
 
 Valor ausente no inventario (`-`) aparece como "nao registrado". Nunca
 escreva o numero voce mesmo: a chave existe justamente para isso.
+
+## Variante resumida (`summary.md`, visao C-Level)
+
+Mesma gramatica, mesmo frontmatter, mesmas diretivas e proibicoes, com
+regras proprias aplicadas por `validate-presentation.sh --summary` (G-14):
+
+- **[V]** no maximo **4 slides**.
+- **[V]** `cover` exatamente um e primeiro; `closing` presente e ultimo.
+- **[V]** proibidos os tipos `spec`, `chapter`, `timeline` e `sources` e
+  as diretivas `@timeline` e `@sources`: o resumo nao e indice, e cada
+  slide carrega as proprias fontes no rodape via `@source`.
+- Sem exigencia de cobertura das specs nem de slides `briefing` ou
+  `constitution`; o `@source` continua obrigatorio nos tipos factuais.
+- Arco recomendado (4 slides): `cover` → `briefing` (problema e
+  oportunidade) → `highlights` (valor entregue) → `closing` (horizonte).
+  Esqueleto em `templates/summary.md`; guia em `narrative-guide.md`.
 
 ## Proibicoes **[V]**
 

@@ -244,7 +244,7 @@ Details, flow diagram and shortcuts in
 | **bugfix** | "bugfix", "fix bug", "debug" | Structured multi-layer bug-fixing protocol |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Full-stack E2E integration tests (UI → API → database → queue → side effects) |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Applies proven usage insights to CLAUDE.md, hooks and workflows — see [Usage insights](#usage-insights) |
-| **presentation** | "apresentação do projeto", "deck executivo", "relatório humanizado" | Writes the project story as an offline HTML deck (slides, report, PDF) from briefing, constitution and every spec, one slide per spec; facts and metrics only from a deterministic inventory |
+| **presentation** | "apresentação do projeto", "deck executivo", "relatório humanizado" | Writes the project story as an offline HTML deck (slides, report, PDF) from briefing, constitution and every spec, one slide per spec, plus a C-Level summary deck of at most 4 slides; facts and metrics only from a deterministic inventory |
 | **reconcile-docs** | "atualizar a documentação da feature", "a spec ficou desatualizada", "sincronizar docs com o código" | Reverse of `converge`: updates feature docs (spec, plan, data-model, contracts, quickstart) to match the current code, with inline markers and cited evidence; never changes code; supports `--all` and `--dry-run` |
 | **owasp-security** | When reviewing security | Checklist-guided review (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Does not replace audit/pentest |
 | **review-features** | "status global", "comparar features" | Cross-feature report suggesting archive/abandon/prioritize; the archive action applies deltas to the living-specs corpus |

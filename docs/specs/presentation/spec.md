@@ -206,8 +206,9 @@ glossario (so avisa); renderizar e conferir rodape, selos e linha do tempo.
   `--docs <dir>` (default `docs`), `--out <dir>` (default
   `docs/presentation`), `--lang <pt-BR|en>`, `--render-only` e `--full`.
 - **FR-002**: A saida MUST consistir em `story.md` (fonte narrativa),
-  `inventory.tsv` (snapshot do inventario) e `index.html` (derivado),
-  todos no diretorio de saida.
+  `summary.md` (fonte da versao resumida), `inventory.tsv` (snapshot do
+  inventario), `index.html` e `summary.html` (derivados), todos no
+  diretorio de saida.
 - **FR-003**: Um script deterministico MUST inventariar briefing (caminho
   atual ou legado), constitution (versao e principios) e specs (ativas em
   `specs/*/`, arquivadas em `specs/_archived/*/`, vivas em
@@ -268,6 +269,14 @@ glossario (so avisa); renderizar e conferir rodape, selos e linha do tempo.
   caminho; o caminho MUST permanecer rastreavel no tooltip e no apendice.
 - **FR-022**: A linha do tempo e o apendice MUST usar o titulo narrativo
   (`##`) do slide de cada spec, com fallback para o titulo do inventario.
+- **FR-023**: Sempre que a versao completa for criada ou reescrita, a
+  skill MUST criar tambem a versao resumida (visao C-Level): no maximo 4
+  slides com a essencia do projeto (problema, valor entregue, horizonte),
+  `cover` primeiro e `closing` por ultimo, sem slides por spec, validada
+  com `--summary` e renderizada pelo mesmo template.
+- **FR-024**: O catalogo MUST oferecer o tipo `highlights` (valor
+  entregue agrupado por beneficio): de 1 a 3 secoes `###`, `@source`
+  obrigatorio, utilizavel no deck completo e no resumido.
 
 ### Key Entities
 
