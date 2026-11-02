@@ -13,10 +13,13 @@ entrada inexistente.
 | Flag | Default | Efeito |
 |------|---------|--------|
 | `--docs` | `docs` | raiz das docs a varrer |
-| `--out` | `docs/presentation` | destino de `story.md`, `inventory.tsv`, `index.html` |
+| `--out` | `docs/presentation` | destino de `story.md`, `summary.md`, `inventory.tsv`, `index.html`, `summary.html` |
 | `--lang` | idioma do briefing (pt-BR se ausente) | idioma do texto e dos rotulos |
-| `--render-only` | off | so valida e renderiza; nao toca `story.md` nem `inventory.tsv` |
-| `--full` | off | ignora o diff e reescreve a story inteira |
+| `--render-only` | off | so valida e renderiza as duas pecas; nao toca `story.md`, `summary.md` nem `inventory.tsv` |
+| `--full` | off | ignora o diff e reescreve a story inteira e o resumo |
+
+Toda criacao ou reescrita da versao completa gera tambem a versao resumida
+(`summary.md` → `summary.html`, ate 4 slides, visao C-Level).
 
 ## `scan-project-docs.sh`
 
@@ -36,11 +39,14 @@ scan-project-docs.sh diff --old FILE --new FILE
 ## `validate-presentation.sh`
 
 ```
-validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE]
+validate-presentation.sh --story FILE --inventory FILE [--root DIR] [--jargon FILE] [--summary]
 ```
 
 - `--root`: base para resolver `@source` (default: diretorio atual).
 - `--jargon`: glossario tecnico (default: `references/jargon.txt` da skill).
+- `--summary`: aplica as regras da versao resumida (G-14) no lugar da
+  cobertura por spec; a ultima linha vira
+  `RESULT|slides=N|variant=summary|errors=E|warnings=W`.
 - Avisos (G-12) saem em stderr com prefixo `aviso:` e nao alteram o exit.
 - Violacoes em stderr, uma por linha, `FILE:LINHA: mensagem`; ultima
   linha em stdout: `RESULT|slides=N|specs=C/T|errors=E|warnings=W`.

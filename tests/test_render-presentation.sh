@@ -217,6 +217,17 @@ scenario_timeline_usa_titulo_narrativo() {
   _rp_has '<code>docs/specs/checkout-flow/spec.md</code><span>Pagar em uma tela</span>' || return 1
 }
 
+scenario_render_versao_resumida() {
+  _rp_setup || return 2
+  capture sh -c 'cd "$1" && exec sh "$2" --story summary.md --inventory inventory.tsv --out summary.html' _ "$TMPDIR_TEST" "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "RENDERED|summary.html|slides=4" || return 1
+  _types=$(sed -n 's/.*<section class="slide slide--\([a-z]*\).*/\1/p' "$TMPDIR_TEST/summary.html" | tr '\n' ' ')
+  [ "$_types" = "cover briefing highlights closing " ] || { _fail "order" "ordem inesperada: $_types"; return 1; }
+  grep -F -q '<p class="eyebrow">Valor entregue</p>' "$TMPDIR_TEST/summary.html" || { _fail "html" "sem eyebrow Valor entregue"; return 1; }
+  grep -F -q '<div class="cards cards--2">' "$TMPDIR_TEST/summary.html" || { _fail "html" "sem cartoes de valor"; return 1; }
+}
+
 scenario_sem_argumentos_exit2() {
   assert_exit 2 sh "$SCRIPT" || return 1
   assert_stderr_contains "Uso:" || return 1

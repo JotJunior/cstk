@@ -1,6 +1,6 @@
 ---
 name: presentation
-description: 'Write the project story as an elegant offline HTML deck (slides + report + PDF) with a Markdown source, from the SDD docs: briefing, constitution and every spec (active, archived, living), one slide per spec covering what it is and how it was thought, enriched and implemented. Executive, inspiring tone; facts and metrics only from a deterministic inventory. Triggers: "presentation", "apresentacao do projeto", "contar a historia do projeto", "deck executivo", "relatorio humanizado", "slides do projeto", "apresentar o projeto". Skip for the status of one feature (use review-task) or a deck unrelated to the project docs.'
+description: 'Write the project story as an elegant offline HTML deck (slides + report + PDF) with a Markdown source, from the SDD docs: briefing, constitution and every spec (active, archived, living), one slide per spec covering what it is and how it was thought, enriched and implemented, plus a C-Level summary deck of at most 4 slides with the essence of the project. Executive, inspiring tone; facts and metrics only from a deterministic inventory. Triggers: "presentation", "apresentacao do projeto", "contar a historia do projeto", "deck executivo", "relatorio humanizado", "slides do projeto", "apresentar o projeto". Skip for the status of one feature (use review-task) or a deck unrelated to the project docs.'
 argument-hint: "[--docs <dir>] [--out <dir>] [--lang pt-BR|en] [--render-only] [--full]"
 allowed-tools:
   - Read
@@ -17,13 +17,18 @@ allowed-tools:
 Voce e o **redator** da historia do projeto. A partir de `docs/` (briefing,
 constitution e todas as specs), escreva uma narrativa executiva e
 inspiradora que sirva tanto de apresentacao formal quanto de relatorio
-humanizado. O resultado sempre segue o mesmo template:
+humanizado. **Sempre que a versao completa for criada ou reescrita, crie
+tambem a versao resumida**: no maximo 4 slides com a essencia do projeto,
+para a diretoria (visao C-Level). O resultado sempre segue o mesmo
+template:
 
 | Arquivo (em `--out`) | Papel | Quem escreve |
 |----------------------|-------|--------------|
-| `story.md` | fonte narrativa, editavel, retroalimentada | voce (redator) |
+| `story.md` | fonte narrativa completa, editavel, retroalimentada | voce (redator) |
+| `summary.md` | fonte da versao resumida (ate 4 slides, visao C-Level) | voce (redator) |
 | `inventory.tsv` | fatos e metricas, linha de base do proximo diff | `scan-project-docs.sh` |
-| `index.html` | deck unico e offline (slides, relatorio, PDF) | `render-presentation.sh` |
+| `index.html` | deck completo, unico e offline (slides, relatorio, PDF) | `render-presentation.sh` |
+| `summary.html` | deck resumido, unico e offline (slides, relatorio, PDF) | `render-presentation.sh` |
 
 A audiencia nao e tecnica: o texto e **linguagem de produto**, que
 encanta e vende o que o projeto resolve. Arquitetura, frameworks,
@@ -31,7 +36,7 @@ linguagens, endpoints, comandos e caminhos ficam fora do texto; quando um
 nome tecnico for indispensavel, vem com uma traducao curta em linguagem
 comum, ou vira um selo ilustrativo (`@tag`).
 
-Voce escreve **so** o `story.md`, numa gramatica fechada
+Voce escreve **so** o `story.md` e o `summary.md`, numa gramatica fechada
 (`references/slide-grammar.md`). Fatos vem do inventario; metricas, so
 por chave (`@metric Rotulo | chave`). O HTML e sempre derivado.
 
@@ -44,8 +49,11 @@ por chave (`@metric Rotulo | chave`). O HTML e sempre derivado.
 
 ## Proximos passos
 
-- Abrir `docs/presentation/index.html` no navegador (funciona offline).
-- Lapidar o texto direto no `story.md` e rodar `/presentation --render-only`.
+- Abrir `docs/presentation/index.html` (completa) ou
+  `docs/presentation/summary.html` (resumida, para a diretoria) no
+  navegador; ambos funcionam offline.
+- Lapidar o texto direto no `story.md` ou no `summary.md` e rodar
+  `/presentation --render-only`.
 - Rodar `/presentation` de novo quando o projeto evoluir: so os slides
   afetados sao reescritos.
 
@@ -56,10 +64,10 @@ $ARGUMENTS
 | Flag | Default | Efeito |
 |------|---------|--------|
 | `--docs <dir>` | `docs` | raiz das docs a varrer |
-| `--out <dir>` | `docs/presentation` | destino das tres pecas |
+| `--out <dir>` | `docs/presentation` | destino das cinco pecas |
 | `--lang pt-BR\|en` | idioma do briefing (pt-BR se ausente) | idioma do texto e dos rotulos |
-| `--render-only` | off | so valida e renderiza; nao toca `story.md` nem `inventory.tsv` |
-| `--full` | off | ignora o diff e reescreve a story inteira |
+| `--render-only` | off | so valida e renderiza; nao toca `story.md`, `summary.md` nem `inventory.tsv` |
+| `--full` | off | ignora o diff e reescreve a story inteira e o resumo |
 
 Scripts: `S` = pasta `scripts/` ao lado deste SKILL.md
 (`~/.claude/skills/presentation/scripts` na instalacao via `cstk`;
@@ -70,10 +78,10 @@ Scripts: `S` = pasta `scripts/` ao lado deste SKILL.md
 ## FLUXO DE EXECUCAO
 
 ```
-1. Inventario ──► 2. Modo ──► 3. Leitura ──► 4. Redacao ──► 5. Validacao ──► 6. Render
-   (script)       novo |       (fontes das     (story.md)     (script,         (script) + relato
-                  incremental   specs afetadas)                 ate exit 0)
-                  | render-only ────────────────────────────────►
+1. Inventario ──► 2. Modo ──► 3. Leitura ──► 4. Redacao ──► 4b. Resumo ──► 5. Validacao ──► 6. Render
+   (script)       novo |       (fontes das     (story.md)     (summary.md,   (script, as       (script, as
+                  incremental   specs afetadas)                 ate 4 slides)  duas pecas,       duas pecas)
+                  | render-only ────────────────────────────────────────────►  ate exit 0)       + relato
 ```
 
 ## ETAPA 1: Inventario
@@ -93,7 +101,8 @@ escrever (um por linha `spec`) e a unica fonte de numeros. Formato em
 ## ETAPA 2: Modo
 
 - **Novo** (`story.md` ausente ou `--full`): escreva a story inteira a
-  partir de `templates/story.md`.
+  partir de `templates/story.md` e, na ETAPA 4b, o `summary.md` inteiro a
+  partir de `templates/summary.md`.
 - **Incremental** (`story.md` e `inventory.tsv` existem):
 
   ```sh
@@ -109,6 +118,12 @@ escrever (um por linha `spec`) e a unica fonte de numeros. Formato em
 
   Depois revise so o que depende do conjunto: capitulos (se ganharam ou
   perderam specs), `timeline`, `numbers` e `closing`.
+
+  Resumo no modo incremental: se `summary.md` nao existe, crie-o (ETAPA
+  4b). Se existe e o diff tem qualquer estado diferente de `unchanged`,
+  atualize so os trechos afetados (cartoes de valor, horizonte) e
+  preserve o restante, inclusive edicoes manuais. Se tudo e `unchanged`,
+  nao toque no `summary.md`.
 
 ## ETAPA 3: Leitura das fontes
 
@@ -134,14 +149,32 @@ com as quatro secoes `###` na ordem: o que e, como foi pensada, como foi
 enriquecida, como foi implementada. Leia os artefatos tecnicos, mas
 escreva para quem decide: traduza cada mecanismo no efeito que ele produz.
 
+## ETAPA 4b: Versao resumida (`summary.md`, visao C-Level)
+
+Obrigatoria sempre que a versao completa for criada ou reescrita. Siga
+"Versao resumida" em `references/narrative-guide.md` e o esqueleto
+`templates/summary.md`: **no maximo 4 slides**, `cover` primeiro e
+`closing` por ultimo, no arco problema → valor entregue → horizonte.
+
+- Destile o `story.md` ja escrito (mesmo `title`, `lang` e
+  `vocabulary:`); nao releia as specs uma a uma.
+- Agrupe o que foi entregue em ate 3 beneficios no slide `highlights`,
+  nunca uma spec por cartao. Metricas so de escopo do projeto
+  (`specs`, `tasks`, `clarify-questions`, `specs-active`...).
+- Sem slides `spec`, `chapter`, `timeline` ou `sources`: o resumo nao e
+  indice; cada slide factual leva os proprios `@source`.
+
 ## ETAPA 5: Validacao
 
 ```sh
 sh "$S/validate-presentation.sh" --story "$OUT/story.md" --inventory "$OUT/inventory.new.tsv"
+sh "$S/validate-presentation.sh" --summary --story "$OUT/summary.md" --inventory "$OUT/inventory.new.tsv"
 ```
 
-(Em `--render-only`, use `--inventory "$OUT/inventory.tsv"`.) Corrija cada
-`story.md:LINHA: mensagem` e valide de novo ate `errors=0`. Nunca
+(Em `--render-only`, use `--inventory "$OUT/inventory.tsv"`; se o
+`summary.md` nao existir, avise o operador que a versao resumida so nasce
+numa execucao completa.) Corrija cada `story.md:LINHA: mensagem` (ou
+`summary.md:LINHA:`) e valide de novo ate `errors=0` nas duas pecas. Nunca
 contorne o validador (ex.: apagar o `@source` que aponta para arquivo
 inexistente em vez de corrigir o caminho).
 
@@ -154,12 +187,14 @@ por que.
 ## ETAPA 6: Render e relato
 
 ```sh
-mv "$OUT/inventory.new.tsv" "$OUT/inventory.tsv"   # so apos validacao OK; nunca em --render-only
+mv "$OUT/inventory.new.tsv" "$OUT/inventory.tsv"   # so apos validar as duas pecas; nunca em --render-only
 sh "$S/render-presentation.sh" --story "$OUT/story.md" --inventory "$OUT/inventory.tsv" --out "$OUT/index.html"
+sh "$S/render-presentation.sh" --story "$OUT/summary.md" --inventory "$OUT/inventory.tsv" --out "$OUT/summary.html"
 ```
 
-Relate ao operador: caminho do `index.html`, numero de slides, specs
-cobertas, o que mudou (em modo incremental) e como usar o deck:
+Relate ao operador: caminhos do `index.html` e do `summary.html`, numero
+de slides de cada um, specs cobertas, o que mudou (em modo incremental)
+e como usar os decks:
 setas navegam, `R` alterna slides e relatorio, `T` alterna o tema, `F`
 tela cheia, `P` imprime (um slide por pagina, pronto para PDF).
 
@@ -170,6 +205,8 @@ tela cheia, `P` imprime (um slide por pagina, pronto para PDF).
 - O redator escreve narrativa; o script escreve fatos.
 - Linguagem de produto: o que muda para quem usa, nunca como o codigo faz.
 - Um slide por spec, sempre; densidade fixa (lead + 4 secoes curtas).
+- Versao completa nova ou reescrita implica versao resumida: ate 4
+  slides, valor agrupado por beneficio, mesma veracidade.
 - Nada de HTML, links ou imagens no `story.md`: o render escapa tudo.
 - O template (`templates/presentation.html`, `theme.css`, `deck.js`) e o
   mesmo para todo projeto; nao gere CSS nem HTML por projeto.
@@ -210,10 +247,20 @@ concluido. Arquivada sem `tasks.md` nao e "implementada". Escreva a
 secao "Como foi implementada" coerente com o selo que o render vai
 mostrar, senao o slide se contradiz na frente do leitor.
 
+### Resumo para diretoria nao e o deck completo encolhido
+
+A tentacao e espremer um slide por spec em 4 telas ou listar todas as
+entregas no `highlights`. Quem decide quer o problema, o valor e o
+horizonte. O validador (`--summary`) barra mais de 4 slides e os tipos
+granulares (`spec`, `chapter`, `timeline`, `sources`); a escolha de
+agrupar por beneficio e sua. Numero sem lastro continua proibido: o
+resumo nao ganha licenca para "reduziu 80% do retrabalho".
+
 ### Nunca editar o `index.html` a mao
 
-Ele e derivado e sera sobrescrito no proximo render. Ajuste o texto no
-`story.md` e rode `--render-only`; ajuste visual e no template da skill,
+Ele (e o `summary.html`) e derivado e sera sobrescrito no proximo
+render. Ajuste o texto no `story.md` ou no `summary.md` e rode
+`--render-only`; ajuste visual e no template da skill,
 para todos os projetos.
 
 ### Slide `unchanged` e intocavel na regeneracao
@@ -225,8 +272,8 @@ timeline, numbers, closing). `--full` e opt-in explicito.
 
 ### `inventory.tsv` so e promovido depois da validacao
 
-Se voce mover o `inventory.new.tsv` antes de a story passar no
-validador e a execucao parar no meio, o proximo diff vai considerar como
+Se voce mover o `inventory.new.tsv` antes de a story e o resumo passarem
+no validador e a execucao parar no meio, o proximo diff vai considerar como
 `unchanged` specs que nunca ganharam slide atualizado.
 
 ### Chave de spec e o caminho relativo a `specs/`

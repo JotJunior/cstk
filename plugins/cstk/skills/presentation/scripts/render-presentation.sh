@@ -304,6 +304,7 @@ BEGIN {
   PT["chapter"] = "Cap&iacute;tulo";        EN["chapter"] = "Chapter"
   PT["timeline"] = "Linha do tempo";        EN["timeline"] = "Timeline"
   PT["numbers"] = "Em n&uacute;meros";      EN["numbers"] = "By the numbers"
+  PT["highlights"] = "Valor entregue";      EN["highlights"] = "Delivered value"
   PT["closing"] = "Horizonte";              EN["closing"] = "Horizon"
   PT["sources"] = "Fontes";                 EN["sources"] = "Sources"
   PT["source"] = "Fonte";                   EN["source"] = "Source"

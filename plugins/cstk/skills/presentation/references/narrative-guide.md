@@ -135,6 +135,39 @@ nao "Perguntas de clarify".
   uma frase literal marcante do briefing (com `@source`).
 - Listas so no `briefing` (escopo, restricoes) e quando enumerar de fato.
 
+## Versao resumida (visao C-Level)
+
+Toda vez que a versao completa e criada ou reescrita, nasce junto a
+versao resumida (`summary.md` → `summary.html`): **no maximo 4 slides**
+com a essencia do projeto, para quem tem 3 minutos e precisa decidir.
+Ela destila o `story.md` ja validado; nao e um segundo deck completo nem
+um indice das specs.
+
+| Slide | Tipo | Pergunta que responde | Conteudo |
+|-------|------|------------------------|----------|
+| 1 | `cover` | O que e isto, em uma linha? | nome, promessa, valor para o negocio, frase de impacto |
+| 2 | `briefing` | Qual problema e para quem? | tres cartoes: o problema, para quem, a proposta |
+| 3 | `highlights` | O que ja foi entregue? | lead + ate 3 cartoes de valor, 2 ou 3 `@metric` do projeto |
+| 4 | `closing` | Para onde vamos? | horizonte, o que esta em construcao, frase final |
+
+- **Agrupe por valor, nunca por spec.** Cada cartao do `highlights` e um
+  beneficio ("Decisoes rastreaveis", "Entrega sem retrabalho") que junta
+  varias specs; cite em `@source` os `spec.md` das specs mais
+  representativas de cada cartao.
+- **Densidade de diretoria**: titulo em ate 6 palavras, lead em ate 20,
+  cartao em ate 30. Se uma frase nao muda a decisao de quem le, corte.
+- **Sem briefing no inventario**: troque o slide 2 por um `manifesto`
+  (o porque, a partir do proprio `story.md`) ou fique com 3 slides; nunca
+  invente o problema.
+- **Constituicao** so entra se um principio for o diferencial do
+  projeto; nesse caso ela ocupa o slide 2 ou 3, mantendo o limite de 4.
+- **Horizonte com lastro**: o `closing` fala das specs ativas (o que esta
+  em construcao) e da visao de futuro do briefing. Pedidos de verba,
+  prazo ou equipe so entram se estiverem literalmente numa fonte citada.
+- Mesmo tom, mesmas regras de veracidade e de linguagem de produto da
+  versao completa: numero so via `@metric`, nada de tecniques, mesmo
+  `vocabulary:` do `story.md`.
+
 ## Checklist antes de validar
 
 - [ ] Toda spec do inventario tem exatamente um slide (`key=` certo).
@@ -142,6 +175,9 @@ nao "Perguntas de clarify".
 - [ ] Nenhum numero literal fora de `@metric`.
 - [ ] Todo slide factual tem `@source` apontando para arquivo existente.
 - [ ] Nenhum placeholder (`{{`, TODO, TBD) sobrou do esqueleto.
+- [ ] Versao resumida: no maximo 4 slides, `cover` primeiro, `closing`
+      por ultimo, valor agrupado por beneficio e `@source` em cada
+      slide factual.
 - [ ] Zero erros de tecniques (G-11) e cada aviso de glossario (G-12)
       resolvido: reescrito, traduzido na frase, movido para `@tag` ou
       declarado em `vocabulary:`.

@@ -261,6 +261,93 @@ scenario_mais_de_tres_tags() {
   _vp_expect_fail "slide com 4 @tag (maximo 3)" || return 1
 }
 
+# ---- versao resumida (G-14) ----
+
+# _vp_run_summary -> valida summary.md do tmpdir com --summary
+_vp_run_summary() {
+  capture sh -c 'cd "$1" && exec sh "$2" --summary --story summary.md --inventory inventory.tsv' _ "$TMPDIR_TEST" "$SCRIPT"
+}
+
+_vp_edit_summary() {
+  sed "$1" "$TMPDIR_TEST/summary.md" > "$TMPDIR_TEST/summary.tmp" && mv "$TMPDIR_TEST/summary.tmp" "$TMPDIR_TEST/summary.md"
+}
+
+_vp_expect_fail_summary() {
+  _vp_run_summary
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "$1" || return 1
+}
+
+scenario_resumo_valido_exit0() {
+  _vp_setup || return 2
+  _vp_run_summary
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "RESULT|slides=4|variant=summary|errors=0|warnings=0" || return 1
+}
+
+scenario_resumo_sem_flag_exige_cobertura() {
+  _vp_setup || return 2
+  capture sh -c 'cd "$1" && exec sh "$2" --story summary.md --inventory inventory.tsv' _ "$TMPDIR_TEST" "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "spec sem slide:" || return 1
+}
+
+scenario_resumo_com_mais_de_quatro_slides() {
+  _vp_setup || return 2
+  _vp_edit_summary 's|^<!-- slide: closing -->$|<!-- slide: numbers -->\
+## Em números\
+@metric Specs \| specs\
+\
+<!-- slide: closing -->|'
+  _vp_expect_fail_summary "versao resumida com 5 slides (maximo 4)" || return 1
+}
+
+scenario_resumo_tipo_spec_proibido() {
+  _vp_setup || return 2
+  _vp_edit_summary 's|^<!-- slide: highlights -->$|<!-- slide: spec key=checkout-flow -->|'
+  _vp_expect_fail_summary "tipo spec nao permitido na versao resumida" || return 1
+}
+
+scenario_resumo_sources_proibido() {
+  _vp_setup || return 2
+  _vp_edit_summary 's|^<!-- slide: highlights -->$|<!-- slide: sources -->\
+## Fontes\
+@sources\
+\
+<!-- slide: highlights -->|'
+  _vp_expect_fail_summary "tipo sources nao permitido na versao resumida" || return 1
+  assert_stderr_contains "@sources nao permitido na versao resumida" || return 1
+}
+
+scenario_resumo_closing_deve_ser_ultimo() {
+  _vp_setup || return 2
+  _vp_edit_summary 's|^<!-- slide: closing -->$|<!-- slide: manifesto -->|'
+  _vp_edit_summary 's|^<!-- slide: briefing -->$|<!-- slide: closing -->|'
+  _vp_expect_fail_summary "closing deve ser o ultimo slide na versao resumida" || return 1
+}
+
+scenario_highlights_sem_source() {
+  _vp_setup || return 2
+  _vp_edit_summary '/^@source docs\/specs\//d'
+  _vp_expect_fail_summary "slide highlights sem @source" || return 1
+}
+
+scenario_highlights_com_quatro_cartoes() {
+  _vp_setup || return 2
+  _vp_edit_summary 's|^### Pagar em uma tela$|### Valor extra\
+Mais um.\
+### Outro valor\
+Mais outro.\
+### Pagar em uma tela|'
+  _vp_expect_fail_summary "highlights: esperado 1 a 3 secoes ###, obtido 4" || return 1
+}
+
+scenario_resumo_mantem_veracidade() {
+  _vp_setup || return 2
+  _vp_edit_summary 's/^@metric Entregas | specs$/@metric Receita | receita-anual/'
+  _vp_expect_fail_summary "@metric chave invalida: receita-anual" || return 1
+}
+
 scenario_glossario_inexistente_exit2() {
   _vp_setup || return 2
   capture sh -c 'cd "$1" && exec sh "$2" --story story.md --inventory inventory.tsv --jargon nada.txt' _ "$TMPDIR_TEST" "$SCRIPT"

@@ -5,3 +5,4 @@
 {"query":"preciso de um relatorio humanizado do projeto, algo que eu possa mostrar pro cliente contando como cada feature foi pensada e implementada","expect":"presentation","tier":"gen"}
 {"query":"make a presentation of this project from its SDD docs for stakeholders","expect":"presentation","tier":"gen"}
 {"query":"so re-renderiza o html da apresentacao, eu editei o story.md na mao","expect":"presentation","tier":"hard"}
+{"query":"gera tambem uma versao resumida da apresentacao do projeto, so a essencia para o C-Level","expect":"presentation","tier":"gen"}
