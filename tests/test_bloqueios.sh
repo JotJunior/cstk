@@ -333,6 +333,53 @@ scenario_backcompat_migrate_entao_register_respond() {
   assert_stdout_contains "Sim" || return 1
 }
 
+# ==== issue #241: respond recusa resposta vazia sem opt-in + list --json ====
+
+scenario_respond_vazio_recusado_sem_allow_empty() {
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  _register_block_default "$_sd"
+  for _r in "" "   " "$(printf ' \t ')"; do
+    capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "$_r"
+    [ "$_CAPTURED_EXIT" = 2 ] || { _fail "resposta vazia '$_r'" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+    assert_stderr_contains "--allow-empty" || return 1
+  done
+  # Estado intacto: bloqueio segue aguardando, execucao segue pausada.
+  capture "$RW" get --state-dir "$_sd" --field '.human_blocks[0].status'
+  assert_stdout_contains "aguardando" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "aguardando_humano" || return 1
+}
+
+scenario_respond_vazio_aceito_com_allow_empty() {
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  _register_block_default "$_sd"
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "" --allow-empty
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "allow-empty" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.human_blocks[0].status'
+  assert_stdout_contains "respondido" || return 1
+}
+
+scenario_list_json_mesmos_campos_do_tsv() {
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" list --state-dir "$_sd" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list --json vazio" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "[]" ] || { _fail "list --json sem bloqueios" "esperado [], obtido '$_CAPTURED_STDOUT'"; return 1; }
+  _register_block_default "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd" --json
+  _out=$_CAPTURED_STDOUT
+  capture jq -e 'length == 1 and (.[0] | keys == ["decision_id","id","question","status","triggered_at"])
+    and .[0].id == "block-001" and .[0].decision_id == "dec-001" and .[0].status == "aguardando"
+    and (.[0].question | startswith("Qual stack"))' <<EOF
+$_out
+EOF
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list --json campos" "$_out"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --json --status respondido
+  [ "$_CAPTURED_STDOUT" = "[]" ] || { _fail "list --json filtrado" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
 # ==== Backend SQLite (feature state-db-foundation, FASE 3 task 3.5) ====
 #
 # Ref: docs/specs/state-db-foundation/tasks.md FASE 3, task 3.5
@@ -644,6 +691,35 @@ scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
     *aguardando*) : ;;
     *) _fail "c2: state.json coexistente foi modificado" "obtido: $(cat "$_sd/state.json")"; return 1 ;;
   esac
+}
+
+scenario_sqlite_respond_vazio_recusado_sem_allow_empty() {
+  _sd="$TMPDIR_TEST/sqlite-respond-vazio"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "  "
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "sqlite resposta vazia" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  _st=$(sqlite3 "$_sd/state.db" "SELECT status FROM human_block WHERE id='block-001';")
+  [ "$_st" = "aguardando" ] || { _fail "sqlite estado alterado" "status=$_st"; return 1; }
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "" --allow-empty
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite allow-empty" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_sqlite_list_json_paridade_com_json() {
+  _sd="$TMPDIR_TEST/sqlite-list-json"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" list --state-dir "$_sd" --json
+  [ "$_CAPTURED_STDOUT" = "[]" ] || { _fail "sqlite list --json vazio" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd" --json
+  _out=$_CAPTURED_STDOUT
+  capture jq -e 'length == 1 and (.[0] | keys == ["decision_id","id","question","status","triggered_at"])
+    and .[0].id == "block-001" and .[0].decision_id == "dec-001" and .[0].status == "aguardando"' <<EOF
+$_out
+EOF
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite list --json campos" "$_out"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --json --status respondido
+  [ "$_CAPTURED_STDOUT" = "[]" ] || { _fail "sqlite list --json filtrado" "obtido '$_CAPTURED_STDOUT'"; return 1; }
 }
 
 fi # sqlite3 disponivel
