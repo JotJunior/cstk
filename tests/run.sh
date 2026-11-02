@@ -343,6 +343,14 @@ _is_internal_test() {
       # orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/agents/feature-00c-clarify-answerer.md" ] && return 0
       return 1 ;;
+    test_command-gate-verify.sh)
+      # Smoke textual (issue #242): gate-verify.sh run ANTES do
+      # reconcile-wave nos 4 commands pai, opt-in set-command nos 2
+      # commands de inicio e instrucao do gate nos 2 orquestradores.
+      # Assert no .md, nao em um unico script — existence-guarded ao
+      # command portador. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
+      return 1 ;;
     test_command-wave-summary.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (integracao do
       # resumo deterministico de fechamento de onda, FASE 6 de

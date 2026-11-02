@@ -1220,6 +1220,85 @@ scenario_reconcile_wave_next_instruction_coerente() {
 # write atomico do fechamento — elimina a classe do meio-avanco (fase
 # avancada + next_instruction stale, invisivel ao reconcile-wave).
 
+# ==== issue #242: gate de testes no end --advance (execute-task/converge) ====
+
+GATE="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/gate-verify.sh"
+
+# _gate_fixture NAME STAGE -> state JSON com projeto-alvo real, current_stage
+# STAGE e onda aberta. Define _sd.
+_gate_fixture() {
+  _gp="$TMPDIR_TEST/$1-proj"
+  _sd="$TMPDIR_TEST/$1-state"
+  mkdir -p "$_gp"
+  _init_state "$_sd" "$_gp"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value "\"$2\""
+  capture "$SCRIPT" start --state-dir "$_sd"
+}
+
+scenario_end_advance_gate_declarado_sem_run_recusa_sem_write() {
+  _gate_fixture gate-missing execute-task
+  capture "$GATE" set-command --state-dir "$_sd" --command 'true'
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "deveria recusar (exit 3)" "exit=$_CAPTURED_EXIT $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "gate de testes" || return 1
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "execute-task" || return 1
+}
+
+scenario_end_advance_gate_vermelho_recusa() {
+  _gate_fixture gate-red converge
+  capture "$GATE" set-command --state-dir "$_sd" --command 'echo "12 failed"; exit 1'
+  capture "$GATE" run --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "gate vermelho deveria recusar" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "12 failed" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "converge" || return 1
+  # Caminho de correcao documentado: fechar SEM --advance mantem a fase.
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino threshold_proxy_atingido \
+    --next-instruction "Corrigir gate vermelho: 12 failed"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fechar sem --advance" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "converge" || return 1
+}
+
+scenario_end_advance_gate_verde_avanca() {
+  _gate_fixture gate-green execute-task
+  capture "$GATE" set-command --state-dir "$_sd" --command 'true'
+  capture "$GATE" run --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gate verde deveria avancar" "exit=$_CAPTURED_EXIT $_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "converge" || return 1
+}
+
+scenario_end_advance_gate_nao_declarado_avanca_com_aviso() {
+  _gate_fixture gate-nd execute-task
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "nao-declarado deveria avancar" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "gate=nao-declarado" || return 1
+}
+
+scenario_end_advance_fase_fora_do_gate_ignora_gate() {
+  # specify nao e gateada: comando declarado sem run nao impede o avanco.
+  _gate_fixture gate-specify specify
+  capture "$GATE" set-command --state-dir "$_sd" --command 'true'
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "specify nao deveria passar pelo gate" "exit=$_CAPTURED_EXIT $_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_reconcile_wave_respeita_gate() {
+  _gate_fixture gate-rcw execute-task
+  capture "$GATE" set-command --state-dir "$_sd" --command 'exit 1'
+  capture "$GATE" run --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --terminal-phase review-task
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "reconcile-wave deveria propagar recusa do gate" "exit=$_CAPTURED_EXIT $_CAPTURED_STDOUT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+}
+
 scenario_end_advance_avanca_ponteiro_no_mesmo_write() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
@@ -2148,6 +2227,25 @@ scenario_sqlite_end_advance_avanca_ponteiro_na_mesma_transacao() {
   assert_stdout_contains "Iniciar etapa converge" || return 1
   capture "$SCRIPT" wave-status --state-dir "$_sd"
   assert_stdout_contains "closed" || return 1
+}
+
+scenario_sqlite_end_advance_gate_vermelho_recusa_e_verde_avanca() {
+  _gp="$TMPDIR_TEST/sqlite-gate-proj"; mkdir -p "$_gp"
+  _sd="$TMPDIR_TEST/sqlite-gate"
+  _seed_sqlite_backend "$_sd" "$_gp" || return 1   # current_stage=execute-task
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$GATE" set-command --state-dir "$_sd" --command 'exit 1'
+  capture "$GATE" run --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "sqlite gate vermelho" "exit=$_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+  capture "$GATE" set-command --state-dir "$_sd" --command 'true'
+  capture "$GATE" run --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite gate verde" "exit=$_CAPTURED_EXIT $_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "converge" || return 1
 }
 
 scenario_sqlite_end_advance_fase_terminal_falha_sem_write() {

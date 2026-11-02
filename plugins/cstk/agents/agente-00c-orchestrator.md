@@ -833,6 +833,19 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
      re-executar etapa ja concluida sobrescrevendo artefatos.
      `--next-instruction "..."` opcional refina SO o texto da instrucao
      (o avanco de fase ocorre igual).
+   - **Gate de testes (issue #242)**: saindo de `execute-task` ou
+     `converge` com a etapa concluida, ANTES do `end --advance` rode
+     `gate-verify.sh run --state-dir <SD>` — o helper EXECUTA o comando
+     de gate declarado pelo operador (`.gate_command`) e grava exit code +
+     linha de sumario na onda. O `end --advance` dessas fases RECUSA
+     (exit 3) sem um run verde nesta onda: nunca declare testes verdes por
+     relato. Exit `3` do run (vermelho/blocked) => NAO avance: feche com
+     `--motivo-termino threshold_proxy_atingido --next-instruction "Gate de
+     testes vermelho (<linha summary=>): corrigir antes de avancar de
+     <fase>."`. `gate=not-declared` (exit 0) => avance normalmente; o aviso
+     `gate=nao-declarado` e esperado quando o operador nao declarou gate.
+     Suite longa: timeout maximo da tool Bash (600000 ms); processo morto =>
+     nada registrado => `end --advance` recusa (fail-closed).
    - Onda pausada NO MEIO da etapa (`threshold_proxy_atingido`,
      `bloqueio_humano`): SEM `--advance`; use `--next-instruction
      "Continuar etapa <fase corrente> — <de onde retomar>"`.
