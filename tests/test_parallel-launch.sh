@@ -805,4 +805,135 @@ scenario_emit_aviso_de_telemetria_uma_vez_por_invocacao() {
   [ "$_n" = 1 ] || { _fail "aviso deveria sair uma unica vez" "n=$_n"; return 1; }
 }
 
+# ==== issue #238: --tmux-target + resolve-tmux-pane ====
+#
+# Stub de `tmux` PREPENDIDO ao PATH: sombrear funciona em qualquer SO (ao
+# contrario de esconder um binario de /usr/bin). `list-panes` imprime
+# $STUB_TMUX_PANES ("<pane_pid> <pane_id>" por linha).
+
+_pl_stub_tmux_dir() {
+  _st="$TMPDIR_TEST/stub-tmux"
+  mkdir -p "$_st"
+  cat > "$_st/tmux" <<'STUB'
+#!/bin/sh
+case "$1" in
+  list-panes) printf '%s\n' "${STUB_TMUX_PANES:-}" ;;
+esac
+exit 0
+STUB
+  chmod +x "$_st/tmux"
+  printf '%s' "$_st"
+}
+
+# _pl_run_resolve PANES TMUX_PANE_VALUE -> capture do resolve-tmux-pane com
+# stub e TMUX_PANE controlados; restaura ambiente.
+_pl_run_resolve() {
+  _st=$(_pl_stub_tmux_dir)
+  _old_path=$PATH
+  _old_tp_set=${TMUX_PANE+x}; _old_tp=${TMUX_PANE:-}
+  STUB_TMUX_PANES=$1; export STUB_TMUX_PANES
+  if [ -n "$2" ]; then TMUX_PANE=$2; export TMUX_PANE; else unset TMUX_PANE; fi
+  PATH="$_st:$PATH"
+  capture "$SCRIPT" resolve-tmux-pane
+  PATH=$_old_path
+  unset STUB_TMUX_PANES
+  if [ -n "$_old_tp_set" ]; then TMUX_PANE=$_old_tp; export TMUX_PANE; else unset TMUX_PANE; fi
+}
+
+scenario_resolve_tmux_pane_via_env() {
+  _pl_run_resolve "999998 %7" "%7"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "%7" ] || { _fail "pane via TMUX_PANE" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_resolve_tmux_pane_via_ancestral_com_env_vazio() {
+  # TMUX_PANE vazio (caso real da issue): o shell do teste ($$) e ancestral
+  # do processo do SUT, entao o pane cujo pane_pid=$$ deve ser o escolhido.
+  _pl_run_resolve "999998 %3
+$$ %42" ""
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "%42" ] || { _fail "pane via ancestral" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_resolve_tmux_pane_env_stale_cai_no_ancestral() {
+  # TMUX_PANE aponta para pane inexistente (fechado) => ignora e usa ancestral.
+  _pl_run_resolve "$$ %42" "%999"
+  [ "$_CAPTURED_STDOUT" = "%42" ] || { _fail "env stale deveria cair no ancestral" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_resolve_tmux_pane_env_malformado_ignorado() {
+  _pl_run_resolve "$$ %42" "%7;rm -rf /"
+  [ "$_CAPTURED_STDOUT" = "%42" ] || { _fail "env mal-formado deveria ser ignorado" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_resolve_tmux_pane_nao_resolvido_exit4() {
+  _pl_run_resolve "999998 %5" ""
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit esperado 4" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "nao deve chutar pane" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  assert_stderr_contains "nao resolvido" || return 1
+}
+
+scenario_resolve_tmux_pane_tmux_ausente_exit3() {
+  _fake=$(_pl_path_without_tmux)
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" resolve-tmux-pane
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit esperado 3 (tmux ausente)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_emit_tmux_target_compoe_split_com_t() {
+  _st=$(_pl_stub_tmux_dir)
+  _repo="$TMPDIR_TEST/repo-target"
+  mkdir -p "$_repo"
+  _old_path=$PATH
+  PATH="$_st:$PATH"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --tmux-target %70 \
+    --coordinator-name cstk-coord/repo-target
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "tmux split-window -t %70 -c \"$_repo-auth-basica\" -P -F '#{pane_id}'" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"sem --tmux-target"*) _fail "nao deveria avisar com --tmux-target" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_emit_sem_tmux_target_avisa_janela_ativa() {
+  _st=$(_pl_stub_tmux_dir)
+  _repo="$TMPDIR_TEST/repo-notarget"
+  mkdir -p "$_repo"
+  _old_path=$PATH
+  PATH="$_st:$PATH"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  # Comportamento antigo preservado (sem -t) + aviso.
+  assert_stdout_contains "tmux split-window -c \"$_repo-auth-basica\"" || return 1
+  assert_stderr_contains "sem --tmux-target" || return 1
+  assert_stderr_contains "resolve-tmux-pane" || return 1
+}
+
+scenario_emit_tmux_target_invalido_exit2() {
+  _repo="$TMPDIR_TEST/repo-badtarget"
+  mkdir -p "$_repo"
+  for _t in '%7;rm' '7' '%' '%7 ' '$(id)' '-t'; do
+    capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --tmux-target "$_t"
+    [ "$_CAPTURED_EXIT" = 2 ] || { _fail "--tmux-target '$_t' deveria ser exit 2" "obtido $_CAPTURED_EXIT"; return 1; }
+    [ -z "$_CAPTURED_STDOUT" ] || { _fail "nada deve ser composto com target invalido" "$_CAPTURED_STDOUT"; return 1; }
+  done
+}
+
+scenario_emit_tmux_target_sem_tmux_usa_degradada() {
+  _fake=$(_pl_path_without_tmux)
+  _repo="$TMPDIR_TEST/repo-target-notmux"
+  mkdir -p "$_repo"
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --tmux-target %70
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "cd \"$_repo-auth-basica\" && " || return 1
+  assert_stdout_not_contains "split-window" || return 1
+}
+
 run_all_scenarios

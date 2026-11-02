@@ -13,7 +13,9 @@
 #   parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
 #                            [--feature SHORT [--description TEXT] ...]
 #                            [--roadmap PATH] [--coordinator-name NAME]
+#                            [--tmux-target PANE_ID]
 #   parallel-launch.sh check-tmux
+#   parallel-launch.sh resolve-tmux-pane
 #   parallel-launch.sh resolve-offer --source <operator|absent>
 #                                    [--confirm RAW] [--max RAW]
 #   parallel-launch.sh -h | --help
@@ -39,7 +41,15 @@
 # Kill switch: CSTK_TELEMETRY_AUTO=0. Detalhe em _pl_otel_prefix.
 #
 # Wrapper tmux: SEMPRE `split-window` (pane irmao no window da
-# coordenadora), nunca `new-window`. O prompt da filha e sempre
+# coordenadora), nunca `new-window`. Issue #238: `split-window` SEM `-t`
+# usa o pane/janela ativo do CLIENTE tmux, nao o da sessao que executa o
+# comando — as filhas chegaram a abrir na janela de outro projeto. Por isso
+# `--tmux-target PANE_ID` (validado contra ^%[0-9]+$) compoe
+# `split-window -t PANE_ID`; sem ele o comportamento antigo e mantido, com
+# aviso em stderr. `resolve-tmux-pane` descobre o pane da coordenadora:
+# $TMUX_PANE quando presente e vivo; senao, o pane cujo #{pane_pid} e
+# ancestral deste processo (TMUX_PANE ja chegou VAZIO na tool Bash do
+# Claude Code). O prompt da filha e sempre
 # `/feature-00c "<DESCRICAO>" <SHORT>` — formato REAL do command
 # (feature-00c.md:113-115), com o short-name POSICIONAL pinando a feature.
 # INALTERADO por este script: cli/lib/session.sh.
@@ -68,7 +78,8 @@
 #   2  uso incorreto (subcomando desconhecido, flag sem valor, --repo
 #      ausente, nenhum --feature, --feature ou --coordinator-name
 #      mal-formado; resolve-offer: --source ausente ou fora do enum)
-#   3  check-tmux: tmux ausente
+#   3  check-tmux / resolve-tmux-pane: tmux ausente
+#   4  resolve-tmux-pane: nenhum pane da coordenadora resolvido
 
 set -eu
 
@@ -80,13 +91,16 @@ _PL_TAB=$(printf '\t')
 _PL_SHORT_RE='^[a-z][a-z0-9-]*$'
 _PL_CHILD_RE='^cstk-feature/[a-z][a-z0-9-]*$'
 _PL_COORD_RE='^cstk-coord/[A-Za-z0-9._-]{1,64}$'
+_PL_PANE_RE='^%[0-9]+$'
 
 print_usage() {
   cat <<'EOF'
 Uso: parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
                               [--feature SHORT [--description TEXT] ...]
                               [--roadmap PATH] [--coordinator-name NAME]
+                              [--tmux-target PANE_ID]
      parallel-launch.sh check-tmux
+     parallel-launch.sh resolve-tmux-pane
      parallel-launch.sh resolve-offer --source <operator|absent>
                                       [--confirm RAW] [--max RAW]
      parallel-launch.sh -h | --help
@@ -124,6 +138,13 @@ Opcoes de `emit`:
                            informado (exit 2 se mal-formado). Propagado a
                            filha como CSTK_COORDINATOR_NAME no prefixo env
                            (destino da notificacao de conclusao).
+  --tmux-target PANE_ID   Pane da coordenadora (ex.: %70), validado contra
+                           ^%[0-9]+$ (exit 2 se mal-formado). Compoe
+                           `tmux split-window -t PANE_ID ...`, ancorando as
+                           filhas na janela da coordenadora (issue #238).
+                           Sem ele, o split cai na janela ATIVA do cliente
+                           tmux (aviso em stderr). Obtenha com
+                           `resolve-tmux-pane`.
 
 Guarda anti-duplicidade (FR-011): `emit` recomputa `git -C PATH worktree
 list --porcelain` sobre --repo IMEDIATAMENTE antes de compor (janela
@@ -135,6 +156,13 @@ operador. Ausencia de git ou repo sem worktrees => nenhuma exclusao.
 
 `check-tmux`: exit 0 se `tmux` esta disponivel no PATH; exit 3 se ausente.
 Nunca aguarda, nunca falha em silencio.
+
+`resolve-tmux-pane`: imprime (stdout) o pane_id da sessao coordenadora,
+para passar em `emit --tmux-target`. Ordem: (1) $TMUX_PANE, se casa
+^%[0-9]+$ e existe em `tmux list-panes -a`; (2) o pane cujo #{pane_pid} e
+ancestral deste processo (sobe a cadeia via `ps -o ppid=`). Exit 3 se tmux
+ausente; exit 4 se nada resolveu — NUNCA chuta um pane (o chamador cai na
+forma degradada ou pergunta ao operador).
 
 Cada lancamento (ou recusa por --feature invalido) e registrado em
 <PATH>/.claude/enforcement-log.jsonl (source: "parallel-launch"), com o
@@ -173,7 +201,8 @@ Saida (stdout, chave=valor, sem jq):
   max=<inteiro>
 Diagnosticos em stderr.
 
-Exit codes: 0 sucesso; 2 uso incorreto; 3 (check-tmux) tmux ausente.
+Exit codes: 0 sucesso; 2 uso incorreto; 3 (check-tmux/resolve-tmux-pane)
+tmux ausente; 4 (resolve-tmux-pane) pane nao resolvido.
 EOF
 }
 
@@ -204,6 +233,52 @@ _pl_len() {
 _pl_valid_short() {
   [ "$(_pl_len "$1")" -le 64 ] || return 1
   printf '%s' "$1" | grep -Eq "$_PL_SHORT_RE"
+}
+
+# _pl_valid_pane PANE_ID -> exit 0 se casa ^%[0-9]+$ (issue #238).
+_pl_valid_pane() {
+  printf '%s' "$1" | grep -Eq "$_PL_PANE_RE"
+}
+
+# ==== resolve-tmux-pane (issue #238) ====
+#
+# Descobre o pane da sessao coordenadora SEM depender da janela ativa do
+# cliente tmux. So imprime um pane que EXISTE em `tmux list-panes -a`;
+# nada resolvido => exit 4 (nunca chuta).
+_pl_cmd_resolve_tmux_pane() {
+  command -v tmux >/dev/null 2>&1 || {
+    printf '%s: resolve-tmux-pane: tmux ausente\n' "$_PL_NAME" >&2
+    exit 3
+  }
+  _pl_rp_list=$(tmux list-panes -a -F '#{pane_pid} #{pane_id}' 2>/dev/null) || _pl_rp_list=""
+
+  # (1) $TMUX_PANE, se bem-formado E vivo (pane fechado deixa a variavel
+  # stale num processo filho).
+  _pl_rp_env=${TMUX_PANE:-}
+  if [ -n "$_pl_rp_env" ] && _pl_valid_pane "$_pl_rp_env"; then
+    if printf '%s\n' "$_pl_rp_list" | awk -v p="$_pl_rp_env" '$2 == p { f = 1 } END { exit !f }'; then
+      printf '%s\n' "$_pl_rp_env"
+      return 0
+    fi
+  fi
+
+  # (2) ancestral: sobe a cadeia de processos a partir deste e casa contra
+  # #{pane_pid}. Teto de 64 saltos contra ciclo/ps anomalo.
+  _pl_rp_pid=$$
+  _pl_rp_hops=0
+  while [ -n "$_pl_rp_pid" ] && [ "$_pl_rp_pid" -gt 1 ] 2>/dev/null && [ "$_pl_rp_hops" -lt 64 ]; do
+    _pl_rp_hit=$(printf '%s\n' "$_pl_rp_list" | awk -v p="$_pl_rp_pid" '$1 == p { print $2; exit }')
+    if [ -n "$_pl_rp_hit" ] && _pl_valid_pane "$_pl_rp_hit"; then
+      printf '%s\n' "$_pl_rp_hit"
+      return 0
+    fi
+    _pl_rp_pid=$(ps -o ppid= -p "$_pl_rp_pid" 2>/dev/null | tr -d ' ') || _pl_rp_pid=""
+    _pl_rp_hops=$((_pl_rp_hops + 1))
+  done
+
+  printf '%s: resolve-tmux-pane: pane da coordenadora nao resolvido (TMUX_PANE vazio/stale e nenhum ancestral e pane tmux) — use a forma degradada ou peca o pane ao operador\n' \
+    "$_PL_NAME" >&2
+  exit 4
 }
 
 # _pl_valid_coordinator NAME -> exit 0 se casa ^cstk-coord/[A-Za-z0-9._-]{1,64}$.
@@ -538,6 +613,7 @@ _pl_env_prefix() {
 _pl_cmd_emit() {
   _pl_repo=""
   _pl_coordinator=""
+  _pl_tmux_target=""
   _pl_roadmap=""
   _pl_saw_roadmap=0
   _pl_features=""
@@ -571,6 +647,9 @@ _pl_cmd_emit() {
       --coordinator-name)
         [ $# -ge 2 ] || { printf '%s: --coordinator-name exige valor\n' "$_PL_NAME" >&2; exit 2; }
         _pl_coordinator=$2; shift 2 ;;
+      --tmux-target)
+        [ $# -ge 2 ] || { printf '%s: --tmux-target exige valor\n' "$_PL_NAME" >&2; exit 2; }
+        _pl_tmux_target=$2; shift 2 ;;
       *)
         printf '%s: flag desconhecida: %s\n' "$_PL_NAME" "$1" >&2
         exit 2 ;;
@@ -602,6 +681,12 @@ _pl_cmd_emit() {
     exit 2
   fi
 
+  if [ -n "$_pl_tmux_target" ] && ! _pl_valid_pane "$_pl_tmux_target"; then
+    printf '%s: --tmux-target invalido (esperado ^%%[0-9]+$): %s\n' \
+      "$_PL_NAME" "$_pl_tmux_target" >&2
+    exit 2
+  fi
+
   # Derivacao de <WORKTREE> = <pai-do-repo>/<nome-do-repo>-<SHORT>, mesma
   # derivacao literal de cli/lib/session.sh:243. dirname/basename sao
   # puramente sintaticos — nao exige que --repo exista no disco.
@@ -619,6 +704,15 @@ _pl_cmd_emit() {
   _pl_have_tmux=false
   if command -v tmux >/dev/null 2>&1; then
     _pl_have_tmux=true
+  fi
+
+  # issue #238: sem -t o split cai na janela ATIVA do cliente tmux.
+  _pl_split_target=""
+  if [ -n "$_pl_tmux_target" ]; then
+    _pl_split_target="-t $_pl_tmux_target "
+  elif $_pl_have_tmux; then
+    printf '%s: sem --tmux-target — tmux split-window abrira as filhas na janela ATIVA do cliente tmux, que pode nao ser a da coordenadora; resolva o pane com `parallel-launch.sh resolve-tmux-pane` e relance com --tmux-target\n' \
+      "$_PL_NAME" >&2
   fi
 
   # TOCTOU-recompute (contract §4.2/2.6.4) — segunda camada da guarda
@@ -692,8 +786,10 @@ _pl_cmd_emit() {
       # tem `-n` (nao nomeia window) — a identificacao da filha continua
       # sendo `claude --name "<CHILD_NAME>"` + o pane_id devolvido por
       # `-P -F '#{pane_id}'`.
-      _pl_line2=$(printf 'tmux split-window -c "%s" -P -F '"'"'#{pane_id}'"'"' \\\n  %s' \
-        "$_pl_worktree" "$_pl_claude_argv")
+      # `-t PANE` (issue #238): ancora no window da coordenadora. O valor
+      # ja casou ^%[0-9]+$ — seguro sem aspas.
+      _pl_line2=$(printf 'tmux split-window %s-c "%s" -P -F '"'"'#{pane_id}'"'"' \\\n  %s' \
+        "$_pl_split_target" "$_pl_worktree" "$_pl_claude_argv")
     else
       _pl_line2=$(printf 'cd "%s" && %s' "$_pl_worktree" "$_pl_claude_argv")
     fi
@@ -803,6 +899,8 @@ case "$_PL_SUBCOMMAND" in
     _pl_cmd_emit "$@" ;;
   check-tmux)
     _pl_cmd_check_tmux ;;
+  resolve-tmux-pane)
+    _pl_cmd_resolve_tmux_pane ;;
   resolve-offer)
     _pl_cmd_resolve_offer "$@" ;;
   -h|--help)
