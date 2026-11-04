@@ -874,6 +874,124 @@ scenario_end_discard_state_skips_preservation() {
   assert_stderr_contains "DESCARTADOS" || return 1
 }
 
+# ==== Restauracao de state 00c no `start` (issue #244) ====
+
+# Fixture: checkout principal com state preservado da feature `reo` (como
+# um `session end` anterior deixaria) + state de OUTRA feature.
+_make_repo_with_preserved_state() {
+  _mrps_dir=$1
+  _make_repo_ignoring_claude "$_mrps_dir"
+  mkdir -p "$_mrps_dir/.claude/feature-00c-state/reo/rounds/r01" \
+           "$_mrps_dir/.claude/feature-00c-state/other"
+  echo "db-r01" > "$_mrps_dir/.claude/feature-00c-state/reo/state.db"
+  echo "old" > "$_mrps_dir/.claude/feature-00c-state/reo/rounds/r01/x"
+  echo "other" > "$_mrps_dir/.claude/feature-00c-state/other/state.db"
+}
+
+scenario_start_restores_preserved_feature_state() {
+  _src="$TMPDIR_TEST/repo-rest"
+  _make_repo_with_preserved_state "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start reo"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  _wt="$_phys/repo-rest-reo"
+  [ -f "$_wt/.claude/feature-00c-state/reo/state.db" ] \
+    || { _fail "restore" "state.db nao restaurado na worktree"; return 1; }
+  [ -f "$_wt/.claude/feature-00c-state/reo/rounds/r01/x" ] \
+    || { _fail "restore" "rounds/ nao restaurado"; return 1; }
+  [ ! -e "$_wt/.claude/feature-00c-state/other" ] \
+    || { _fail "restore" "state de OUTRA feature nao deveria ser restaurado"; return 1; }
+  [ -f "$_src/.claude/feature-00c-state/reo/state.db" ] \
+    || { _fail "restore" "original do checkout principal deveria permanecer (copia, nao move)"; return 1; }
+  assert_stdout_contains "state:  restaurado de" || return 1
+}
+
+# Condicao de 6.a de /feature-00c --reopen (feature-00c.md §2.bis): o
+# state-dir da worktree precisa ter state.json ou state.db — e o que
+# recusava com exit 4 antes do fix.
+scenario_start_restore_satisfies_reopen_precondition() {
+  _src="$TMPDIR_TEST/repo-rest6a"
+  _make_repo_with_preserved_state "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start reo >/dev/null 2>&1 )
+  _sd="$_phys/repo-rest6a-reo/.claude/feature-00c-state/reo"
+  if [ ! -d "$_sd" ] || { [ ! -f "$_sd/state.json" ] && [ ! -f "$_sd/state.db" ]; }; then
+    _fail "6.a" "state-dir da worktree sem state transacional: reopen recusaria"
+    return 1
+  fi
+}
+
+scenario_start_no_restore_state_flag_skips() {
+  _src="$TMPDIR_TEST/repo-norest"
+  _make_repo_with_preserved_state "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start reo --no-restore-state"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ ! -e "$_phys/repo-norest-reo/.claude/feature-00c-state/reo" ] \
+    || { _fail "no-restore" "state restaurado apesar de --no-restore-state"; return 1; }
+  assert_stderr_contains "--no-restore-state" || return 1
+}
+
+scenario_start_without_preserved_state_no_restore_line() {
+  _src="$TMPDIR_TEST/repo-nostate"
+  _make_repo_ignoring_claude "$_src"
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start fresh"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *restaurado*) _fail "restore" "linha de restauracao sem state preservado"; return 1 ;;
+  esac
+}
+
+# Ciclo completo end -> start (restaura) -> execucao muda o state -> end:
+# o novo state SUBSTITUI o canonico (nao vai para o backup), senao o
+# proximo start restauraria o state antigo.
+scenario_end_after_restore_replaces_canonical_state() {
+  _src="$TMPDIR_TEST/repo-cycle"
+  _make_repo_with_preserved_state "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start reo >/dev/null 2>&1 )
+  _wt="$_phys/repo-cycle-reo"
+  # Simula a reabertura: r01 rotacionado, state novo na raiz.
+  mkdir -p "$_wt/.claude/feature-00c-state/reo/rounds/r02"
+  echo "db-r02" > "$_wt/.claude/feature-00c-state/reo/state.db"
+  echo "new" > "$_wt/.claude/feature-00c-state/reo/rounds/r02/y"
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session end reo --force"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  _db=$(cat "$_src/.claude/feature-00c-state/reo/state.db")
+  [ "$_db" = "db-r02" ] || { _fail "replace" "canonico nao atualizado: $_db"; return 1; }
+  [ -f "$_src/.claude/feature-00c-state/reo/rounds/r02/y" ] \
+    || { _fail "replace" "rounds/r02 ausente no canonico"; return 1; }
+  [ ! -e "$_src/.claude/session-state-backup/reo" ] \
+    || { _fail "replace" "nao deveria ter ido para o backup"; return 1; }
+  for _left in "$_src"/.claude/feature-00c-state/reo.cstk-*; do
+    [ -e "$_left" ] && { _fail "replace" "residuo da troca: $_left"; return 1; }
+  done
+  # Proximo start restaura o state NOVO.
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start reo >/dev/null 2>&1 )
+  _db2=$(cat "$_wt/.claude/feature-00c-state/reo/state.db")
+  [ "$_db2" = "db-r02" ] || { _fail "cycle" "2o start restaurou state antigo: $_db2"; return 1; }
+}
+
+# Se o canonico mudou no checkout principal depois da restauracao, a
+# substituicao NAO acontece: cai na regra antiga (backup por sessao).
+scenario_end_after_restore_canonical_changed_goes_to_backup() {
+  _src="$TMPDIR_TEST/repo-diverge"
+  _make_repo_with_preserved_state "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start reo >/dev/null 2>&1 )
+  _wt="$_phys/repo-diverge-reo"
+  echo "db-wt" > "$_wt/.claude/feature-00c-state/reo/state.db"
+  echo "db-root-changed" > "$_src/.claude/feature-00c-state/reo/state.db"
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session end reo --force"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  _db=$(cat "$_src/.claude/feature-00c-state/reo/state.db")
+  [ "$_db" = "db-root-changed" ] || { _fail "diverge" "canonico alterado sobrescrito: $_db"; return 1; }
+  _bkp="$_src/.claude/session-state-backup/reo/feature-00c-state/reo/state.db"
+  [ -f "$_bkp" ] || { _fail "diverge" "backup nao criado"; return 1; }
+  _b=$(cat "$_bkp")
+  [ "$_b" = "db-wt" ] || { _fail "diverge" "conteudo do backup errado: $_b"; return 1; }
+}
+
 # ====================================================================
 # FASE 5 — Subcomando `pr` (6 cenarios; success/idempotent marcados manual)
 # ====================================================================

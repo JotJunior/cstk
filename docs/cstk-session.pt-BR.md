@@ -33,11 +33,19 @@ cstk session end iniciacao-membro --force
 - `start <name> [--reset|--reuse] [--force]` — cria worktree + branch + `.claude/`
   filtrado (exclui `agente-00c-state/`, `agente-00c-archive/`, `insights/`,
   `settings.local.json`, `agente-00c-whitelist`, `agente-00c-report.md`,
-  `agente-00c-suggestions.md`, `.agente-00c-state.lock`)
+  `agente-00c-suggestions.md`, `.agente-00c-state.lock`). Se o checkout
+  principal tem `.claude/feature-00c-state/<name>/` preservado por um `end`
+  anterior, restaura uma cópia na worktree (`state:  restaurado de ...`) para
+  o `/feature-00c --reopen <name>` achar a execução anterior; só a feature
+  homônima, nunca outras. `--no-restore-state` pula a restauração.
 - `list [--json]` — tabela com `NAME BRANCH IDLE STATUS PATH`; marcadores
   combináveis `CURRENT,*,STALE`
-- `end <name> [--force]` — remove worktree + branch local; prompt se há
-  mudanças não commitadas, commits não pushados ou PR aberto
+- `end <name> [--force] [--discard-state]` — remove worktree + branch local;
+  prompt se há mudanças não commitadas, commits não pushados ou PR aberto.
+  Antes, copia o state 00c da worktree para o checkout principal (colisão vai
+  para `.claude/session-state-backup/<name>/`, exceto o state restaurado pelo
+  `start` cujo original não mudou no checkout principal: esse é substituído,
+  para o próximo `start` restaurar o state mais novo)
 - `pr <name> [--draft] [--title T] [--body B] [--reviewer USER]` — push + abre
   PR via `gh pr create`; idempotente (retorna URL existente se PR já criado)
 
