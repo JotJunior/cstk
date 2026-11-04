@@ -319,7 +319,12 @@ checkout's `.claude/` BEFORE removing the worktree (collisions land in
 `.claude/session-state-backup/<short>/`, never overwritten; a copy failure
 blocks removal). Always close worktrees via `cstk session end`, never raw
 `git worktree remove`; deliberately discarding the state requires the
-explicit `--discard-state` flag.
+explicit `--discard-state` flag. The reverse path is automatic too:
+`cstk session start <short>` restores a copy of the preserved
+`.claude/feature-00c-state/<short>/` into the new worktree, which is what lets
+an increment run as `/feature-00c --reopen <short> "<increment>"`; to launch
+it in a parallel pane, use `parallel-launch.sh emit --reopen --feature <short>
+--description "<increment>"` (increment required, 1..500 characters).
 
 | Component | Location |
 |-----------|----------|

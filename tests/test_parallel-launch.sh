@@ -567,6 +567,122 @@ scenario_adversarial_short_name_malicioso_rejeitado() {
   done
 }
 
+# ==== emit --reopen (issue #245) ====
+
+# _pl_preserved_state REPO SHORT: simula o state deixado por `session end`.
+_pl_preserved_state() {
+  mkdir -p "$1/.claude/feature-00c-state/$2"
+  echo db > "$1/.claude/feature-00c-state/$2/state.db"
+}
+
+scenario_emit_reopen_compoe_prompt_de_reabertura() {
+  _repo="$TMPDIR_TEST/repo-reopen"
+  mkdir -p "$_repo"
+  _pl_preserved_state "$_repo" auth-basica
+  _pl_write_roadmap "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica \
+    --description "Adicionar login por OTP"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "cstk session start auth-basica" || return 1
+  assert_stdout_contains "claude --name \"cstk-feature/auth-basica\" '/feature-00c --reopen auth-basica \"Adicionar login por OTP\"'" || return 1
+  # nunca a abertura normal, nem a descricao do roadmap
+  assert_stdout_not_contains "/feature-00c \"" || return 1
+  assert_stdout_not_contains "Autenticacao por e-mail" || return 1
+  case "$_CAPTURED_STDERR" in *"sem state preservado"*) _fail "nao deveria avisar" "$_CAPTURED_STDERR"; return 1 ;; esac
+}
+
+scenario_emit_reopen_preserva_garantias_do_helper() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-reopen-garantias"
+  mkdir -p "$_repo"
+  _pl_preserved_state "$_repo" auth-basica
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "Incremento" \
+    --reopen --tmux-target %70 --coordinator-name cstk-coord/meu-repo
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "tmux split-window -t %70 -c" || return 1
+  assert_stdout_contains "CSTK_COORDINATOR_NAME=cstk-coord/meu-repo" || return 1
+  assert_stdout_contains "'/feature-00c --reopen auth-basica \"Incremento\"'" || return 1
+}
+
+scenario_emit_reopen_sem_description_exit2_sem_stdout() {
+  _repo="$TMPDIR_TEST/repo-reopen-sem-desc"
+  mkdir -p "$_repo"
+  _pl_write_roadmap "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --reopen \
+    --feature primeira --description "ok" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (--reopen sem incremento)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "--reopen exige --description" || return 1
+  # nada impresso: nem a feature valida anterior (lote meio impresso)
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout deveria ser vazio" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_emit_reopen_description_so_metacaractere_exit2() {
+  _repo="$TMPDIR_TEST/repo-reopen-meta"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica --description "\"\$;|"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (vazio apos sanitizar)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_emit_reopen_limite_500_caracteres() {
+  _repo="$TMPDIR_TEST/repo-reopen-500"
+  mkdir -p "$_repo"
+  _pl_preserved_state "$_repo" auth-basica
+  # 500 caracteres com acento (2 bytes cada): passa — o limite e em
+  # caracteres, nao em bytes.
+  _d500=$(printf 'á%.0s' $(seq 1 500))
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica --description "$_d500"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "500 chars deveria passar" "exit $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "$_d500\"'" || return 1
+  # 501: recusa, sem corte e sem stdout.
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica --description "${_d500}x"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "501 chars deveria recusar" "exit $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "501 caracteres" || return 1
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout deveria ser vazio" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_emit_reopen_injecao_no_incremento_sanitizada() {
+  _repo="$TMPDIR_TEST/repo-reopen-inj"
+  mkdir -p "$_repo"
+  _pl_preserved_state "$_repo" auth-basica
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica \
+    --description "fecha'; rm -rf / #\$(whoami) \`id\`"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_not_contains "\$(whoami)" || return 1
+  assert_stdout_not_contains '`id`' || return 1
+  assert_stdout_match "'/feature-00c --reopen auth-basica \"[^'\"]*\"'" || return 1
+}
+
+scenario_emit_reopen_sem_state_preservado_avisa() {
+  _repo="$TMPDIR_TEST/repo-reopen-nostate"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica --description "Incremento"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (aviso, nao erro)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "sem state preservado" || return 1
+}
+
+scenario_emit_reopen_state_so_em_rounds_nao_avisa() {
+  _repo="$TMPDIR_TEST/repo-reopen-rounds"
+  mkdir -p "$_repo/.claude/feature-00c-state/auth-basica/rounds/r01"
+  echo db > "$_repo/.claude/feature-00c-state/auth-basica/rounds/r01/state.db"
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica --description "Incremento"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDERR" in *"sem state preservado"*) _fail "nao deveria avisar" "$_CAPTURED_STDERR"; return 1 ;; esac
+}
+
+scenario_emit_reopen_guarda_duplicidade_continua_valendo() {
+  _repo="$TMPDIR_TEST/repo-reopen-dup"
+  _pl_git_repo "$_repo"
+  git -C "$_repo" worktree add -q -b auth-basica "$TMPDIR_TEST/repo-reopen-dup-auth-basica" 2>/dev/null \
+    || { _fail "setup" "git worktree add falhou"; return 1; }
+  capture "$SCRIPT" emit --repo "$_repo" --reopen --feature auth-basica --description "Incremento"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_not_contains "session start auth-basica" || return 1
+  assert_stderr_contains "guarda anti-duplicidade" || return 1
+}
+
 # ==== -h/--help ====
 
 scenario_help_exit0() {

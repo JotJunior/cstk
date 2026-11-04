@@ -278,6 +278,15 @@ scenario_dinamica_17_leitores_sqlite_sem_degradacao() {
 #     mesma guarda anti-drift que este bloco documenta). Continua coberto
 #     pelo escopo varrido — se um dia passar a acessar state.json/db
 #     diretamente, o scenario acima aponta a violacao.
+#
+# parallel-launch.sh:codigo-real (issue #245) — `_pl_has_preserved_state`
+#   so testa EXISTENCIA (`[ -f ]`) de state.json OU state.db na raiz ou em
+#   rounds/r*/ do state preservado no checkout coordenador — a mesma
+#   condicao, simetrica nos dois backends, do passo 6.a de
+#   `/feature-00c --reopen`. Nunca abre nem le o conteudo; resultado so
+#   gera aviso em stderr no `emit --reopen`. Coberto por
+#   tests/test_parallel-launch.sh (cenarios emit_reopen_*, inclusive
+#   state.db e rounds/r01).
 _static_allowlist() {
   cat <<'EOF'
 state-rw.sh:codigo-real
@@ -297,6 +306,7 @@ posttooluse-tool-call-tick.sh:codigo-real
 posttooluse-loose-usage.sh:codigo-real
 state-rounds.sh:codigo-real
 posttooluse-jira-sync.sh:codigo-real
+parallel-launch.sh:codigo-real
 EOF
 }
 

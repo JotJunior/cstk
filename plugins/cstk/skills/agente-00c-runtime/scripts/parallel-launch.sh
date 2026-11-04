@@ -13,7 +13,7 @@
 #   parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
 #                            [--feature SHORT [--description TEXT] ...]
 #                            [--roadmap PATH] [--coordinator-name NAME]
-#                            [--tmux-target PANE_ID]
+#                            [--tmux-target PANE_ID] [--reopen]
 #   parallel-launch.sh check-tmux
 #   parallel-launch.sh resolve-tmux-pane
 #   parallel-launch.sh resolve-offer --source <operator|absent>
@@ -49,9 +49,10 @@
 # aviso em stderr. `resolve-tmux-pane` descobre o pane da coordenadora:
 # $TMUX_PANE quando presente e vivo; senao, o pane cujo #{pane_pid} e
 # ancestral deste processo (TMUX_PANE ja chegou VAZIO na tool Bash do
-# Claude Code). O prompt da filha e sempre
-# `/feature-00c "<DESCRICAO>" <SHORT>` — formato REAL do command
-# (feature-00c.md:113-115), com o short-name POSICIONAL pinando a feature.
+# Claude Code). O prompt da filha e `/feature-00c "<DESCRICAO>" <SHORT>` —
+# formato REAL do command (feature-00c.md:113-115), com o short-name
+# POSICIONAL pinando a feature — ou, com `--reopen` (issue #245),
+# `/feature-00c --reopen <SHORT> "<INCREMENTO>"`.
 # INALTERADO por este script: cli/lib/session.sh.
 #
 # --coordinator-name NAME: validado por allowlist
@@ -98,7 +99,7 @@ print_usage() {
 Uso: parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
                               [--feature SHORT [--description TEXT] ...]
                               [--roadmap PATH] [--coordinator-name NAME]
-                              [--tmux-target PANE_ID]
+                              [--tmux-target PANE_ID] [--reopen]
      parallel-launch.sh check-tmux
      parallel-launch.sh resolve-tmux-pane
      parallel-launch.sh resolve-offer --source <operator|absent>
@@ -145,6 +146,19 @@ Opcoes de `emit`:
                            Sem ele, o split cai na janela ATIVA do cliente
                            tmux (aviso em stderr). Obtenha com
                            `resolve-tmux-pane`.
+  --reopen                Modo REABERTURA (issue #245), vale para todos os
+                           --feature desta invocacao: o prompt da filha
+                           passa a ser `/feature-00c --reopen <SHORT>
+                           "<INCREMENTO>"` (formato de feature-00c.md
+                           §"Modo de reabertura"). Neste modo --description
+                           e OBRIGATORIO por --feature (descreve o
+                           INCREMENTO, nunca vem do roadmap nem do
+                           short-name) e, ja sanitizado, precisa ter 1..500
+                           caracteres — sem corte: fora disso, exit 2 antes
+                           de imprimir qualquer comando. Avisa (stderr) se
+                           <PATH>/.claude/feature-00c-state/<SHORT>/ nao
+                           tem state preservado (a filha recusaria no 6.a;
+                           `cstk session start` restaura de la).
 
 Guarda anti-duplicidade (FR-011): `emit` recomputa `git -C PATH worktree
 list --porcelain` sobre --repo IMEDIATAMENTE antes de compor (janela
@@ -517,6 +531,33 @@ _pl_resolve_desc() {
   printf '%s' "$_pl_rd_out"
 }
 
+# ==== Modo reabertura (issue #245) ====
+#
+# Teto do incremento em CARACTERES — mesmo limite de `descricao_curta` do
+# modo --reopen de /feature-00c (feature-00c.md §"Modo de reabertura":
+# <=500 chars). Ao contrario do modo normal, NAO trunca: um incremento
+# cortado mudaria o que a filha vai construir sem ninguem perceber.
+_PL_REOPEN_DESC_MAX=500
+
+# _pl_char_len TEXT -> tamanho em caracteres UTF-8 (bytes que NAO sao de
+# continuacao 0x80-0xBF), independente do locale do chamador.
+_pl_char_len() {
+  printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c | tr -d ' '
+}
+
+# _pl_has_preserved_state REPO SHORT -> exit 0 se o checkout coordenador tem
+# state 00c da feature (mesma condicao do passo 6.a de /feature-00c
+# --reopen: state.json/state.db na raiz ou em algum rounds/r*/).
+_pl_has_preserved_state() {
+  _pl_hps_sd="$1/.claude/feature-00c-state/$2"
+  [ -f "$_pl_hps_sd/state.json" ] || [ -f "$_pl_hps_sd/state.db" ] && return 0
+  for _pl_hps_rd in "$_pl_hps_sd"/rounds/r*/; do
+    [ -d "$_pl_hps_rd" ] || continue
+    { [ -f "${_pl_hps_rd}state.json" ] || [ -f "${_pl_hps_rd}state.db" ]; } && return 0
+  done
+  return 1
+}
+
 # _pl_flush_pending: fecha o par (--feature, --description) corrente na
 # lista `_pl_features`, uma entrada por linha no formato
 # `SHORT<TAB>DESC_BRUTA`. O TAB e separador seguro porque a descricao so
@@ -620,9 +661,12 @@ _pl_cmd_emit() {
   _pl_n_features=0
   _pl_pending_short=""
   _pl_pending_desc=""
+  _pl_reopen=0
 
   while [ $# -gt 0 ]; do
     case "$1" in
+      --reopen)
+        _pl_reopen=1; shift ;;
       --repo)
         [ $# -ge 2 ] || { printf '%s: --repo exige valor\n' "$_PL_NAME" >&2; exit 2; }
         _pl_repo=$2; shift 2 ;;
@@ -660,6 +704,34 @@ _pl_cmd_emit() {
 
   [ -n "$_pl_repo" ] || { printf '%s: --repo obrigatorio\n' "$_PL_NAME" >&2; exit 2; }
   [ "$_pl_n_features" -ge 1 ] || { printf '%s: pelo menos um --feature obrigatorio\n' "$_PL_NAME" >&2; exit 2; }
+
+  # Modo reabertura (issue #245): valida TODOS os incrementos ANTES de
+  # imprimir qualquer comando — o chamador executa o que sai em stdout, e
+  # um lote meio impresso lancaria parte das filhas.
+  if [ "$_pl_reopen" = 1 ]; then
+    IFS='
+'
+    for _pl_rv_entry in $_pl_features; do
+      unset IFS
+      [ -n "$_pl_rv_entry" ] || continue
+      _pl_rv_short=${_pl_rv_entry%%"$_PL_TAB"*}
+      _pl_rv_raw=${_pl_rv_entry#*"$_PL_TAB"}
+      [ "$_pl_rv_raw" != "$_pl_rv_entry" ] || _pl_rv_raw=""
+      _pl_rv_desc=$(_pl_sanitize_desc "$_pl_rv_raw")
+      if [ -z "$_pl_rv_desc" ]; then
+        printf '%s: --reopen exige --description (o incremento) para %s — nao ha fallback (roadmap/short-name descrevem a feature, nao o incremento)\n' \
+          "$_PL_NAME" "$_pl_rv_short" >&2
+        exit 2
+      fi
+      _pl_rv_len=$(_pl_char_len "$_pl_rv_desc")
+      if [ "$_pl_rv_len" -gt "$_PL_REOPEN_DESC_MAX" ]; then
+        printf '%s: --reopen: incremento de %s tem %s caracteres (apos sanitizar); o limite de /feature-00c --reopen e %s — resuma, nao ha corte automatico\n' \
+          "$_PL_NAME" "$_pl_rv_short" "$_pl_rv_len" "$_PL_REOPEN_DESC_MAX" >&2
+        exit 2
+      fi
+    done
+    unset IFS
+  fi
 
   # Decide uma unica vez se ha telemetria (e avisa, uma linha so, se nao ha).
   # Depois da validacao de argumentos: erro de uso nao deve vir precedido de
@@ -770,8 +842,21 @@ _pl_cmd_emit() {
     # Envelope em aspas SIMPLES para caber as aspas duplas da descricao;
     # seguro porque _pl_sanitize_desc remove aspa simples, aspa dupla,
     # crase, `\`, `$` e demais metacaracteres (§4.1).
-    _pl_desc=$(_pl_resolve_desc "$_pl_short" "$_pl_desc_raw")
-    _pl_prompt=$(printf "'/feature-00c \"%s\" %s'" "$_pl_desc" "$_pl_short")
+    if [ "$_pl_reopen" = 1 ]; then
+      # Modo reabertura (issue #245): `/feature-00c --reopen <SHORT>
+      # "<INCREMENTO>"` (feature-00c.md §"Modo de reabertura"). Incremento
+      # ja validado (nao-vazio, <=500 chars) antes do loop; mesma
+      # sanitizacao do modo normal, logo o mesmo envelope e seguro.
+      _pl_desc=$(_pl_sanitize_desc "$_pl_desc_raw")
+      _pl_prompt=$(printf "'/feature-00c --reopen %s \"%s\"'" "$_pl_short" "$_pl_desc")
+      if ! _pl_has_preserved_state "$_pl_repo" "$_pl_short"; then
+        printf '%s: --reopen: %s/.claude/feature-00c-state/%s/ sem state preservado — `cstk session start` nao tera o que restaurar e a filha recusara no passo 6.a (exit 4). Se o state ficou em .claude/session-state-backup/, mova-o para la antes de lancar.\n' \
+          "$_PL_NAME" "$_pl_repo" "$_pl_short" >&2
+      fi
+    else
+      _pl_desc=$(_pl_resolve_desc "$_pl_short" "$_pl_desc_raw")
+      _pl_prompt=$(printf "'/feature-00c \"%s\" %s'" "$_pl_desc" "$_pl_short")
+    fi
     # Prefixo de telemetria: UMA porta por filha (issue #168). Fica FORA do
     # trecho comparado byte a byte entre os dois caminhos (a comparacao
     # comeca em `claude --name`), justamente porque a porta e por-filha e

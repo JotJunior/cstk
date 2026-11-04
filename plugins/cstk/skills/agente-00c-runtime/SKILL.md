@@ -257,6 +257,12 @@ nem notifica (nao tem `SendMessage`/`ListAgents`; FR-012).
   (`^cstk-coord/[A-Za-z0-9._-]{1,64}$`) e propagado a filha como
   `CSTK_COORDINATOR_NAME` no prefixo `env` (issue #236); sem ele, a filha
   notifica a convencao `cstk-coord/<nome-do-repo>` e o emit avisa em stderr.
+  `--reopen` (issue #245) troca o prompt de TODAS as filhas da invocacao
+  por `/feature-00c --reopen <SHORT> "<INCREMENTO>"`: `--description` vira
+  obrigatorio (sem fallback de roadmap/short-name) e, ja sanitizado, precisa
+  ter 1..500 caracteres — fora disso exit 2 antes de imprimir qualquer
+  comando (sem corte). Avisa se o checkout coordenador nao tem o state
+  preservado da feature (`cstk session start` restaura de la — issue #244).
 - **`parallel-notification-parse.sh check "<msg>"`** casa a mensagem
   INTEIRA contra a regex ancorada do contrato
   (`^\[cstk-parallel\] feature=([a-z][a-z0-9-]{0,63}) outcome=(concluida|abortada|aguardando_humano) repo=([A-Za-z0-9._-]{1,64})$`);
