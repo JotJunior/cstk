@@ -11,7 +11,8 @@ Duas issues do ciclo de reabertura de feature em worktree. O
 `cstk session start` passa a restaurar o state 00c que o `session end`
 preservou, então o `/feature-00c --reopen` volta a achar a execução
 anterior; e a leva paralela ganha um modo que compõe o comando de
-reabertura em vez de exigir montá-lo à mão.
+reabertura em vez de exigir montá-lo à mão. De carona, a barra de
+etapas do painel volta a caber numa linha.
 
 ### Added
 
@@ -50,6 +51,14 @@ reabertura em vez de exigir montá-lo à mão.
   Quando o passo 6.a recusa (exit 4) dentro de uma worktree e o checkout
   principal tem o state da feature, a mensagem indica recriar a sessão ou
   o `cp -Rp` manual.
+- **Barra de etapas do painel cabe numa linha só.** Na página da
+  execução (e na da feature), a barra rotulada de etapas tinha 9 colunas
+  fixas (`repeat(9, 1fr)` em `.pipeline-labeled`,
+  `panel/apps/web/src/styles/prototype.css`), mas são 10 etapas desde o
+  `converge`, então o `review-task` caía sozinho na linha de baixo. O grid
+  agora cria uma coluna por etapa (`grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr)`), segue o tamanho de `SDD_STAGES` e
+  deixa o rótulo encolher com reticências.
 
 ### Changed
 
