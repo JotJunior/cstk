@@ -5,6 +5,68 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.18.0] - 2026-11-04
+
+Duas issues do ciclo de reabertura de feature em worktree. O
+`cstk session start` passa a restaurar o state 00c que o `session end`
+preservou, então o `/feature-00c --reopen` volta a achar a execução
+anterior; e a leva paralela ganha um modo que compõe o comando de
+reabertura em vez de exigir montá-lo à mão. De carona, a barra de
+etapas do painel volta a caber numa linha.
+
+### Added
+
+- **`parallel-launch.sh emit --reopen` (#245).** Com `--reopen`, cada
+  `--feature <short>` vira `/feature-00c --reopen <short> "<incremento>"`
+  no `tmux split-window`, com as mesmas garantias do `emit` normal
+  (`--tmux-target`, `--coordinator-name`, guarda de duplicidade,
+  sanitização, enforcement-log). `--description` é obrigatório nesse modo
+  (sem fallback para o roadmap nem para o short-name) e limitado a 500
+  caracteres, o mesmo teto do passo 6.a do `/feature-00c --reopen`; fora
+  disso, exit 2 sem nada em stdout e sem corte automático, para nunca
+  lançar parte das filhas. Sem state preservado da feature
+  (`state.json`/`state.db` na raiz ou em `rounds/r*/`), avisa em stderr.
+  Cobertura: 9 cenários `emit_reopen_*` em `tests/test_parallel-launch.sh`.
+- **`cstk session start --no-restore-state` (#244).** Pula a restauração
+  descrita abaixo; com state preservado presente, avisa.
+
+### Fixed
+
+- **`cstk session start` restaura o state 00c preservado (#244).** Se o
+  checkout principal tem `.claude/feature-00c-state/<name>/` (deixado por
+  um `session end` anterior), o `start` copia esse diretório para a
+  worktree nova (`state:  restaurado de ...`), só o da feature homônima da
+  sessão. Antes, o `start` excluía o state e o `/feature-00c --reopen
+  <name>` na worktree recusava com "nao possui execucao anterior".
+- **Segundo `session end` não deixa mais o state canônico velho (#244).**
+  No ciclo `end → start → reopen → end`, o segundo `end` mandava o state
+  novo para `.claude/session-state-backup/<name>/` e o checkout principal
+  ficava com o antigo, que o próximo `start` restauraria. O `start` agora
+  grava um marcador (`<worktree>/.claude/.cstk-session-restored`) com o
+  fingerprint do que restaurou; no `end`, se o state canônico ainda bate
+  com esse fingerprint, é substituído pelo novo (troca fail-closed com
+  rollback). Se mudou, segue para o backup como antes. Cobertura: 6
+  cenários novos em `tests/cstk/test_session.sh`.
+- **Recusa do `/feature-00c --reopen` aponta o state preservado (#244).**
+  Quando o passo 6.a recusa (exit 4) dentro de uma worktree e o checkout
+  principal tem o state da feature, a mensagem indica recriar a sessão ou
+  o `cp -Rp` manual.
+- **Barra de etapas do painel cabe numa linha só.** Na página da
+  execução (e na da feature), a barra rotulada de etapas tinha 9 colunas
+  fixas (`repeat(9, 1fr)` em `.pipeline-labeled`,
+  `panel/apps/web/src/styles/prototype.css`), mas são 10 etapas desde o
+  `converge`, então o `review-task` caía sozinho na linha de baixo. O grid
+  agora cria uma coluna por etapa (`grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr)`), segue o tamanho de `SDD_STAGES` e
+  deixa o rótulo encolher com reticências.
+
+### Changed
+
+- **`tests/test_state-parity-sweep.sh`.** `parallel-launch.sh` entra na
+  allowlist do grep estático, com justificativa: a checagem do `--reopen`
+  só testa existência de `state.json`/`state.db`, simétrica entre os
+  backends, sem ler conteúdo.
+
 ## [10.17.0] - 2026-11-02
 
 Três issues dos orquestradores 00c. O avanço de `execute-task`/`converge`
@@ -8927,6 +8989,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.18.0]: https://github.com/JotJunior/cstk/releases/tag/v10.18.0
 [10.17.0]: https://github.com/JotJunior/cstk/releases/tag/v10.17.0
 [10.16.0]: https://github.com/JotJunior/cstk/releases/tag/v10.16.0
 [10.15.0]: https://github.com/JotJunior/cstk/releases/tag/v10.15.0

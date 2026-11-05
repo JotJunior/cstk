@@ -374,6 +374,13 @@ if [ ! -d "$AGENTE_00C_STATE_DIR" ] || \
   fi
   if [ "$_has_round" = false ]; then
     stderr "feature '$SHORT' nao possui execucao anterior. Use a abertura normal: /feature-00c \"<descricao>\" $SHORT"
+    # issue #244: numa worktree de `cstk session`, o state pode ter ficado
+    # preservado no checkout principal (session end). Apontar o caminho.
+    _main_wt=$(git -C "$_proj" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
+    if [ -n "$_main_wt" ] && [ "$_main_wt" != "$_proj" ] && \
+       [ -d "$_main_wt/.claude/feature-00c-state/$SHORT" ]; then
+      stderr "state preservado encontrado em $_main_wt/.claude/feature-00c-state/$SHORT — recrie a sessao (cstk session end + cstk session start $SHORT restaura) ou copie: cp -Rp \"$_main_wt/.claude/feature-00c-state/$SHORT\" \"$_proj/.claude/feature-00c-state/\""
+    fi
     exit 4
   fi
   # 1b (T-37): rotacao ja consumada por uma invocacao anterior cujo init

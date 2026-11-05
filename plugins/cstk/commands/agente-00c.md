@@ -1092,7 +1092,11 @@ ANTES de remover a worktree (colisao vai para
 `.claude/session-state-backup/<short>/`, nunca sobrescreve; falha de copia
 bloqueia a remocao). Nao remova worktrees de leva paralela por
 `git worktree remove` cru — sempre via `cstk session end`; descarte
-deliberado do state exige a flag explicita `--discard-state`.
+deliberado do state exige a flag explicita `--discard-state`. No caminho
+inverso (issue #244), `cstk session start <short>` restaura uma copia de
+`.claude/feature-00c-state/<short>/` preservado para a worktree nova — e o
+que permite reabrir a feature com `parallel-launch.sh emit --reopen` (issue
+#245), que compoe `/feature-00c --reopen <short> "<incremento>"`.
 
 ### 6.ter Oferta de leva paralela pos-roadmap (US1 — FR-002/FR-003/FR-004/FR-006/FR-011/FR-012/FR-014/FR-018, `roadmap-parallel-launch`)
 

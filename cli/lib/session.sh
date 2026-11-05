@@ -76,6 +76,14 @@ _CSTK_SESSION_CLAUDE_EXCLUDES="agente-00c-state feature-00c-state agente-00c-arc
 # esses artefatos, e a remocao os destruiria em silencio.
 _CSTK_SESSION_STATE_ARTIFACTS="agente-00c-state agente-00c-archive agente-00c-report.md agente-00c-suggestions.md enforcement-log.jsonl"
 
+# Marcador (issue #244) gravado pelo `session start` em <wt>/.claude/ ao
+# restaurar .claude/feature-00c-state/<name>/ preservado por um `session end`
+# anterior. Uma linha por restauracao: `<relpath><TAB><fingerprint>`, onde
+# fingerprint e o do diretorio de ORIGEM no momento da copia. Fica FORA do
+# state-dir de proposito: `state-rounds.sh rotate` move o conteudo da raiz
+# do state-dir para rounds/rNN, e o marcador iria junto.
+_CSTK_SESSION_RESTORE_MARKER=".cstk-session-restored"
+
 # ==== Help ====
 
 _session_print_help() {
@@ -83,7 +91,7 @@ _session_print_help() {
 cstk session — sessoes paralelas isoladas via git worktree.
 
 USO:
-  cstk session start <name> [--reset|--reuse] [--force] [--claude]
+  cstk session start <name> [--reset|--reuse] [--force] [--claude] [--no-restore-state]
   cstk session list [--json]
   cstk session pr <name> [--draft] [--title TITLE] [--body BODY] [--reviewer USER]
   cstk session end <name> [--force] [--discard-state]
@@ -96,6 +104,11 @@ SUBCOMANDOS:
            --claude: apos criar a sessao, entra no diretorio e inicia o
                      Claude Code (exec claude, com telemetria local ligada —
                      desative com CSTK_TELEMETRY_AUTO=0). Combinavel com as demais.
+           Se o checkout principal tem .claude/feature-00c-state/<name>/
+           (preservado por um `session end` anterior), RESTAURA uma copia
+           na worktree — necessario para `/feature-00c --reopen <name>`.
+           So o state da feature homonima; o original fica intacto.
+           --no-restore-state: nao restaura.
 
   list     Lista sessoes ativas. Marcadores STATUS (combinaveis):
            CURRENT (worktree atual), * (dirty), STALE (path inexistente).
@@ -107,7 +120,9 @@ SUBCOMANDOS:
            (.claude/feature-00c-state/<short>/ com state.db/state.json,
            agente-00c-state, report, enforcement-log) copiando-os para o
            .claude/ do checkout principal — colisao vai para
-           .claude/session-state-backup/<name>/, nunca sobrescreve.
+           .claude/session-state-backup/<name>/, nunca sobrescreve —
+           exceto o state restaurado pelo `start` cujo original nao mudou
+           no checkout principal desde entao: esse e substituido.
            Falha de copia bloqueia a remocao (fail-closed).
            --discard-state: descarta deliberadamente esses artefatos.
 
@@ -387,6 +402,52 @@ _session_copy_claude_filtered() {
   return 0
 }
 
+# _session_fingerprint <dir> -> identificador do conteudo do diretorio
+# (cksum de cada arquivo + path relativo, ordenado, agregado). Vazio se o
+# diretorio nao existe. Usado so para detectar se o state do checkout
+# principal mudou entre a restauracao (start) e a preservacao (end).
+_session_fingerprint() {
+  [ -d "$1" ] || return 0
+  ( cd -- "$1" && find . -type f -exec cksum {} + 2>/dev/null | LC_ALL=C sort | cksum ) \
+    | awk '{ print $1 "-" $2 }'
+}
+
+# _session_restore_state <repo> <worktree> <name>
+# Issue #244: `session end` preserva .claude/feature-00c-state/<name>/ no
+# checkout principal, mas o `start` exclui feature-00c-state da copia de
+# .claude/ — sem restauracao, `/feature-00c --reopen <name>` na worktree
+# nova recusa no passo 6.a ("nao possui execucao anterior", exit 4).
+# Restaura SO o state da feature homonima da sessao (nunca o de outras
+# features: elas confundiriam a precedencia do pretooluse-guard). COPIA,
+# nunca move — o checkout principal continua com o original ate o proximo
+# `end`. Seta _CSTK_SESSION_RESTORED_FROM com a origem quando restaura.
+_session_restore_state() {
+  _rs_src="$1/.claude/feature-00c-state/$3"
+  _rs_parent="$2/.claude/feature-00c-state"
+  _rs_dst="$_rs_parent/$3"
+  _CSTK_SESSION_RESTORED_FROM=""
+  [ -d "$_rs_src" ] || return 0
+  # Nunca sobrescreve state que ja esteja na worktree.
+  [ -e "$_rs_dst" ] && return 0
+  _rs_fp=$(_session_fingerprint "$_rs_src")
+  if ! mkdir -p -- "$_rs_parent" || ! cp -Rp -- "$_rs_src" "$_rs_dst"; then
+    rm -rf -- "${_rs_dst:?}" 2>/dev/null
+    return 1
+  fi
+  printf 'feature-00c-state/%s\t%s\n' "$3" "$_rs_fp" \
+    >>"$2/.claude/$_CSTK_SESSION_RESTORE_MARKER" || return 1
+  _CSTK_SESSION_RESTORED_FROM=$_rs_src
+  return 0
+}
+
+# _session_restored_fingerprint <wt-claude-dir> <relpath> -> fingerprint
+# gravado pelo start para <relpath>, ou vazio se nao foi restaurado.
+_session_restored_fingerprint() {
+  _rf_marker="$1/$_CSTK_SESSION_RESTORE_MARKER"
+  [ -f "$_rf_marker" ] || return 0
+  awk -F '\t' -v rel="$2" '$1 == rel { fp = $2 } END { if (fp != "") print fp }' "$_rf_marker"
+}
+
 # ==== Subcomando: start ====
 #
 # cstk session start <name> [--reset|--reuse] [--force]
@@ -412,12 +473,14 @@ _session_start() {
   _reuse=0
   _force=0
   _launch_claude=0
+  _restore_state=1
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --reset)  _reset=1; shift ;;
       --reuse)  _reuse=1; shift ;;
       --force)  _force=1; shift ;;
       --claude) _launch_claude=1; shift ;;
+      --no-restore-state) _restore_state=0; shift ;;
       --) shift; break ;;
       -*) log_error "session start: flag desconhecida: $1"; return 2 ;;
       *)
@@ -523,24 +586,32 @@ _session_start() {
     return 1
   fi
 
+  # Restaurar o state 00c preservado da feature homonima (issue #244).
+  # Falha aqui = falha parcial (FR-017): worktree criada, state nao.
+  _CSTK_SESSION_RESTORED_FROM=""
+  if [ "$_restore_state" = 1 ]; then
+    if ! _session_restore_state "$_repo" "$_session_path" "$_name"; then
+      log_error "session start: falha ao restaurar .claude/feature-00c-state/$_name/ preservado no checkout principal"
+      log_error "session start: copie manualmente: cp -Rp '$_repo/.claude/feature-00c-state/$_name' '$_dst_claude/feature-00c-state/'"
+      return 1
+    fi
+  elif [ -d "$_repo/.claude/feature-00c-state/$_name" ]; then
+    log_warn "session start: --no-restore-state — state preservado em $_repo/.claude/feature-00c-state/$_name NAO foi restaurado (/feature-00c --reopen $_name recusara na worktree)"
+  fi
+
   # Output de sucesso (FR-001 / SC-006). Se --claude foi pedido, omite a
   # linha "Proximo passo" e dispara o launch logo em seguida.
-  if [ "$_launch_claude" = 1 ]; then
-    cat <<EOF
+  cat <<EOF
 ✓ Sessao '$_name' criada
   branch: $_name $_note
   path:   $_session_path
   .claude/ copiado (excluindo 8 artefatos runtime/per-env)
 EOF
-  else
-    cat <<EOF
-✓ Sessao '$_name' criada
-  branch: $_name $_note
-  path:   $_session_path
-  .claude/ copiado (excluindo 8 artefatos runtime/per-env)
-
-Proximo passo: cd $_session_path
-EOF
+  if [ -n "$_CSTK_SESSION_RESTORED_FROM" ]; then
+    printf '  state:  restaurado de %s\n' "$_CSTK_SESSION_RESTORED_FROM"
+  fi
+  if [ "$_launch_claude" = 0 ]; then
+    printf '\nProximo passo: cd %s\n' "$_session_path"
     return 0
   fi
 
@@ -803,8 +874,9 @@ _session_preserve_state() {
     for _ps_dir in "$_ps_src/feature-00c-state"/*/; do
       [ -d "$_ps_dir" ] || continue
       _ps_short=$(basename "${_ps_dir%/}")
+      _ps_fp=$(_session_restored_fingerprint "$_ps_src" "feature-00c-state/$_ps_short")
       _session_preserve_one "${_ps_dir%/}" "feature-00c-state/$_ps_short" \
-        "$_ps_repo" "$_ps_session" || return 1
+        "$_ps_repo" "$_ps_session" "$_ps_fp" || return 1
     done
   fi
   for _ps_item in $_CSTK_SESSION_STATE_ARTIFACTS; do
@@ -815,14 +887,48 @@ _session_preserve_state() {
   return 0
 }
 
-# _session_preserve_one <src-path> <relpath> <repo> <session>
+# _session_preserve_one <src-path> <relpath> <repo> <session> [<restored-fp>]
 # Copia 1 artefato para <repo>/.claude/<relpath>; se ja existe, para
 # <repo>/.claude/session-state-backup/<session>/<relpath>.
+#
+# Excecao (issue #244): se <relpath> foi RESTAURADO pelo `session start`
+# (<restored-fp> nao-vazio) e o destino ainda tem exatamente esse
+# fingerprint, a copia da worktree e a sucessora direta do destino (ex.:
+# reabertura que rotacionou o r01 para rounds/) — o destino e SUBSTITUIDO,
+# senao o proximo start restauraria o state antigo e o novo ficaria
+# esquecido no backup. Troca fail-closed: copia nova ao lado, move a antiga
+# para o lado, promove a nova, so entao apaga a antiga.
 _session_preserve_one() {
   _po_src=$1
   _po_rel=$2
   _po_dest="$3/.claude/$_po_rel"
   _po_session=$4
+  _po_restored_fp=${5:-}
+  if [ -n "$_po_restored_fp" ] && [ -d "$_po_dest" ] \
+     && [ "$(_session_fingerprint "$_po_dest")" = "$_po_restored_fp" ]; then
+    _po_new="$_po_dest.cstk-new.$$"
+    _po_old="$_po_dest.cstk-old.$$"
+    rm -rf -- "${_po_new:?}" 2>/dev/null
+    if ! cp -R -- "$_po_src" "$_po_new"; then
+      rm -rf -- "${_po_new:?}" 2>/dev/null
+      log_error "session end: falha ao preservar '.claude/$_po_rel' — worktree NAO sera removida"
+      return 1
+    fi
+    if ! mv -- "$_po_dest" "$_po_old"; then
+      rm -rf -- "${_po_new:?}" 2>/dev/null
+      log_error "session end: falha ao substituir '.claude/$_po_rel' — worktree NAO sera removida"
+      return 1
+    fi
+    if ! mv -- "$_po_new" "$_po_dest"; then
+      mv -- "$_po_old" "$_po_dest" 2>/dev/null
+      log_error "session end: falha ao substituir '.claude/$_po_rel' — original restaurado, worktree NAO sera removida"
+      return 1
+    fi
+    rm -rf -- "${_po_old:?}" 2>/dev/null
+    log_info "session end: '.claude/$_po_rel' atualizado no checkout principal (restaurado pelo session start e sem alteracao la desde entao)"
+    _CSTK_SESSION_PRESERVED_COUNT=$((_CSTK_SESSION_PRESERVED_COUNT + 1))
+    return 0
+  fi
   if [ -e "$_po_dest" ]; then
     _po_dest="$3/.claude/session-state-backup/$_po_session/$_po_rel"
     if [ -e "$_po_dest" ]; then

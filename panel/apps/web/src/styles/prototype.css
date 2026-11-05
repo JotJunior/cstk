@@ -137,7 +137,10 @@
 @keyframes pulse-bar { 50% { opacity: 0.5; } }
 .pipeline .step.aborted { background: var(--critical); opacity: 0.6; }
 
-.pipeline-labeled { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+/* Uma coluna por etapa, sem contagem fixa: o numero de colunas segue SDD_STAGES
+   (era repeat(9) e quebrava linha quando o converge virou a 10a etapa).
+   minmax(0, 1fr) deixa o rotulo encolher e aplicar a reticencia. */
+.pipeline-labeled { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
 .pipeline-labeled .stage { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); }
 .pipeline-labeled .bar { height: 4px; border-radius: 2px; background: var(--bg-3); }
 .pipeline-labeled .stage.done .bar { background: var(--success); }
