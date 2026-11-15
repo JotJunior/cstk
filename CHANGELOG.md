@@ -5,6 +5,103 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.19.0] - 2026-11-15
+
+Skill nova, `cstk-init`: a porta de entrada para adotar o cstk num projeto
+que já existe, sem refazer a descoberta do zero. Junto vai uma correção de
+atomicidade no backend SQLite do state: com o `sqlite3` 3.54 do macOS, uma
+transação com um statement falho no meio gravava a metade que não falhou.
+
+### Added
+
+- **Skill `cstk-init`.** `/cstk-init [<caminho-do-projeto>]
+  [--non-interactive]` inventaria o que o projeto já tem, cria ou revisa
+  `docs/briefing.md` e `docs/constitution.md` no formato vigente
+  perguntando só o que o projeto não responde (rodadas de até 5 perguntas)
+  e, se o operador aceitar, registra as features existentes como specs
+  reconstituídas (marcador `<!-- cstk-init:reconstructed -->`), em lotes de
+  até 5 candidatas, com `checklist` e `data-model` como únicos
+  complementares. Todo fato concreto cita `(fonte: caminho[:linha])` ou
+  `(informado pelo operador)`; sem origem o valor não é escrito e o campo
+  vira `[PENDENTE: <pergunta>]`. É create-only (nada preexistente é
+  sobrescrito, movido ou apagado sem confirmação daquele caminho), não
+  consulta rede e trata o conteúdo do projeto-alvo como dado não confiável.
+  Projeto feito com versão antiga do cstk entra pelo mesmo comando, em modo
+  de revisão. Spec em `docs/specs/cstk-init/`.
+- **Modo não-interativo do `cstk-init`.** Com `--non-interactive` (implícito
+  quando `AGENTE_00C_STATE_DIR` está definido) a skill não pergunta nem
+  altera arquivo existente: só cria documento ausente, com fatos descritivos
+  com origem e pendências, e o resumo declara que o briefing foi gravado sem
+  revisão do operador. `docs/constitution.md` não é criada com princípios e
+  o registro de features não é oferecido.
+- **Seis helpers POSIX em `plugins/cstk/skills/cstk-init/scripts/`.**
+  `init-probe.sh` (`preflight` / `artifacts` / `version`),
+  `init-inventory.sh` (inventário TSV `<kind><TAB><path>`),
+  `init-candidates.sh` (sinais de evidência para features candidatas e
+  validação de nome), `init-conformance.sh` (relatório de conformidade,
+  regras `CR-NNN`), `init-guard.sh` (`check` / `scan` / `migrate`: guarda de
+  escrita, varredura de segredos, move do briefing legado) e
+  `init-provenance.sh` (`lint` dos marcadores de origem e pendência).
+  Cobertura: 146 cenários em 8 arquivos (`tests/test_init-*.sh`,
+  `tests/test_cstk-init-skill.sh`, `tests/test_cstk-init-fixtures.sh`).
+- **`cstk-init` no perfil `sdd`.** O perfil default passa de 17 para 18
+  skills e o `all` de 30 para 31 (`scripts/profiles.txt.in`). Quem já tem o
+  perfil instalado precisa de `cstk install cstk-init --yes`: o
+  `cstk update` não instala skill nova de perfil já instalado.
+- **Evals da skill.** `plugins/cstk/skills/cstk-init/evals/triggers.jsonl`
+  traz 6 consultas que devem disparar a `cstk-init` (casos gerados em
+  `plugins/cstk/evals/cstk-init/`) e 5 de desambiguação, que devem
+  disparar as vizinhas `briefing`, `constitution`, `specify`,
+  `reconcile-docs` e `review-features`.
+
+### Fixed
+
+- **Transação do `state.db` deixa de commitar pela metade sob `sqlite3`
+  3.54.** Os writers do runtime montam `BEGIN IMMEDIATE; A; B; COMMIT;`
+  numa única linha e contavam com o CLI parar no primeiro erro. Com o
+  `/usr/bin/sqlite3` 3.54.0 do macOS, um statement que falha no meio da
+  linha não interrompe os seguintes, e `-bail` só vale entre linhas de
+  entrada. Caso real: `bloqueios.sh register` com decisão inexistente
+  falhava no `INSERT` (FK) e mesmo assim gravava
+  `execution.status=aguardando_humano`. O `_state_db_exec`
+  (`agente-00c-runtime/scripts/_state-db.sh`), por onde passam todos os
+  writers transacionais, agora quebra o SQL em um statement por linha
+  (`_state_db_split_statements`, que respeita literais `'...'`, inclusive
+  multilinha) e chama `sqlite3 -bail`. Limite conhecido: o split só
+  reconhece literal em aspas simples, então SQL com `;` ou aspa simples
+  dentro de identificador `"..."` ou de comentário não pode passar por ali
+  (nenhum caller gera isso hoje). Cobertura: 5 cenários novos em
+  `tests/test__state-db.sh`.
+- **`tests/test_statusline-plan-usage.sh` não depende mais da exibição
+  default de `REAL` do CLI.** O mesmo `sqlite3` 3.54 imprime
+  `7.0000000000000009` onde antes imprimia `7.0`; a asserção passa a usar
+  `printf('%.1f', used_percentage)`. A checagem de precisão numérica não
+  mudou.
+
+### Changed
+
+- **Documentação dos perfis e da pipeline.** `README.md`,
+  `README.pt-BR.md`, `docs/sdd-pipeline.md`, `docs/sdd-pipeline.pt-BR.md`,
+  `docs-site/manual/profiles.md` e o texto de ajuda do `cstk install`
+  (`cli/lib/install.sh`) citam a `cstk-init` e as novas contagens.
+- **Casos de trigger-eval regenerados.** A entrada dos gatilhos da
+  `cstk-init` renumerou os casos gerados por
+  `tests/trigger-eval/gen-eval-cases.sh` em `briefing`, `constitution`,
+  `presentation`, `reconcile-docs`, `review-features` e `specify`.
+
+### Limitações conhecidas
+
+- A `cstk-init` ainda não foi exercitada numa sessão independente contra um
+  projeto real, e os evals não foram re-rodados depois dos dois ajustes do
+  `converge` (reperguntar pendências e barrar lint inválido também em specs
+  reconstituídas).
+- Ambiguidade em aberto na spec: FR-033 pede confirmar o idioma do
+  documento antes da primeira escrita, mas o modo não-interativo grava o
+  briefing sem ter a quem perguntar.
+- `cstk plan-usage` e `cstk usage` leem `REAL` pela exibição default do CLI
+  e podem mostrar dígitos de ruído de float sob `sqlite3` >= 3.54. Não
+  corrigido nesta versão.
+
 ## [10.18.0] - 2026-11-04
 
 Duas issues do ciclo de reabertura de feature em worktree. O
@@ -8989,6 +9086,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.19.0]: https://github.com/JotJunior/cstk/releases/tag/v10.19.0
 [10.18.0]: https://github.com/JotJunior/cstk/releases/tag/v10.18.0
 [10.17.0]: https://github.com/JotJunior/cstk/releases/tag/v10.17.0
 [10.16.0]: https://github.com/JotJunior/cstk/releases/tag/v10.16.0
