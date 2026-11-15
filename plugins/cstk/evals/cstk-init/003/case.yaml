@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "cstk-init-003"
+description: "trigger eval: a query deve disparar a skill cstk-init"
+tags: ["trigger", "cstk-init", "base"]
+execution:
+  prompt: "adopt the cstk in this existing codebase: read what the project already has and create the briefing and constitution from it"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-cstk-init"
+    tool: "Skill"
+    input_match: "cstk-init"
+    min: 1

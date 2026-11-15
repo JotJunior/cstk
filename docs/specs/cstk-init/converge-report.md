@@ -1,0 +1,2 @@
+<!-- converge-status: outcome=actionable; provenance=gate; at=2026-11-15T14:26:20Z; actionable=2; tasks-digest=ef3de2c73e21; note=onda-016 feature-00c, invocada pelo orquestrador na fronteira execute-task para review-task (args sem a flag --provenance), FASE 9 apendada -->
+<!-- converge-status: outcome=clean; provenance=gate; at=2026-11-15T15:00:35Z; actionable=0; tasks-digest=914c9febd831; note=onda-018 feature-00c, 2a passada na fronteira execute-task para review-task, achados 7816af6edc1b e 6d1938d0ca15 resolvidos no codigo, zero lacunas novas -->

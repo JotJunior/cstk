@@ -102,7 +102,8 @@ CODEX:
 PROFILES DISPONIVEIS:
   sdd            (default) Pipeline Spec-Driven Development sequencial:
                  briefing, constitution, specify, clarify, plan, checklist,
-                 create-tasks, analyze, execute-task, review-task.
+                 create-tasks, analyze, execute-task, review-task, e cstk-init
+                 (adocao do cstk em projeto ja existente).
   complementary  Skills de uso pontual (sem sequencia): advisor, bugfix,
                  apply-insights, owasp-security, presentation,
                  reconcile-docs, validate-documentation,

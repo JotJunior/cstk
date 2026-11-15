@@ -168,8 +168,13 @@ scenario_captura_basica_2_linhas() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado exit=0, obtido $_CAPTURED_EXIT"; return 1; }
   _n=$(sqlite3 "$_db" "SELECT count(*) FROM plan_usage;" 2>/dev/null) || _n=0
   [ "$_n" = "2" ] || { _fail "captura basica" "esperado 2 linhas, obtido $_n"; return 1; }
-  _fh=$(sqlite3 "$_db" "SELECT used_percentage FROM plan_usage WHERE scope='five_hour';" 2>/dev/null)
-  [ "$_fh" = "7.0" ] || { _fail "five_hour valor" "esperado 7.0 (exibicao CLI), obtido $_fh"; return 1; }
+  # Formato explicito, nunca a exibicao default do CLI: ela e um artefato
+  # que muda entre versoes (este cenario foi escrito contra um sqlite3 que
+  # imprimia este REAL como "7.0"; o /usr/bin/sqlite3 3.54.0 do macOS,
+  # observado em 2026-11-15, imprime "7.0000000000000009").
+  # A precisao integral e aferida logo abaixo por comparacao numerica.
+  _fh=$(sqlite3 "$_db" "SELECT printf('%.1f', used_percentage) FROM plan_usage WHERE scope='five_hour';" 2>/dev/null)
+  [ "$_fh" = "7.0" ] || { _fail "five_hour valor" "esperado 7.0 (1 casa decimal), obtido $_fh"; return 1; }
   _eq=$(sqlite3 "$_db" "SELECT used_percentage = 7.000000000000001 FROM plan_usage WHERE scope='five_hour';" 2>/dev/null)
   [ "$_eq" = "1" ] || { _fail "five_hour precisao" "used_percentage != 7.000000000000001 (ruido perdido)"; return 1; }
   return 0

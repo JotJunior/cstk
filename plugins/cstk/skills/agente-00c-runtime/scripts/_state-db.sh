@@ -15,9 +15,13 @@
 #   _state_db_pragmas [BUSY_MS]         -> imprime "PRAGMA foreign_keys=ON;"
 #                                          + "PRAGMA busy_timeout=<BUSY_MS>;"
 #                                          (default 5000)
+#   _state_db_split_statements          -> le SQL em stdin, imprime com um
+#                                          statement por linha (quebra apos
+#                                          `;` fora de literal '...')
 #   _state_db_exec DB SQL [BUSY_MS]     -> invoca sqlite3 com os PRAGMAs de
 #                                          C5 SEMPRE prefixados ao SQL da
-#                                          mutacao (stdin -> sqlite3 -- DB)
+#                                          mutacao (stdin -> sqlite3 -bail
+#                                          -- DB), parando no primeiro erro
 #   _state_db_exec_with_retry DB SQL [BUSY_MS]
 #                                        -> _state_db_exec com retry/backoff
 #                                          sob "database is locked"/"is
@@ -90,14 +94,56 @@ _state_db_pragmas() {
   printf '.output stdout\n'
 }
 
+# _state_db_split_statements -> le SQL em stdin e imprime o MESMO SQL com uma
+# quebra de linha apos cada `;` que esteja FORA de literal '...'. Espaco em
+# branco entre statements e neutro para o SQL; o conteudo dos literais nao e
+# tocado (o estado dentro/fora de literal atravessa quebras de linha, e a
+# aspa duplicada '' fecha e reabre o literal sem sair dele na pratica).
+#
+# Reconhece SO literais em aspas simples — a unica forma de citacao que o
+# runtime emite para texto livre (_sr_sql_quote/sql_escape). SQL que passe
+# por _state_db_exec NAO pode ter `;` nem aspa simples dentro de
+# identificador "..." ou de comentario (hoje nenhum caller gera isso).
+#
+# LC_ALL=C: os delimitadores sao ASCII e nenhum byte de continuacao UTF-8
+# coincide com eles; modo byte evita que o awk tropece em sequencia
+# multibyte invalida vinda de texto livre.
+_state_db_split_statements() {
+  LC_ALL=C awk '
+    BEGIN { inq = 0 }
+    {
+      n = split($0, seg, "\047")
+      for (i = 1; i <= n; i++) {
+        s = seg[i]
+        if (inq == 0) gsub(/;/, ";\n", s)
+        printf "%s", s
+        if (i < n) { printf "\047"; inq = 1 - inq }
+      }
+      printf "\n"
+    }'
+}
+
 # _state_db_exec DB SQL [BUSY_MS] -> aplica SQL sobre DB com os PRAGMAs de
 # C5 sempre prefixados. stdin/stdout/stderr do sqlite3 sao preservados
 # (caller decide se quer capturar). Exit: o do sqlite3 (0 sucesso).
+#
+# ATOMICIDADE (C4) — `-bail` + um statement por linha: os writers montam
+# `BEGIN IMMEDIATE; <A>; <B>; COMMIT;` numa unica linha e dependem de o CLI
+# PARAR no primeiro erro (a conexao fecha com a transacao aberta e o SQLite
+# reverte). Isso nao e garantido pelo CLI sem pedir: observado em 2026-11-15
+# com o /usr/bin/sqlite3 3.54.0 do macOS, um statement que falha no meio da
+# linha NAO interrompe os seguintes — o COMMIT final roda e persiste a
+# metade da transacao que nao falhou (caso real: `bloqueios.sh register`
+# com decisao inexistente falhava no INSERT e mesmo assim gravava
+# execution.status=aguardando_humano). Nesse mesmo binario `-bail` so e
+# honrado ENTRE linhas de entrada, nao entre statements da mesma linha; por
+# isso as duas medidas juntas, e nao so a flag. Nao remova uma sem a outra.
 _state_db_exec() {
   _sde_db="$1"
   _sde_sql="$2"
   _sde_ms="${3:-5000}"
-  { _state_db_pragmas "$_sde_ms"; printf '%s\n' "$_sde_sql"; } | sqlite3 -- "$_sde_db"
+  { _state_db_pragmas "$_sde_ms"; printf '%s\n' "$_sde_sql" | _state_db_split_statements; } \
+    | sqlite3 -bail -- "$_sde_db"
 }
 
 # _state_db_backoff_sleep TRY -> dorme ~TRY segundos + jitter fracionario

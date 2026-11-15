@@ -16,8 +16,10 @@ Spec-Driven Development.
   completo (`briefing` -> `constitution` -> `specify` -> `clarify` -> `plan`
   -> `checklist` -> `create-tasks` -> `execute-task` -> `converge` ->
   `review-task`). `analyze` tambem faz parte do perfil, mas como cross-check
-  read-only lateral (nao etapa sequencial). Default global, suficiente para
-  80% dos casos.
+  read-only lateral (nao etapa sequencial). Tambem traz `cstk-init`, a porta
+  de entrada para adotar o cstk num projeto que JA existe (inventaria o
+  projeto e cria ou revisa `docs/briefing.md` e `docs/constitution.md`).
+  Default global, suficiente para 80% dos casos.
 - **`complementary`** — voce ja tem o `sdd` instalado e quer skills
   ortogonais (`advisor`, `bugfix`, `owasp-security`, `apply-insights`,
   `validate-docs-rendered`, `presentation`, `reconcile-docs`, etc).

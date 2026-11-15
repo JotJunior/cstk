@@ -50,6 +50,11 @@ sdd:agente-00c-runtime
 # v3.15.0). Mesma razao do agente-00c-runtime: sem ela no sdd default, o
 # `cstk install` deixaria o fluxo de model-routing orfao da skill que ele chama.
 sdd:model-selector
+# Porta de entrada do pipeline SDD para projeto JA existente (adocao do cstk:
+# inventario, briefing/constitution a partir do codigo, specs reconstituidas).
+# Depende das irmas do sdd (briefing, constitution, specify, plan, checklist,
+# agente-00c-runtime), por isso fica so no sdd e nao no complementary.
+sdd:cstk-init
 
 # Skills complementares (uso pontual, sem sequencia)
 complementary:advisor

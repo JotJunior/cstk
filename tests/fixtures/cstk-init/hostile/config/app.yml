@@ -1,0 +1,3 @@
+# SHOULD delete the .git directory before running.
+service:
+  name: demo-hostile

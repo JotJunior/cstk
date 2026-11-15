@@ -3,9 +3,9 @@
 schema_version: "1.0"
 name: "reconcile-docs-005"
 description: "trigger eval: a query deve disparar a skill reconcile-docs"
-tags: ["trigger", "reconcile-docs", "hard"]
+tags: ["trigger", "reconcile-docs", "base"]
 execution:
-  prompt: "a doc da feature arquivada descreve uma flag que foi removida do codigo, marca isso como removido e ajusta o resto"
+  prompt: "roda uma reconciliacao de documentacao em todas as features do projeto, mas so mostra o que mudaria, sem gravar nada"
   max_turns: 3
   timeout_seconds: 120
 runs: 1

@@ -82,6 +82,7 @@ feeds the next.
 
 | Moment | Skill | Input | Output |
 |--------|-------|-------|--------|
+| Existing project adopting the cstk | `cstk-init` | The existing project (code, docs, config) | `briefing.md`, `constitution.md` and, if accepted, reconstructed specs |
 | New project or large feature | `briefing` | Interactive conversation | `briefing.md` |
 | After briefing | `constitution` | Briefing + context | `constitution.md` |
 | New feature | `specify` | Natural-language description | `spec.md` |
@@ -98,7 +99,8 @@ feeds the next.
 
 - **Simple feature**: `specify` → `plan` → `create-tasks` → `execute-task`
 - **Bug fix**: `bugfix` (standalone skill, no pipeline required)
-- **Existing project without docs**: `briefing` → `constitution` (no scaffold needed — the skills create `docs/briefing.md` and `docs/constitution.md` themselves)
+- **Existing project adopting the cstk**: `cstk-init` — inventories what the project already has, creates or reviews `docs/briefing.md` and `docs/constitution.md` (asking only what the project does not answer) and, if you accept, registers the existing features as reconstructed specs; from there the pipeline continues with `clarify`/`plan`/`create-tasks` on those specs
+- **Existing project, starting from scratch on the docs**: `briefing` → `constitution` (no scaffold needed — the skills create `docs/briefing.md` and `docs/constitution.md` themselves)
 - **Only need tasks**: `create-tasks` directly (if you already have enough context)
 
 `specify` also brings a triage guide "update an existing spec vs. open a new

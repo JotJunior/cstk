@@ -5,7 +5,7 @@ name: "reconcile-docs-002"
 description: "trigger eval: a query deve disparar a skill reconcile-docs"
 tags: ["trigger", "reconcile-docs", "base"]
 execution:
-  prompt: "reconcile-docs minha-feature"
+  prompt: "fiz varios acertos no codigo dessa feature e a spec ficou desatualizada — atualiza a documentacao pra refletir o que o codigo faz hoje"
   max_turns: 3
   timeout_seconds: 120
 runs: 1
