@@ -5,7 +5,7 @@ name: "specify-001"
 description: "trigger eval: a query deve disparar a skill specify"
 tags: ["trigger", "specify", "base"]
 execution:
-  prompt: "quero comecar uma feature nova de exportacao de relatorios em CSV, cria a spec"
+  prompt: "especifica uma feature nova de notificacoes por email para o projeto, escreve a spec com user stories e requisitos"
   max_turns: 3
   timeout_seconds: 120
 runs: 1

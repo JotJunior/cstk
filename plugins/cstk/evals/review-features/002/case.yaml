@@ -3,9 +3,9 @@
 schema_version: "1.0"
 name: "review-features-002"
 description: "trigger eval: a query deve disparar a skill review-features"
-tags: ["trigger", "review-features", "gen"]
+tags: ["trigger", "review-features", "base"]
 execution:
-  prompt: "quero entender onde cada feature ta agora — qual ta mais adiantada, qual ta parada faz tempo, se tem alguma que nao vale mais a pena continuar"
+  prompt: "me da um dashboard comparando o progresso de todas as features do portfolio"
   max_turns: 3
   timeout_seconds: 120
 runs: 1

@@ -5,7 +5,7 @@ name: "review-features-001"
 description: "trigger eval: a query deve disparar a skill review-features"
 tags: ["trigger", "review-features", "base"]
 execution:
-  prompt: "me da um dashboard comparando o progresso de todas as features do portfolio"
+  prompt: "me mostra o status global de todas as features do projeto, quais estao paradas e quais devo arquivar"
   max_turns: 3
   timeout_seconds: 120
 runs: 1

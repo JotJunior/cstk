@@ -82,6 +82,7 @@ próximo.
 
 | Momento | Skill | Entrada | Saída |
 |---------|-------|---------|-------|
+| Projeto existente adotando o cstk | `cstk-init` | O projeto existente (código, docs, configuração) | `briefing.md`, `constitution.md` e, se aceito, specs reconstituídas |
 | Projeto novo ou feature grande | `briefing` | Conversa interativa | `briefing.md` |
 | Após briefing | `constitution` | Briefing + contexto | `constitution.md` |
 | Nova feature | `specify` | Descrição em linguagem natural | `spec.md` |
@@ -98,7 +99,8 @@ próximo.
 
 - **Feature simples**: `specify` → `plan` → `create-tasks` → `execute-task`
 - **Bug fix**: `bugfix` (skill independente, não requer pipeline)
-- **Projeto existente sem docs**: `briefing` → `constitution` (sem scaffold — as proprias skills criam `docs/briefing.md` e `docs/constitution.md`)
+- **Projeto existente adotando o cstk**: `cstk-init` — inventaria o que o projeto já tem, cria ou revisa `docs/briefing.md` e `docs/constitution.md` (perguntando só o que o projeto não responde) e, se você aceitar, registra as features existentes como specs reconstituídas; dali o pipeline segue com `clarify`/`plan`/`create-tasks` sobre essas specs
+- **Projeto existente, começando os docs do zero**: `briefing` → `constitution` (sem scaffold — as proprias skills criam `docs/briefing.md` e `docs/constitution.md`)
 - **Só precisa de tasks**: `create-tasks` direto (se já tem contexto suficiente)
 
 A `specify` também traz um guia de triagem "atualizar spec existente vs abrir

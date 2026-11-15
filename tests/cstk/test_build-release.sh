@@ -178,7 +178,7 @@ scenario_build_release_profiles_parseavel() {
     _fail "resolve sdd" "$_CAPTURED_STDERR"
     return 1
   fi
-  # SDD profile tem 17 skills (10 da pipeline + agente-00c-runtime infra
+  # SDD profile tem 18 skills (10 da pipeline + agente-00c-runtime infra
   # do /agente-00c + model-selector + review-features + 4 skills-gate,
   # per scripts/profiles.txt.in). Historico: model-selector entrou em
   # 7eecdb7 (11 -> 12); review-features (fase terminal do agente-00c) +
@@ -186,10 +186,11 @@ scenario_build_release_profiles_parseavel() {
   # obrigatorios dos orquestradores) entraram na revisao 5.15.0
   # (12 -> 16); converge (gate incondicional execute-task->review-task,
   # feature skill-converge) entrou na 5.20.0 (16 -> 17) — mesma causa:
-  # invocado pelo orquestrador mas ausente do profile default.
+  # invocado pelo orquestrador mas ausente do profile default; cstk-init (porta de
+  # entrada para projeto existente, feature cstk-init) entrou depois (17 -> 18).
   _count=$(printf '%s\n' "$_CAPTURED_STDOUT" | awk 'NF>0' | wc -l | awk '{print $1}')
-  if [ "$_count" != 17 ]; then
-    _fail "sdd count" "esperado 17, obtido $_count: $_CAPTURED_STDOUT"
+  if [ "$_count" != 18 ]; then
+    _fail "sdd count" "esperado 18, obtido $_count: $_CAPTURED_STDOUT"
     return 1
   fi
   # Regressao: agente-00c-runtime DEVE estar em sdd (causa principal do

@@ -5,7 +5,7 @@ name: "reconcile-docs-006"
 description: "trigger eval: a query deve disparar a skill reconcile-docs"
 tags: ["trigger", "reconcile-docs", "hard"]
 execution:
-  prompt: "o comportamento mudou no codigo depois de uns bugfixes e ninguem mexeu na spec; traz a documentacao de volta pra realidade sem mexer em nenhum arquivo de codigo"
+  prompt: "a doc da feature arquivada descreve uma flag que foi removida do codigo, marca isso como removido e ajusta o resto"
   max_turns: 3
   timeout_seconds: 120
 runs: 1

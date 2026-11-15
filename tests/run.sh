@@ -292,6 +292,14 @@ _is_internal_test() {
       # orfao real.
       [ -f "$REPO_ROOT/plugins/cstk-jira/skills/jira-setup/scripts/jira-credential-setup.sh" ] && return 0
       return 1 ;;
+    test_cstk-init-skill.sh)
+      # Assert estatico do SKILL.md de cstk-init (feature cstk-init, tarefa 5.1.5):
+      # forma/consistencia da skill, nao mapeia 1:1 para um script.
+      return 0 ;;
+    test_cstk-init-fixtures.sh)
+      # Sanidade das fixtures de tests/fixtures/cstk-init/ (feature cstk-init,
+      # tarefa 3.2): invariante das fixtures, nao mapeia 1:1 para um script.
+      return 0 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.

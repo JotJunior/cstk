@@ -145,7 +145,7 @@ labels are stripped before touching disk.
 │   │   ├── .mcp.json            # registers the cstk-state MCP server (auto-starts on the plugin path)
 │   │   ├── mcp/state-server/    # MCP server source (Node/TS, stdio) — ships INSIDE the plugin
 │   │   ├── evals/               # `claude plugin eval` suite (generated from the skills' triggers.jsonl)
-│   │   └── skills/               # 23 global skills (each skill is a folder)
+│   │   └── skills/               # 24 global skills (each skill is a folder)
 │   │       ├── advisor/
 │   │       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
 │   │       ├── analyze/
@@ -220,6 +220,7 @@ Details, flow diagram and shortcuts in
 
 | Skill | Trigger | Description |
 |-------|---------|-----------|
+| **cstk-init** | "cstk-init", "adotar o cstk neste projeto" | Entry point for an EXISTING project: inventories what it already has, creates or reviews `docs/briefing.md` and `docs/constitution.md` (asking only what the project does not answer) and, if you accept, registers the existing features as reconstructed specs. Every concrete fact cites its source or stays pending |
 | **briefing** | "briefing", "discovery", "novo projeto" | Structured discovery interview (vision, users, constraints, stack) |
 | **constitution** | "constitution", "princípios do projeto" | Immutable governance principles that guide decisions |
 | **specify** | "specify", "criar spec", "nova feature" | Natural description → SDD feature spec (stories, requirements, success criteria). Gate: every requirement needs >=1 scenario; optional Delta Requirements section (living specs) |
@@ -313,7 +314,7 @@ After that, typical commands:
 cstk --version                       # confirms installation
 cstk install                         # installs the 'sdd' profile into ~/.claude/skills/
 cstk install --cli=codex             # installs Codex workflows, MCP and hooks
-cstk install --profile all           # installs ALL 30 skills (includes language-go)
+cstk install --profile all           # installs ALL 31 skills (includes language-go)
 cstk install advisor bugfix          # cherry-pick by name
 cstk update                          # applies new releases preserving local edits
 cstk update --force                  # overwrites locally edited skills
@@ -340,9 +341,9 @@ checkout, run `sh cli/cstk install --cli=codex`.
 
 | Profile | Content | Typical use |
 |--------|----------|------------|
-| `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
+| `sdd` | 18 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector, the orchestrators' 4 quality gates and `cstk-init` (adopting the cstk in an existing project) | Default global installation |
 | `complementary` | 12 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
-| `all` | All 30 skills (sdd + complementary + language-go) | Full installation |
+| `all` | All 31 skills (sdd + complementary + language-go) | Full installation |
 | `language-go` | Go-specific skills + hooks | Only in Go projects |
 
 Default profile when none is given: `sdd`.
@@ -704,9 +705,9 @@ this via manifest + hash_dir.
 
 | Profile | Content | Typical use |
 |--------|----------|------------|
-| `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
+| `sdd` | 18 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector, the orchestrators' 4 quality gates and `cstk-init` (adopting the cstk in an existing project) | Default global installation |
 | `complementary` | 12 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
-| `all` | All 30 skills (sdd + complementary + language-go) | Full installation |
+| `all` | All 31 skills (sdd + complementary + language-go) | Full installation |
 | `language-go` | Go-specific skills + hooks | Only in Go projects |
 
 Default profile when none is given: `sdd`. Details in `cstk install --help`.

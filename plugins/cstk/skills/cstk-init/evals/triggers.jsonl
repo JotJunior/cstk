@@ -1,0 +1,11 @@
+{"query": "cstk-init", "expect": "cstk-init"}
+{"query": "quero adotar o cstk neste projeto que ja existe ha dois anos, sem briefing nem constitution — da pra gerar isso a partir do que ja tem no repositorio?", "expect": "cstk-init"}
+{"query": "adopt the cstk in this existing codebase: read what the project already has and create the briefing and constitution from it", "expect": "cstk-init"}
+{"query": "esse projeto usou uma versao antiga do cstk, com o briefing em docs/01-briefing-discovery; atualiza tudo pro formato atual sem sobrescrever o que ja existe", "expect": "cstk-init"}
+{"query": "temos um sistema legado sem nenhuma documentacao SDD. reconhece as features que ja existem no codigo e registra como specs no padrao cstk", "expect": "cstk-init", "tier": "hard"}
+{"query": "o repositorio ja esta rodando em producao e agora o time quer comecar a usar o fluxo spec-driven nele; monta o briefing e a constitution olhando o README, os testes e os manifestos, e so me pergunta o que nao der pra saber", "expect": "cstk-init", "tier": "hard"}
+{"query": "vamos iniciar um projeto novo do zero, ainda nao existe codigo nenhum; faz a entrevista de discovery com a gente", "expect": "briefing"}
+{"query": "quero so definir os principios de governanca imutaveis do projeto, ja temos o briefing pronto", "expect": "constitution"}
+{"query": "especifica uma feature nova de notificacoes por email para o projeto, escreve a spec com user stories e requisitos", "expect": "specify"}
+{"query": "a spec da feature de billing ja esta registrada em docs/specs mas o codigo recebeu varios bugfixes e ela ficou desatualizada; atualiza a documentacao pra bater com o codigo", "expect": "reconcile-docs"}
+{"query": "me mostra o status global de todas as features do projeto, quais estao paradas e quais devo arquivar", "expect": "review-features"}
