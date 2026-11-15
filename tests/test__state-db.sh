@@ -122,6 +122,79 @@ scenario_state_db_exec_persiste_payload_hostil_literal_e_tabela_sobrevive() {
   [ "$_integrity" = "ok" ] || { _fail "integrity_check" "esperado ok, obtido $_integrity"; return 1; }
 }
 
+# ---------------------------------------------------------------------------
+# Atomicidade (C4) sob CLI que NAO para no primeiro erro da linha.
+# Regressao observada em 2026-11-15 com /usr/bin/sqlite3 3.54.0 (macOS): o
+# statement que falha no meio de `BEGIN IMMEDIATE; A; B; COMMIT;` nao
+# interrompia B nem o COMMIT. Os cenarios abaixo valem para qualquer versao
+# do CLI — nas antigas ja passavam, e continuam tendo de passar.
+# ---------------------------------------------------------------------------
+
+_SEED_EXEC_SQL="INSERT INTO execution (id,schema_version,target_project_path,target_project_description,status,started_at,current_stage,next_instruction) VALUES ('exec-1','1.0.0','/tmp/p','desc','em_andamento','2026-07-30T00:00:00Z','specify','x');"
+
+scenario_state_db_split_statements_quebra_so_fora_de_literal() {
+  _got=$(printf '%s\n' "BEGIN; INSERT INTO t VALUES('a; b''c; d'); COMMIT;" | _state_db_split_statements)
+  _want="BEGIN;
+ INSERT INTO t VALUES('a; b''c; d');
+ COMMIT;"
+  # $(...) remove as quebras finais; a linha vazia apos o ultimo `;` some.
+  [ "$_got" = "$_want" ] || { _fail "split fora de literal" "obtido: $_got"; return 1; }
+}
+
+scenario_state_db_split_statements_literal_multilinha_fica_intacto() {
+  # O estado dentro/fora de literal atravessa a quebra de linha: o `;` da
+  # 2a linha ainda esta DENTRO do literal aberto na 1a.
+  _in="INSERT INTO t VALUES('l1; x
+l2; y'); SELECT 1;"
+  _got=$(printf '%s\n' "$_in" | _state_db_split_statements)
+  _want="INSERT INTO t VALUES('l1; x
+l2; y');
+ SELECT 1;"
+  [ "$_got" = "$_want" ] || { _fail "split literal multilinha" "obtido: $_got"; return 1; }
+}
+
+scenario_state_db_exec_falha_no_meio_reverte_transacao_inteira() {
+  _db="$TMPDIR_TEST/state.db"
+  "$SCHEMA_SCRIPT" create --db "$_db" >/dev/null
+  _state_db_exec "$_db" "$_SEED_EXEC_SQL" >/dev/null
+  # INSERT viola a FK (dec-999 nao existe); o UPDATE e o COMMIT que vem
+  # depois NA MESMA LINHA nao podem ser aplicados.
+  capture _state_db_exec "$_db" "BEGIN IMMEDIATE; INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at) VALUES ('block-001','exec-1','dec-999','pergunta com pelo menos 20 chars','contexto','aguardando','2026-07-30T00:00:00Z'); UPDATE execution SET status='aguardando_humano' WHERE id='exec-1'; COMMIT;"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "falha no meio" "deveria sair nao-zero (FOREIGN KEY)"; return 1; }
+  assert_stderr_contains "FOREIGN KEY constraint failed" || return 1
+  _st=$(sqlite3 "$_db" "SELECT status FROM execution WHERE id='exec-1';")
+  [ "$_st" = "em_andamento" ] || { _fail "rollback da transacao" "UPDATE posterior ao erro foi persistido: status=$_st"; return 1; }
+  _nb=$(sqlite3 "$_db" "SELECT count(*) FROM human_block;")
+  [ "$_nb" = 0 ] || { _fail "rollback da transacao" "esperado 0 human_block, obtido $_nb"; return 1; }
+}
+
+scenario_state_db_exec_transacao_valida_continua_commitando() {
+  # Contraprova: a mesma forma de transacao, sem erro, persiste tudo.
+  _db="$TMPDIR_TEST/state.db"
+  "$SCHEMA_SCRIPT" create --db "$_db" >/dev/null
+  _state_db_exec "$_db" "$_SEED_EXEC_SQL" >/dev/null
+  capture _state_db_exec "$_db" "BEGIN IMMEDIATE; UPDATE execution SET current_stage='plan' WHERE id='exec-1'; UPDATE execution SET status='aguardando_humano' WHERE id='exec-1'; SELECT status FROM execution WHERE id='exec-1'; COMMIT;"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "transacao valida" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "aguardando_humano" ] || { _fail "stdout da transacao" "esperado so o resultado do SELECT, obtido '$_CAPTURED_STDOUT'"; return 1; }
+  _row=$(sqlite3 "$_db" "SELECT status || '|' || current_stage FROM execution WHERE id='exec-1';")
+  [ "$_row" = "aguardando_humano|plan" ] || { _fail "commit da transacao" "obtido $_row"; return 1; }
+}
+
+scenario_state_db_exec_literal_com_ponto_e_virgula_e_quebra_persiste_identico() {
+  # O texto livre com `;`, quebra de linha e apostrofo tem de chegar ao
+  # banco byte a byte, mesmo com a separacao de statements por linha.
+  _db="$TMPDIR_TEST/state.db"
+  "$SCHEMA_SCRIPT" create --db "$_db" >/dev/null
+  _state_db_exec "$_db" "$_SEED_EXEC_SQL" >/dev/null
+  _txt="linha 1; com ponto-e-virgula
+linha 2; d'agua; fim"
+  _lit="'$(sql_escape "$_txt")'"
+  capture _state_db_exec "$_db" "BEGIN IMMEDIATE; INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale) VALUES ('dec-001','exec-1','2026-07-30T00:00:00Z','agente','etapa',$_lit,'[\"a\"]','a','justificativa valida com >= 20 chars'); COMMIT;"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "insert literal" "$_CAPTURED_STDERR"; return 1; }
+  _eq=$(sqlite3 "$_db" "SELECT count(*) FROM decision WHERE id='dec-001' AND context = $_lit;")
+  [ "$_eq" = 1 ] || { _fail "literal identico" "context gravado difere do texto de entrada"; return 1; }
+}
+
 scenario_state_db_exec_with_retry_sucesso_sem_lock() {
   _db="$TMPDIR_TEST/state.db"
   "$SCHEMA_SCRIPT" create --db "$_db" >/dev/null
