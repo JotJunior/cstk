@@ -70,6 +70,18 @@ you can review the route, instead of blindly trusting the chain of steps.
   will only be answered in hours/days), the partial report suggests creating a
   manual routine via `/schedule` that survives laptop suspend/restart
   (Anthropic cloud).
+- **The next-wave wakeup lives in the session that scheduled it**: since
+  Claude Code 2.1.329, opening a NEW session does not re-run a saved
+  scheduled task, and leaving with "Exit and stop tasks" cancels it. Only
+  `claude --resume` of that same session still runs it. If you close the
+  terminal mid-run, either reopen that session with `claude --resume` or
+  run `/agente-00c-resume` / `/feature-00c-resume <short-name>` by hand.
+  The parent command records the planned time in
+  `.waves[-1].next_wave_scheduled_for`, and
+  `state-ondas.sh wakeup-check --state-dir <SD>` (also run at the start of
+  every resume) reports `missed (...)` plus
+  `DIAG|warning|wave-wakeup-missed` when that time has passed without a new
+  wave. It only reports; it never resumes anything by itself.
 - **No native observability of consumed tokens**: the session budget uses
   proxies (wave tool calls, wallclock, state size).
 - **No raw `git push`, no external deploy, no `sudo`**: by the feature's
@@ -175,6 +187,17 @@ the map's floor, citing signals. The **suggest-only** contract is preserved:
 the skill never switches the model on its own — the parent command applies it.
 Suggested-vs-applied auditing via `model-routing-report.sh aggregate`
 (consumed by `review-task` §4.5).
+
+**Not affected by Claude Code 2.1.330** (issue #249): that release stopped
+passing a skill's `model` setting on to subagents and forks. The routing above
+never used skill frontmatter: no catalog skill declares `model:`, and the model
+goes in the spawn's `model=`. Checked on 2.1.332 against the `model` field the
+API recorded in each subagent transcript (opus session): `model=haiku` →
+haiku, `model=sonnet` → sonnet, the agent's `model: sonnet` frontmatter alone →
+sonnet, an explicit `model=haiku` beats that frontmatter, and a sonnet subagent
+that ran a skill and then spawned children got sonnet for the child without
+`model=` (it inherits the parent's model, not the session's) and haiku for the
+child with `model=haiku`.
 
 Specs: [`specs/_archived/model-routing-por-onda/`](./specs/_archived/model-routing-por-onda/)
 (current mechanism) and

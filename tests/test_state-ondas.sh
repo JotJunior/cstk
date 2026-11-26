@@ -342,6 +342,114 @@ scenario_proxima_agendada_para_persiste() {
   assert_stdout_contains "2026-05-05T15:30:00Z" || return 1
 }
 
+# ---------- record-schedule / wakeup-check (issue #248) ----------
+
+# _wk_closed_wave DIR -> state com 1 onda fechada (sem horario agendado).
+_wk_closed_wave() {
+  capture "$SCRIPT" start --state-dir "$1"
+  capture "$SCRIPT" end --state-dir "$1" --motivo-termino etapa_concluida_avancando
+}
+
+scenario_record_schedule_grava_now_mais_delay() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  [ -f "$_sd/state.json" ] && [ ! -f "$_sd/state.db" ] \
+    || { _fail "pre-condicao" "esperado backend JSON"; return 1; }
+  _wk_closed_wave "$_sd"
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 270 --now 2026-11-26T10:00:00Z
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record-schedule" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "2026-11-26T10:04:30Z" ] \
+    || { _fail "stdout" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].next_wave_scheduled_for'
+  [ "$_CAPTURED_STDOUT" = "2026-11-26T10:04:30Z" ] \
+    || { _fail "campo persistido" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_record_schedule_rejeita_delay_invalido() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  _wk_closed_wave "$_sd"
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 4m
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].next_wave_scheduled_for'
+  [ "$_CAPTURED_STDOUT" = "null" ] || { _fail "nao deveria escrever" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_record_schedule_sem_onda_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 60
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit esperado 1" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "nenhuma onda" || return 1
+}
+
+scenario_wakeup_check_sem_onda_e_onda_aberta() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "ok (no-wave)" ] || { _fail "sem onda" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "ok (wave-open)" ] || { _fail "onda aberta" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_wakeup_check_sem_horario_gravado_e_unknown() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  _wk_closed_wave "$_sd"
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "unknown (no-schedule-recorded)" ] \
+    || { _fail "stdout" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  case "$_CAPTURED_STDERR" in *DIAG\|*) _fail "nao deveria emitir DIAG" "$_CAPTURED_STDERR"; return 1 ;; esac
+}
+
+scenario_wakeup_check_no_prazo_e_vencido() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  _wk_closed_wave "$_sd"
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 270 --now 2026-11-26T10:00:00Z
+  # agendado para 10:04:30; 10:14:00 = 570s de atraso, dentro do grace 600
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-26T10:14:00Z
+  [ "$_CAPTURED_STDOUT" = "ok (scheduled-for=2026-11-26T10:04:30Z)" ] \
+    || { _fail "no prazo" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  case "$_CAPTURED_STDERR" in *DIAG\|*) _fail "no prazo nao emite DIAG" "$_CAPTURED_STDERR"; return 1 ;; esac
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-26T11:04:30Z
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "missed e exit 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "missed (scheduled-for=2026-11-26T10:04:30Z overdue-seconds=3600)" ] \
+    || { _fail "vencido" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  assert_stderr_contains "DIAG|warning|wave-wakeup-missed|" || return 1
+  assert_stderr_contains "claude --resume" || return 1
+}
+
+scenario_wakeup_check_grace_configuravel() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  _wk_closed_wave "$_sd"
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 60 --now 2026-11-26T10:00:00Z
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-26T10:03:00Z --grace-seconds 0
+  assert_stdout_contains "missed (scheduled-for=2026-11-26T10:01:00Z overdue-seconds=120)" || return 1
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --grace-seconds x
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "grace invalido exit 2" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_wakeup_check_status_terminal_silencia() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  _wk_closed_wave "$_sd"
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 60 --now 2026-11-26T10:00:00Z
+  capture "$RW" set --state-dir "$_sd" --field '.execution.status' --value '"concluida"'
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-30T10:00:00Z
+  [ "$_CAPTURED_STDOUT" = "ok (status=concluida)" ] \
+    || { _fail "terminal" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  case "$_CAPTURED_STDERR" in *DIAG\|*) _fail "terminal nao emite DIAG" "$_CAPTURED_STDERR"; return 1 ;; esac
+}
+
+scenario_wakeup_check_state_ausente_exit_1() {
+  capture "$SCRIPT" wakeup-check --state-dir "$TMPDIR_TEST/nao-existe"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit esperado 1" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 scenario_current_id_retorna_init_sem_onda() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
@@ -2670,6 +2778,44 @@ scenario_sqlite_end_otel_reason_preserva_extra_fields() {
   [ "$_reason" = "exporter-trocou" ] \
     || { _fail "merge" "motivo nao gravado junto do vizinho, obtido '$_reason'"; return 1; }
   return 0
+}
+
+scenario_sqlite_record_schedule_e_wakeup_check() {
+  _sd="$TMPDIR_TEST/sqlite-wakeup"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "ok (no-wave)" ] || { _fail "sem onda" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "ok (wave-open)" ] || { _fail "onda aberta" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "unknown (no-schedule-recorded)" ] \
+    || { _fail "sem horario" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 1800 --now 2026-11-26T10:00:00Z
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record-schedule" "$_CAPTURED_STDERR"; return 1; }
+  _col=$(sqlite3 "$_sd/state.db" "SELECT next_wave_scheduled_for FROM wave WHERE seq=1;")
+  [ "$_col" = "2026-11-26T10:30:00Z" ] || { _fail "coluna" "obtido '$_col'"; return 1; }
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-26T10:35:00Z
+  [ "$_CAPTURED_STDOUT" = "ok (scheduled-for=2026-11-26T10:30:00Z)" ] \
+    || { _fail "no prazo" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-27T10:30:00Z
+  [ "$_CAPTURED_STDOUT" = "missed (scheduled-for=2026-11-26T10:30:00Z overdue-seconds=86400)" ] \
+    || { _fail "vencido" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  assert_stderr_contains "DIAG|warning|wave-wakeup-missed|" || return 1
+}
+
+scenario_sqlite_wakeup_check_aguardando_humano_silencia() {
+  _sd="$TMPDIR_TEST/sqlite-wakeup-humano"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino bloqueio_humano
+  capture "$SCRIPT" record-schedule --state-dir "$_sd" --delay-seconds 60 --now 2026-11-26T10:00:00Z
+  sqlite3 "$_sd/state.db" "UPDATE execution SET status='aguardando_humano';" \
+    || { _fail "fixture" "UPDATE status falhou"; return 1; }
+  capture "$SCRIPT" wakeup-check --state-dir "$_sd" --now 2026-11-30T10:00:00Z
+  [ "$_CAPTURED_STDOUT" = "ok (status=aguardando_humano)" ] \
+    || { _fail "aguardando_humano" "obtido '$_CAPTURED_STDOUT'"; return 1; }
 }
 
 fi # sqlite3 disponivel

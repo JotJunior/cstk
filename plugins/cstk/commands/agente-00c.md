@@ -972,6 +972,19 @@ Procure a linha `Schedule intent: ...` no sumario retornado e aplique:
 | `Schedule intent: none; motivo=<X>` | NAO invocar ScheduleWakeup. Anotar motivo para o sumario final. |
 | linha ausente OU formato invalido | Anotar `Proxima onda agendada: nenhuma (Schedule intent ausente/invalido — ver report.md)`. NAO tentar adivinhar parametros. |
 
+Se `ScheduleWakeup` retornou com sucesso, grave o instante agendado com o
+MESMO `delaySeconds` aplicado (o helper faz a conta; best-effort, nunca
+desfaz o agendamento — issue #248):
+
+```bash
+state-ondas.sh record-schedule --state-dir <SD> --delay-seconds <N> || :
+```
+
+E inclua no sumario final, junto de `Proxima onda agendada`: `O agendamento
+vive nesta sessao: fechar o terminal ou sair com "Exit and stop tasks" o
+cancela. Para retomar, reabra esta sessao com \`claude --resume\` ou rode
+/agente-00c-resume <projeto>.`
+
 Se `ScheduleWakeup` falhar (excecao da tool), atualize o estado para
 refletir a falha:
 
