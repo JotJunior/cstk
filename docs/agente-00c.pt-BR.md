@@ -70,6 +70,18 @@ de etapas.
   bloqueios que só serão respondidos em horas/dias), o relatório
   parcial sugere criar uma routine manual via `/schedule` que sobrevive
   laptop suspend/restart (cloud Anthropic).
+- **O wakeup da próxima onda vive na sessão que o agendou**: desde o
+  Claude Code 2.1.329, abrir uma sessão NOVA não re-executa agendamento
+  salvo, e sair com "Exit and stop tasks" o cancela. Só `claude --resume`
+  da mesma sessão ainda o executa. Se fechar o terminal no meio da
+  execução, reabra essa sessão com `claude --resume` ou rode
+  `/agente-00c-resume` / `/feature-00c-resume <short-name>` na mão. O
+  command pai grava o horário planejado em
+  `.waves[-1].next_wave_scheduled_for`, e
+  `state-ondas.sh wakeup-check --state-dir <SD>` (rodado também no início
+  de todo resume) reporta `missed (...)` + `DIAG|warning|wave-wakeup-missed`
+  quando esse horário passou sem onda nova. Só reporta; nunca retoma nada
+  sozinho.
 - **Sem observabilidade nativa de tokens consumidos**: o orçamento de
   sessão usa proxies (tool calls da onda, wallclock, tamanho do estado).
 - **Sem `git push` cru, sem deploy externo, sem `sudo`**: por constituição da
@@ -175,6 +187,16 @@ haiku sobre o piso do mapa, citando sinais. Contrato **suggest-only**
 preservado: a skill nunca troca modelo sozinha — quem aplica é o command pai.
 Auditoria sugerido-vs-aplicado via `model-routing-report.sh aggregate`
 (consumida pelo `review-task` §4.5).
+
+**Não afetado pelo Claude Code 2.1.330** (issue #249): essa versão deixou de
+repassar o `model` de uma skill a subagentes e forks. O roteamento acima nunca
+usou frontmatter de skill: nenhuma skill do catálogo declara `model:`, e o
+modelo vai no `model=` do spawn. Conferido na 2.1.332 pelo campo `model` que a
+API gravou no transcript de cada subagente (sessão em opus): `model=haiku` →
+haiku, `model=sonnet` → sonnet, só o frontmatter `model: sonnet` do agent →
+sonnet, `model=haiku` explícito vence esse frontmatter, e um subagente sonnet
+que rodou uma skill e depois spawnou filhos deu sonnet ao filho sem `model=`
+(herda o modelo do pai, não o da sessão) e haiku ao filho com `model=haiku`.
 
 Specs: [`specs/_archived/model-routing-por-onda/`](./specs/_archived/model-routing-por-onda/)
 (mecanismo atual) e

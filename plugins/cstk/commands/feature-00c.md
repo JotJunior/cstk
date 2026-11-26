@@ -1283,6 +1283,19 @@ reconciliacao fechou a onda, DERIVE do `.execution.status` real:
 - terminal (`concluida`/`abortada`/`aguardando_humano`): NAO agendar.
 - `em_andamento`: `ScheduleWakeup(delaySeconds: 270, reason: "proxima onda (recuperada pela rede de seguranca)", prompt: "/feature-00c-resume <short>")`.
 
+Se `ScheduleWakeup` retornou com sucesso (qualquer dos dois caminhos acima),
+grave o instante agendado com o MESMO `delaySeconds` aplicado (o helper faz
+a conta; best-effort — issue #248):
+
+```bash
+state-ondas.sh record-schedule --state-dir "$AGENTE_00C_STATE_DIR" --delay-seconds <N> || :
+```
+
+E inclua no resultado ao operador: `O agendamento vive nesta sessao:
+fechar o terminal ou sair com "Exit and stop tasks" o cancela. Para
+retomar, reabra esta sessao com \`claude --resume\` ou rode
+/feature-00c-resume <short>.`
+
 Se `Schedule intent: none`, NAO invocar ScheduleWakeup. Apenas liberar
 lock e exit 0.
 

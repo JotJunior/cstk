@@ -100,7 +100,17 @@ Casos:
   Execucao em status terminal (<status>). Nada a retomar.
   Para nova execucao, use /agente-00c em outro projeto-alvo.
   ```
-- `em_andamento`: retomada normal pos-schedule. Pule para passo 6.
+- `em_andamento`: retomada normal pos-schedule. Antes de pular para o
+  passo 6, rode o diagnostico read-only de wakeup perdido (issue #248 —
+  best-effort, nunca condiciona a retomada):
+  ```bash
+  WK_OUT=$(state-ondas.sh wakeup-check --state-dir <SD> 2>/dev/null) || WK_OUT=""
+  ```
+  Se `$WK_OUT` comecar com `missed (`, inclua no resultado ao operador
+  (passo 9) a linha `Onda agendada nao disparou: <scheduled-for> (atraso
+  <overdue-seconds>s) — o agendamento vive na sessao que o criou; ao fechar
+  o terminal, reabra com \`claude --resume\` ou rode /agente-00c-resume`.
+  Qualquer outro valor: nada a dizer. Pule para passo 6.
 - `aguardando_humano`: requer `--resposta-bloqueio`. Continue passo 5.
 
 ### 5. Aplicar resposta a bloqueio (se status = aguardando_humano)
@@ -503,6 +513,16 @@ Procure a linha `Schedule intent: ...` no sumario e aplique:
 | `Schedule intent: delaySeconds=<N>; reason="<R>"; prompt="<P>"` | Invocar `ScheduleWakeup(delaySeconds=<N>, reason="<R>", prompt="<P>")` |
 | `Schedule intent: none; motivo=<X>` | NAO invocar ScheduleWakeup. Anotar motivo. |
 | linha ausente OU formato invalido | Anotar `Proxima onda agendada: nenhuma (Schedule intent ausente/invalido)`. NAO tentar adivinhar. |
+
+Se `ScheduleWakeup` retornou com sucesso, grave o instante agendado com o
+MESMO `delaySeconds` aplicado (best-effort, issue #248) e inclua no
+resultado o aviso de que o agendamento vive nesta sessao (fechar o terminal
+ou "Exit and stop tasks" o cancela; retomar com `claude --resume` ou
+/agente-00c-resume <projeto>):
+
+```bash
+state-ondas.sh record-schedule --state-dir <SD> --delay-seconds <N> || :
+```
 
 Se `ScheduleWakeup` falhar, limpe o estado:
 

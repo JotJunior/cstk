@@ -192,6 +192,33 @@
 #         Idempotente: se nao ha mudancas para commitar, retorna 0 sem erro.
 #         Sem fail-soft: se git nao existe / dir nao e repo, exit 1.
 #
+#   state-ondas.sh record-schedule --state-dir DIR --delay-seconds N
+#                                  [--now ISO]
+#       — Grava em .waves[-1].next_wave_scheduled_for o instante em que a
+#         proxima onda deve disparar (now + N, ISO UTC). Chamado pelo
+#         COMMAND PAI logo apos um `ScheduleWakeup` bem-sucedido — e o pai
+#         quem conhece o delaySeconds de fato aplicado; o orquestrador so
+#         registrava o campo quando lembrava (13% das ondas reais, medido em
+#         2026-11-26, issue #248). Calculo feito aqui, nunca pelo LLM.
+#         Backend-agnostico (via state-rw.sh set). Stdout: o ISO gravado.
+#         --now existe para teste (default: relogio UTC).
+#
+#   state-ondas.sh wakeup-check --state-dir DIR [--now ISO]
+#                               [--grace-seconds N]
+#       — Diagnostico READ-ONLY (issue #248): o wakeup agendado vive na
+#         SESSAO que o agendou (Claude Code 2.1.329: sessao nova nao
+#         re-executa agendamento salvo; `claude --resume` da propria sessao
+#         sim; "Exit and stop tasks" cancela). Detecta a execucao que ficou
+#         parada por isso. Stdout (1 linha, sempre exit 0):
+#           ok (status=<S>)                 execucao nao esta em_andamento
+#           ok (no-wave) | ok (wave-open)   nada agendado a verificar
+#           unknown (no-schedule-recorded)  onda fechada sem horario gravado
+#           unknown (unparseable-schedule)  horario gravado ilegivel
+#           ok (scheduled-for=<ISO>)        ainda no prazo (+ grace)
+#           missed (scheduled-for=<ISO> overdue-seconds=<N>)
+#         Em `missed`, emite tambem DIAG|warning|wave-wakeup-missed em
+#         stderr. Nunca retoma nada sozinho. --grace-seconds default 600.
+#
 # Exit codes:
 #   0 sucesso
 #   1 erro generico (state ausente, git falhou)
@@ -1584,6 +1611,8 @@ USO:
   state-ondas.sh reconcile-tasks --state-dir DIR --tasks-md PATH
                                 [--wave-id ID] [--dry-run]
   state-ondas.sh current-id     --state-dir DIR
+  state-ondas.sh record-schedule --state-dir DIR --delay-seconds N [--now ISO]
+  state-ondas.sh wakeup-check   --state-dir DIR [--now ISO] [--grace-seconds N]
   state-ondas.sh git-commit     --state-dir DIR --projeto-alvo-path PATH
                                 --motivo MOTIVO [--onda-id ID]
 
@@ -1822,6 +1851,122 @@ _so_cmd_reconcile_wave() {
   fi
 }
 
+# _so_iso_to_epoch ISO -> epoch (GNU `date -d` primeiro, BSD `date -j -f`
+# depois — mesmo fallback de _so_wallclock). Falha = return 1, stdout vazio.
+_so_iso_to_epoch() {
+  date -u -d "$1" +%s 2>/dev/null && return 0
+  date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null && return 0
+  return 1
+}
+
+# _so_epoch_to_iso EPOCH -> ISO UTC (GNU `date -d @N` primeiro, BSD `-r N`).
+_so_epoch_to_iso() {
+  date -u -d "@$1" +%FT%TZ 2>/dev/null && return 0
+  date -u -r "$1" +%FT%TZ 2>/dev/null && return 0
+  return 1
+}
+
+# _so_state_present DIR -> 0 se ha state.json ou state.db.
+_so_state_present() {
+  [ -f "$(_sr_db_file "$1")" ] || [ -f "$(_so_state_file "$1")" ]
+}
+
+_so_cmd_record_schedule() {
+  _rs_sdir=""; _rs_delay=""; _rs_now=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)     _rs_sdir=$2; shift 2 ;;
+      --delay-seconds) _rs_delay=$2; shift 2 ;;
+      --now)           _rs_now=$2; shift 2 ;;
+      *) _so_die_usage "record-schedule: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_rs_sdir" ] || _so_die_usage "record-schedule: --state-dir obrigatorio"
+  case "$_rs_delay" in
+    ''|*[!0-9]*) _so_die_usage "record-schedule: --delay-seconds exige inteiro >= 0 (obtido '$_rs_delay')" ;;
+  esac
+  _so_require_jq
+  _so_state_present "$_rs_sdir" || _so_die "record-schedule: state ausente em $_rs_sdir" 1
+  _rs_ws=$(_so_cmd_wave_status --state-dir "$_rs_sdir")
+  [ "$_rs_ws" != "none" ] || _so_die "record-schedule: nenhuma onda registrada em $_rs_sdir" 1
+
+  if [ -n "$_rs_now" ]; then
+    _rs_now_e=$(_so_iso_to_epoch "$_rs_now") \
+      || _so_die_usage "record-schedule: --now ilegivel (esperado YYYY-MM-DDTHH:MM:SSZ): $_rs_now"
+  else
+    _rs_now_e=$(date -u +%s)
+  fi
+  _rs_iso=$(_so_epoch_to_iso "$((_rs_now_e + _rs_delay))") \
+    || _so_die "record-schedule: nao foi possivel formatar o instante agendado" 1
+
+  if ! _rs_err=$(sh "$(_so_self_dir)/state-rw.sh" set --state-dir "$_rs_sdir" \
+      --field '.waves[-1].next_wave_scheduled_for' --value "\"$_rs_iso\"" 2>&1 >/dev/null); then
+    printf '%s\n' "$_rs_err" >&2
+    _so_die "record-schedule: state-rw.sh set falhou" 1
+  fi
+  printf '%s\n' "$_rs_iso"
+}
+
+_so_cmd_wakeup_check() {
+  _wc_sdir=""; _wc_now=""; _wc_grace=600
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)     _wc_sdir=$2; shift 2 ;;
+      --now)           _wc_now=$2; shift 2 ;;
+      --grace-seconds) _wc_grace=$2; shift 2 ;;
+      *) _so_die_usage "wakeup-check: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_wc_sdir" ] || _so_die_usage "wakeup-check: --state-dir obrigatorio"
+  case "$_wc_grace" in
+    ''|*[!0-9]*) _so_die_usage "wakeup-check: --grace-seconds exige inteiro >= 0 (obtido '$_wc_grace')" ;;
+  esac
+  _so_require_jq
+  _so_state_present "$_wc_sdir" || _so_die "wakeup-check: state ausente em $_wc_sdir" 1
+  _wc_rw="$(_so_self_dir)/state-rw.sh"
+
+  _wc_status=$(sh "$_wc_rw" get --state-dir "$_wc_sdir" --field '.execution.status' 2>/dev/null) \
+    || _so_die "wakeup-check: leitura de .execution.status falhou em $_wc_sdir" 1
+  if [ "$_wc_status" != "em_andamento" ]; then
+    printf 'ok (status=%s)\n' "${_wc_status:-desconhecido}"
+    return 0
+  fi
+
+  _wc_ws=$(_so_cmd_wave_status --state-dir "$_wc_sdir")
+  case "$_wc_ws" in
+    none) printf 'ok (no-wave)\n'; return 0 ;;
+    open) printf 'ok (wave-open)\n'; return 0 ;;
+  esac
+
+  _wc_sched=$(sh "$_wc_rw" get --state-dir "$_wc_sdir" \
+    --field '.waves[-1].next_wave_scheduled_for' 2>/dev/null) || _wc_sched=""
+  case "$_wc_sched" in
+    ''|null) printf 'unknown (no-schedule-recorded)\n'; return 0 ;;
+  esac
+  if ! _wc_sched_e=$(_so_iso_to_epoch "$_wc_sched"); then
+    printf 'unknown (unparseable-schedule)\n'
+    return 0
+  fi
+
+  if [ -n "$_wc_now" ]; then
+    _wc_now_e=$(_so_iso_to_epoch "$_wc_now") \
+      || _so_die_usage "wakeup-check: --now ilegivel (esperado YYYY-MM-DDTHH:MM:SSZ): $_wc_now"
+  else
+    _wc_now_e=$(date -u +%s)
+  fi
+
+  _wc_over=$((_wc_now_e - _wc_sched_e))
+  if [ "$_wc_over" -gt "$_wc_grace" ]; then
+    printf 'missed (scheduled-for=%s overdue-seconds=%s)\n' "$_wc_sched" "$_wc_over"
+    diag_emit warning wave-wakeup-missed \
+      "a proxima onda estava agendada para $_wc_sched e nao disparou (o agendamento vive na sessao que o criou)" \
+      "retome com /agente-00c-resume ou /feature-00c-resume; para reaproveitar o agendamento, reabra a sessao original com claude --resume" \
+      || :
+    return 0
+  fi
+  printf 'ok (scheduled-for=%s)\n' "$_wc_sched"
+}
+
 _SO_SUBCMD=$1
 shift
 
@@ -1835,6 +1980,8 @@ case "$_SO_SUBCMD" in
   wave-status)      _so_cmd_wave_status "$@" ;;
   reconcile-wave)   _so_cmd_reconcile_wave "$@" ;;
   current-id)       _so_cmd_current_id "$@" ;;
+  record-schedule)  _so_cmd_record_schedule "$@" ;;
+  wakeup-check)     _so_cmd_wakeup_check "$@" ;;
   export-snapshot)  _so_cmd_export_snapshot "$@" ;;
   git-commit)       _so_cmd_git_commit "$@" ;;
   -h|--help|help)   exit 0 ;;

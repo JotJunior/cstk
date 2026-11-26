@@ -65,6 +65,18 @@ if [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ] \
 fi
 ```
 
+### 2.bis Diagnostico de wakeup perdido (read-only, best-effort — issue #248)
+
+```bash
+WK_OUT=$(state-ondas.sh wakeup-check --state-dir "$AGENTE_00C_STATE_DIR" 2>/dev/null) || WK_OUT=""
+```
+
+Nunca condiciona a retomada. Se `$WK_OUT` comecar com `missed (`, inclua
+no resultado ao operador a linha `Onda agendada nao disparou:
+<scheduled-for> (atraso <overdue-seconds>s) — o agendamento vive na sessao
+que o criou; ao fechar o terminal, reabra com \`claude --resume\` ou rode
+/feature-00c-resume <short>`. Qualquer outro valor: nada a dizer.
+
 ### 3. Fluxo TOCTOU-safe (ordem CRITICA — research.md Decision 5)
 
 > **Fronteira command↔orquestrador**: o lock e deste command PAI (acquire
@@ -392,6 +404,16 @@ reconciliacao acima fechou a onda, DERIVE do state real:
   NAO invocar ScheduleWakeup (terminal).
 - `.execution.status == em_andamento`: agendar a proxima onda —
   `ScheduleWakeup(delaySeconds: 270, reason: "proxima onda (recuperada pela rede de seguranca)", prompt: "/feature-00c-resume $SHORT")`.
+
+Se `ScheduleWakeup` retornou com sucesso, grave o instante agendado com o
+MESMO `delaySeconds` aplicado (best-effort, issue #248) e inclua no
+resultado o aviso de que o agendamento vive nesta sessao (fechar o terminal
+ou "Exit and stop tasks" o cancela; retomar com `claude --resume` ou
+/feature-00c-resume $SHORT):
+
+```bash
+state-ondas.sh record-schedule --state-dir "$AGENTE_00C_STATE_DIR" --delay-seconds <N> || :
+```
 
 Se `Schedule intent: none`, NAO invocar ScheduleWakeup.
 

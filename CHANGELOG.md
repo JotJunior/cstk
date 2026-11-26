@@ -5,6 +5,63 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.20.0] - 2026-11-26
+
+Resposta a duas mudanças do Claude Code. Desde a 2.1.329 o agendamento da
+próxima onda vive na sessão que o criou: abrir uma sessão nova não o
+re-executa e nada avisava que a execução tinha parado. A 2.1.330 deixou de
+repassar o `model` de uma skill a subagentes, e a validação mostrou que isso
+não atinge o roteamento de modelos do cstk.
+
+### Added
+
+- **`state-ondas.sh record-schedule --state-dir DIR --delay-seconds N
+  [--now ISO]`.** Grava em `.waves[-1].next_wave_scheduled_for` o instante
+  agora + N (ISO UTC). A conta é feita pelo helper, nunca pelo modelo.
+  Funciona com `state.json` e `state.db` (via `state-rw.sh set`). Antes só o
+  orquestrador gravava esse campo, e só quando lembrava: 377 de 2.943 ondas
+  em states reais (~13%) o tinham preenchido (issue #248).
+- **`state-ondas.sh wakeup-check --state-dir DIR [--now ISO]
+  [--grace-seconds N]`.** Diagnóstico read-only, sempre exit 0. Responde
+  `missed (scheduled-for=<ISO> overdue-seconds=<N>)` e emite
+  `DIAG|warning|wave-wakeup-missed` quando a execução está `em_andamento`, a
+  última onda está fechada e o horário gravado passou da folga (default
+  600s). Onda sem horário gravado sai `unknown (no-schedule-recorded)`, nunca
+  "perdida". Nunca retoma nada sozinho (issue #248).
+
+### Changed
+
+- **Os 4 commands pai gravam o horário agendado.** `/agente-00c`,
+  `/agente-00c-resume`, `/feature-00c` e `/feature-00c-resume` chamam
+  `record-schedule` com o mesmo `delaySeconds` logo após um `ScheduleWakeup`
+  bem-sucedido (best-effort, `|| :`). Também avisam o operador que o
+  agendamento vive na sessão: fechar o terminal ou sair com "Exit and stop
+  tasks" o cancela; para retomar, `claude --resume` ou o `/…-resume` manual.
+- **Os 2 resumes diagnosticam wakeup perdido.** `/agente-00c-resume` e
+  `/feature-00c-resume` rodam `wakeup-check` antes de retomar e, em `missed`,
+  incluem no resultado o horário que não disparou e o atraso. O diagnóstico
+  nunca condiciona a retomada.
+- **Docs.** `docs/agente-00c.md` e `docs/agente-00c.pt-BR.md` ganham a
+  limitação do agendamento por sessão em "Known limitations" e, em
+  model-routing, o resultado da validação do #249. Na 2.1.332, lendo o modelo
+  gravado pela API no transcript de cada subagente:
+  - `model=haiku` rodou em haiku e `model=sonnet` em sonnet;
+  - o frontmatter `model: sonnet` sozinho rodou em sonnet, e `model=haiku`
+    explícito venceu esse frontmatter;
+  - o filho sem `model=` de um subagente que rodou uma skill herdou o modelo
+    do pai, não o da sessão.
+
+### Tests
+
+- 11 cenários novos em `tests/test_state-ondas.sh` (JSON + SQLite), cobrindo
+  `record-schedule` e `wakeup-check`: sem onda, onda aberta, sem horário,
+  no prazo, vencido, folga configurável, status terminal/`aguardando_humano`,
+  state ausente e entradas inválidas.
+- `tests/test_command-wakeup-schedule.sh` (interno, 7 cenários): smoke
+  textual. Nos 4 commands, `record-schedule` vem depois de `ScheduleWakeup(`
+  e é best-effort; nos 2 resumes, `wakeup-check` vem antes do
+  `reconcile-wave`; os 4 orientam `claude --resume`.
+
 ## [10.19.0] - 2026-11-15
 
 Skill nova, `cstk-init`: a porta de entrada para adotar o cstk num projeto
@@ -9086,6 +9143,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.20.0]: https://github.com/JotJunior/cstk/releases/tag/v10.20.0
 [10.19.0]: https://github.com/JotJunior/cstk/releases/tag/v10.19.0
 [10.18.0]: https://github.com/JotJunior/cstk/releases/tag/v10.18.0
 [10.17.0]: https://github.com/JotJunior/cstk/releases/tag/v10.17.0

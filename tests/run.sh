@@ -359,6 +359,14 @@ _is_internal_test() {
       # command portador. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
       return 1 ;;
+    test_command-wakeup-schedule.sh)
+      # Smoke textual (issue #248): record-schedule apos ScheduleWakeup nos
+      # 4 commands pai e wakeup-check nos 2 resumes. Assert no .md, nao em
+      # um unico script (subcomandos cobertos por test_state-ondas.sh) —
+      # existence-guarded ao command portador. Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
+      return 1 ;;
     test_command-wave-summary.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (integracao do
       # resumo deterministico de fechamento de onda, FASE 6 de
